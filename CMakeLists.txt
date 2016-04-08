@@ -51,5 +51,5 @@ add_library( percepto SHARED
              src/SimpleConvergence.cpp )
 target_link_libraries( percepto ${percepto_LIBRARIES})
 
-add_executable( test_net tests/TestNet.cpp )
+add_executable( test_net examples/TestNet.cpp )
 target_link_libraries( test_net percepto ${percepto_LIBRARIES} )
