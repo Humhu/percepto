@@ -21,7 +21,8 @@ struct BackpropInfo
 	// Derivative of system outputs wrt this layer's parameters
 	MatrixType dodw;
 
-	BackpropInfo();
+	BackpropInfo()
+	: sysOutDim( 0 ) {}
 };
 
 }

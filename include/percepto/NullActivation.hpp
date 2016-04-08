@@ -14,11 +14,17 @@ public:
 	typedef double InputType;
 	typedef double OutputType;
 
-	NullActivation();
+	NullActivation() {}
 
-	OutputType Evaluate( const InputType& input ) const;
+	OutputType Evaluate( const InputType& input ) const
+	{
+		return input;
+	}
 
-	OutputType Derivative( const InputType& input ) const;
+	OutputType Derivative( const InputType& input ) const
+	{
+		return 1.0;
+	}
 
 };
 

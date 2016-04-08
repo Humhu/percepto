@@ -1,7 +1,7 @@
 #pragma once
 
 #include "percepto/PerceptoTypes.hpp"
-#include "percepto/Backprop.h"
+#include "percepto/Backprop.hpp"
 
 namespace percepto
 {

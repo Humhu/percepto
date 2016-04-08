@@ -4,51 +4,42 @@
 #include "percepto/FullyConnectedNet.hpp"
 #include "percepto/NetWrapper.hpp"
 
-#include "percepto/HingeActivation.h"
-#include "percepto/SigmoidActivation.h"
-#include "percepto/NullActivation.h"
+#include "percepto/HingeActivation.hpp"
+#include "percepto/SigmoidActivation.hpp"
+#include "percepto/NullActivation.hpp"
 
 #include "percepto/SquaredLoss.hpp"
 #include "percepto/StochasticPopulationLoss.hpp"
 #include "percepto/L2ParameterLoss.hpp"
 
 #include "percepto/Optimizer.hpp"
-#include "percepto/AdamStepper.h"
-#include "percepto/SimpleConvergence.h"
+#include "percepto/AdamStepper.hpp"
+#include "percepto/SimpleConvergence.hpp"
+
+#include <boost/random/uniform_real_distribution.hpp>
+#include <boost/random/random_device.hpp>
+#include <boost/random/mersenne_twister.hpp>
 
 #include <cstdlib>
 
 using namespace percepto;
-
-template <typename Derived>
-void InitRandomInts( Eigen::DenseBase<Derived>& mat, unsigned int rows, 
-                     unsigned int cols, unsigned int maxInt = 10 )
-{
-	mat = MatrixType( rows, cols );
-	for( unsigned int i = 0; i < rows; ++i )
-	{
-		for( unsigned int j = 0; j < cols; j++ )
-		{
-			double raw = ((double) rand()) / RAND_MAX;
-			mat(i,j) = std::round( (raw - 0.5 )* 2 * maxInt );
-		}
-	}
-}
 
 typedef FullyConnectedNet<HingeActivation> ReLUNet;
 typedef FullyConnectedNet<SigmoidActivation> PerceptronNet;
 typedef LinearLayer<NullActivation> UnrectifiedLinearLayer;
 typedef NetWrapper<PerceptronNet, UnrectifiedLinearLayer> PerceptronOutputNet;
 
-#include <boost/random/uniform_real_distribution.hpp>
-#include <boost/random/random_device.hpp>
-#include <boost/random/mersenne_twister.hpp>
+typedef PerceptronOutputNet TestNet;
+// Comment the above and unncomment this line to use Rectified Linear Units instead
+// typedef ReLUNet TestNet;
 
-inline double f( double x )
+// The highly nonlinear function we will try to fit
+double f( double x )
 {
 	return 8 * std::cos( x ) + 2.5 * x * sin( x ) + 2.8 * x;
 }
 
+// Generate a specified number of random xs and corresponding ys
 void generate_data( std::vector<VectorType>& xs,
                     std::vector<VectorType>& ys,
                     unsigned int num_data )
@@ -74,6 +65,7 @@ void generate_data( std::vector<VectorType>& xs,
 	}
 }
 
+// For initializing vectors to random in a range
 template <typename Derived>
 void randomize_vector( Eigen::DenseBase<Derived>& mat, 
                        double minRange = -1.0, double maxRange = 1.0 )
@@ -112,32 +104,40 @@ int main( int argc, char** argv )
 	// Randomize the net parameters
 	std::cout << "Initializing net..." << std::endl;
 	std::cout << "Creating linear layers..." << std::endl;
+
+	// Perceptron initialization
 	SigmoidActivation act;
 	PerceptronNet testHeadNet = PerceptronNet::create_zeros( inputDim, 
 	                                                         layerWidth, 
 	                                                         numHiddenLayers, 
 	                                                         layerWidth, 
 	                                                         act );
+
+	// // ReLU initialization
+	// HingeActivation act;
+	// ReLUNet testHeadNet = ReLUNet::create_zeros( inputDim,
+	//                                              layerWidth,
+	//                                              numHiddenLayers,
+	//                                              layerWidth,
+	//                                              act );
+
 	VectorType headParams = testHeadNet.GetParamsVec();
 	randomize_vector( headParams );
 	testHeadNet.SetParamsVec( headParams );
-	std::cout << "output dim: " << testHeadNet.OutputDim() << std::endl;
 
 	std::cout << "Creating output layer..." << std::endl;
 	UnrectifiedLinearLayer testOutNet = 
 	    UnrectifiedLinearLayer::create_zeros( layerWidth,
 	                                          outputDim,
 	                                          NullActivation() );
-	std::cout << "input dim: " << testOutNet.InputDim() << std::endl;
 	VectorType outParams = testOutNet.GetParamsVec();
 	randomize_vector( outParams );
 	testOutNet.SetParamsVec( outParams );
-	std::cout << "input dim: " << testOutNet.InputDim() << std::endl;
 
-	PerceptronOutputNet testNet( testHeadNet, testOutNet );
+	TestNet testNet( testHeadNet, testOutNet );
 
 	// Create the loss functions
-	typedef SquaredLoss<PerceptronOutputNet> Loss;
+	typedef SquaredLoss<TestNet> Loss;
 	typedef StochasticPopulationLoss<Loss> StochasticLoss;
 	typedef L2ParameterLoss<StochasticLoss> RegularizedStochasticLoss;
 

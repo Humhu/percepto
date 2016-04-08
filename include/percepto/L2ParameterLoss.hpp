@@ -1,5 +1,7 @@
 #pragma once
 
+#include "percepto/PerceptoTypes.hpp"
+
 namespace percepto
 {
 
