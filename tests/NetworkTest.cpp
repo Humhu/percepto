@@ -1,26 +1,27 @@
-#include "percepto/PerceptoTypes.hpp"
+#include "percepto/PerceptoTypes.h"
 
-#include "percepto/LinearLayer.hpp"
-#include "percepto/FullyConnectedNet.hpp"
-#include "percepto/NetWrapper.hpp"
+#include "percepto/neural/LinearLayer.hpp"
+#include "percepto/neural/FullyConnectedNet.hpp"
+#include "percepto/neural/NetWrapper.hpp"
 
-#include "percepto/HingeActivation.hpp"
-#include "percepto/SigmoidActivation.hpp"
-#include "percepto/NullActivation.hpp"
+#include "percepto/neural/HingeActivation.hpp"
+#include "percepto/neural/SigmoidActivation.hpp"
+#include "percepto/neural/NullActivation.hpp"
 
 #include "percepto/SquaredLoss.hpp"
 #include "percepto/StochasticPopulationLoss.hpp"
 #include "percepto/L2ParameterLoss.hpp"
 
-#include "percepto/Optimizer.hpp"
-#include "percepto/AdamStepper.hpp"
-#include "percepto/SimpleConvergence.hpp"
+#include "percepto/optim/Optimizer.hpp"
+#include "percepto/optim/AdamStepper.hpp"
+#include "percepto/optim/SimpleConvergence.hpp"
 
 #include <boost/random/uniform_real_distribution.hpp>
 #include <boost/random/random_device.hpp>
 #include <boost/random/mersenne_twister.hpp>
 
 #include <cstdlib>
+#include <iostream>
 
 using namespace percepto;
 

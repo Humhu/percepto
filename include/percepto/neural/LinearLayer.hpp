@@ -1,6 +1,6 @@
 #pragma once
 
-#include "percepto/PerceptoTypes.hpp"
+#include "percepto/PerceptoTypes.h"
 #include "percepto/Backprop.hpp"
 
 namespace percepto
@@ -46,7 +46,7 @@ public:
 
 	// TODO Clean this up!
 	BackpropInfo Backprop( const InputType& input,
-	                             const BackpropInfo& nextLayers ) const
+	                       const BackpropInfo& nextLayers ) const
 	{
 		BackpropInfo thisLayers;
 		thisLayers.sysOutDim = nextLayers.sysOutDim;

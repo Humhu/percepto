@@ -1,6 +1,6 @@
 #pragma once
 
-#include "percepto/PerceptoTypes.hpp"
+#include "percepto/PerceptoTypes.h"
 
 namespace percepto
 {

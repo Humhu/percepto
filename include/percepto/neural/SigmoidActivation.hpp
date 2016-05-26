@@ -1,29 +1,30 @@
 #pragma once
 
-#include "percepto/PerceptoTypes.hpp"
+#include "percepto/PerceptoTypes.h"
 #include <cmath>
 
 namespace percepto
 {
 
-// Simply passes input through
-class NullActivation
+class SigmoidActivation
 {
 public:
 
 	typedef double InputType;
 	typedef double OutputType;
 
-	NullActivation() {}
+	SigmoidActivation() {}
 
 	OutputType Evaluate( const InputType& input ) const
 	{
-		return input;
+		return 1.0 / ( 1.0 + std::exp( -input) );
 	}
 
 	OutputType Derivative( const InputType& input ) const
 	{
-		return 1.0;
+		double p = std::exp( input );
+		double d = 1 + p;
+		return p / ( d*d );
 	}
 
 };

@@ -22,13 +22,11 @@ void ReservoirSampling( unsigned int numItems, unsigned int subsetSize,
 	{
 		boost::random::uniform_int_distribution<> dist( 0, i ); // i inclusive
 		unsigned int j = (unsigned int) dist( engine );
-		std::cout << "j: " << j << " ";
 		if( j < subsetSize )
 		{
 			inds[j] = i;
 		}
 	}
-	std::cout << std::endl;
 }
 	
 /*! \brief Boost-based brute force sampling implementation. Best used when

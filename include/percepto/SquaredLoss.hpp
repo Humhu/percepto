@@ -1,6 +1,6 @@
 #pragma once
 
-#include "percepto/PerceptoTypes.hpp"
+#include "percepto/PerceptoTypes.h"
 #include "percepto/Backprop.hpp"
 
 namespace percepto
@@ -37,6 +37,21 @@ public:
 	VectorType Gradient() const
 	{
 		return Gradient( ComputeError() );
+	}
+
+	BackpropInfo Backprop( const BackpropInfo& nextInfo ) const
+	{
+		BackpropInfo thisInfo;
+		thisInfo.sysOutDim = nextInfo.sysOutDim;
+		
+		VectorType err = ComputeError();
+		thisInfo.dodx = MatrixType( thisInfo.sysOutDim, err.size() );
+		for( unsigned int i = 0; i < thisInfo.sysOutDim; i++ )
+		{
+			thisInfo.dodx.row(i) = nextInfo.dodx(i) * _scale * err.transpose();
+		}
+		// thisLayers.dodw is empty
+		return thisInfo;
 	}
 
 	RegressorType& GetRegressor() const { return _regressor; }

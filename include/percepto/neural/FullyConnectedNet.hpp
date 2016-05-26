@@ -1,6 +1,6 @@
 #pragma once
 
-#include "percepto/LinearLayer.hpp"
+#include "percepto/neural/LinearLayer.hpp"
 
 #include <sstream>
 
@@ -71,10 +71,9 @@ public:
 	}
 
 	BackpropInfo Backprop( const InputType& input,
-	                      const BackpropInfo& nextNets ) const
+	                       const BackpropInfo& nextInfo ) const
 	{
-		unsigned int sysOutDim = nextNets.sysOutDim;
-		BackpropInfo nextInfo = nextNets;
+		unsigned int sysOutDim = nextInfo.sysOutDim;
 		BackpropInfo thisNets;
 		thisNets.sysOutDim = sysOutDim;
 
@@ -89,15 +88,16 @@ public:
 		thisNets.dodw = MatrixType::Zero( sysOutDim, ParamDim() );
 		unsigned int paramIndex = ParamDim();
 
+		BackpropInfo layerInfo = nextInfo;
 		for( int i = layers.size()-1; i >= 0; --i )
 		{
-			nextInfo = layers[i].Backprop( inputs[i], nextInfo );
+			layerInfo = layers[i].Backprop( inputs[i], layerInfo );
 			
 			paramIndex = paramIndex - layers[i].ParamDim();
 			thisNets.dodw.block( 0, paramIndex, sysOutDim, layers[i].ParamDim() ) 
-			    = nextInfo.dodw;
+			    = layerInfo.dodw;
 		}
-		thisNets.dodx = nextInfo.dodx;
+		thisNets.dodx = layerInfo.dodx;
 		return thisNets;
 	}
 

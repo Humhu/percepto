@@ -1,11 +1,11 @@
 #pragma once
 
 #include <Eigen/Dense>
-#include <iostream>
 
-namespace percepto
+namespace percepto 
 {
-	
+
+typedef double ScalarType;
 typedef Eigen::MatrixXd MatrixType;
 typedef Eigen::VectorXd VectorType;
 

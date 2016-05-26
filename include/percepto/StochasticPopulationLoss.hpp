@@ -4,8 +4,8 @@
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
 
-#include "percepto/SubsetSamplers.hpp"
-#include "percepto/PerceptoTypes.hpp"
+#include "percepto/utils/SubsetSamplers.hpp"
+#include "percepto/PerceptoTypes.h"
 #include "percepto/PopulationLoss.hpp"
 
 namespace percepto
