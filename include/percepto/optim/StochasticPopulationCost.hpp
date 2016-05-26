@@ -5,7 +5,7 @@
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
 
-#include "percepto/MeanPopulationCost.hpp"
+#include "percepto/optim/MeanPopulationCost.hpp"
 #include "percepto/utils/SubsetSamplers.hpp"
 
 namespace percepto
@@ -22,7 +22,7 @@ class StochasticPopulationCost
 {
 public:
 
-	typedef Scalar OutputType;
+	typedef ScalarType OutputType;
 	typedef MeanPopulationCost<CostType> ParentCost;
 
 	/*! \brief Creates a cost by averaging costs on a poulation of
@@ -34,19 +34,20 @@ public:
 		_generator.seed( rng );
 	}
 
-	void Backprop( const BackpropInfo& nextInfo, BackpropInfo& thisInfo )
+	BackpropInfo Backprop( const BackpropInfo& nextInfo )
 	{
 		assert( nextInfo.ModuleInputDim() == OutputDim() );
 		
 		BackpropInfo midInfo, costInfo;
 		midInfo.dodx = nextInfo.dodx / _subsetSize;
-		ParentCost::_costs[ _activeInds[0] ].Backprop( midInfo, thisInfo );
+		BackpropInfo thisInfo = ParentCost::_costs[ _activeInds[0] ].Backprop( midInfo );
 		for( unsigned int i = 1; i < _subsetSize; i++ )
 		{
-			ParentCost::_costs[ _activeInds[i] ].Backprop( midInfo, costInfo );
+			BackpropInfo costInfo = ParentCost::_costs[ _activeInds[i] ].Backprop( midInfo );
 			thisInfo.dodx += costInfo.dodx;
 			thisInfo.dodw += costInfo.dodw;
 		}
+		return thisInfo;
 	}
 
 	/*! \brief Calculate the objective function by averaging the 
@@ -77,7 +78,7 @@ private:
 
 	void RandomSample()
 	{
-		BitmapSampling( _population.size(), _subsetSize, 
+		BitmapSampling( ParentCost::_costs.size(), _subsetSize, 
 		                   _activeInds, _generator );
 	}
 

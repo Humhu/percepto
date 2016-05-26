@@ -73,10 +73,11 @@ public:
 	BackpropInfo Backprop( const InputType& input,
 	                       const BackpropInfo& nextInfo ) const
 	{
-		unsigned int sysOutDim = nextInfo.sysOutDim;
-		BackpropInfo thisNets;
-		thisNets.sysOutDim = sysOutDim;
+		assert( nextInfo.ModuleInputDim() == OutputDim() );
 
+		BackpropInfo thisNets;
+
+		// TODO Cache forward pass?
 		std::vector<InputType> inputs;
 		inputs.reserve( layers.size() );
 		inputs.push_back( input );
@@ -85,7 +86,7 @@ public:
 			inputs.push_back( layers[i].Evaluate( inputs[i] ) );
 		}
 
-		thisNets.dodw = MatrixType::Zero( sysOutDim, ParamDim() );
+		thisNets.dodw = MatrixType::Zero( nextInfo.SystemOutputDim(), ParamDim() );
 		unsigned int paramIndex = ParamDim();
 
 		BackpropInfo layerInfo = nextInfo;
@@ -94,7 +95,7 @@ public:
 			layerInfo = layers[i].Backprop( inputs[i], layerInfo );
 			
 			paramIndex = paramIndex - layers[i].ParamDim();
-			thisNets.dodw.block( 0, paramIndex, sysOutDim, layers[i].ParamDim() ) 
+			thisNets.dodw.block( 0, paramIndex, nextInfo.SystemOutputDim(), layers[i].ParamDim() ) 
 			    = layerInfo.dodw;
 		}
 		thisNets.dodx = layerInfo.dodx;
@@ -144,18 +145,6 @@ public:
 			vecInd += d;
 		}
 		return params;
-	}
-
-	void StepParams( const VectorType& step )
-	{
-		assert( step.size() == ParamDim() );
-		unsigned int paramInd = 0;
-		for( unsigned int i = 0; i < layers.size(); ++i )
-		{
-			unsigned int dim = layers[i].ParamDim();
-			layers[i].StepParams( step.block( paramInd, 0, dim, 1 ) );
-			paramInd += dim;
-		}
 	}
 
 	unsigned int InputDim() const { return layers.front().InputDim(); }

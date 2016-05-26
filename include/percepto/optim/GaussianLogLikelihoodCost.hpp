@@ -1,7 +1,6 @@
 #pragma once
 
-#include "percepto/PerceptoTypes.h"
-#include "percepto/BackpropInfo.hpp"
+#include "percepto/compo/BackpropInfo.hpp"
 #include <boost/foreach.hpp>
 #include <Eigen/Cholesky>
 #include <cmath>
@@ -64,7 +63,7 @@ public:
 		return _regressor.GetParamsVec();
 	}
 
-	void Backprop( const BackpropInfo& nextInfo, BackpropInfo& thisInfo )
+	BackpropInfo Backprop( const BackpropInfo& nextInfo )
 	{
 		assert( nextInfo.ModuleInputDim() == 1 );
 
@@ -82,49 +81,7 @@ public:
 			midInfo.dodx.row(i) = dydSVec * nextInfo.dodx(i);
 		}
 
-		_regressor.Backprop( _input, midInfo, thisInfo );
-	}
-
-	/*! \brief A more efficient gradient calculating implementation. */
-	VectorType Gradient() const
-	{
-		VectorType gradient( _regressor.ParamDim() );
-
-		typename RegressorType::OutputType cov = _regressor.Evaluate( _input );
-		Eigen::LDLT<MatrixType> ldlt( cov );
-		VectorType errSol = ldlt.solve( _sample );
-
-		std::vector<typename RegressorType::OutputType> regressorDerivs 
-			= _regressor.AllDerivatives( _input );
-		assert( regressorDerivs.size() == _regressor.ParamDim() );
-
-		for( int ind = 0; ind < _regressor.ParamDim(); ind++ )
-		{
-			if( regressorDerivs[ind].size() == 0 ) 
-			{ 
-				gradient(ind) = 0;
-				continue;
-			}
-			gradient(ind) = ldlt.solve( regressorDerivs[ind] ).trace() 
-			                - errSol.dot( regressorDerivs[ind] * errSol ); 
-		}
-		// Normally -0.5, but negatived to make it a cost, not objective
-		return 0.5 * gradient;
-	}
-
-	/*! \brief Calculate the derivative of the cost w.r.t. a single parameter. Should
-	 * not be used for gradient calculation, as it is realtively inefficient. */
-	OutputType Derivative( unsigned int ind ) const
-	{
-		typename RegressorType::OutputType cov = _regressor.Evaluate( _input );
-		Eigen::LDLT<MatrixType> ldlt( cov );
-		typename RegressorType::OutputType matDeriv = _regressor.Derivative( _input, ind );
-		
-		if( matDeriv.size() == 0 ) { return 0; }
-
-		VectorType errSol = ldlt.solve( _sample );
-		// Normally -0.5, but negatived to make it a cost, not objective
-		return 0.5 * ( ldlt.solve( matDeriv ).trace() - errSol.dot( matDeriv*errSol ) ); 
+		return _regressor.Backprop( _input, midInfo );
 	}
 
 	/*! \brief Computes the log-likelihood of the input sample using the

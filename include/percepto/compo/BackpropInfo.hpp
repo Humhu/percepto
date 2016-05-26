@@ -27,18 +27,18 @@ struct BackpropInfo
 template <class R>
 MatrixType BackpropGradient( R& r, const typename R::InputType& rIn )
 {
-	BackpropInfo info, output;
+	BackpropInfo info;
 	info.dodx = MatrixType::Identity( r.OutputDim(), r.OutputDim() );
-	r.Backprop( rIn, info, output );
+	BackpropInfo output = r.Backprop( rIn, info );
 	return output.dodw.transpose();
 }
 
 template <class R>
 MatrixType BackpropGradient( R& r )
 {
-	BackpropInfo info, output;
+	BackpropInfo info;
 	info.dodx = MatrixType::Identity( r.OutputDim(), r.OutputDim() );
-	r.Backprop( info, output );
+	BackpropInfo output = r.Backprop( info );
 	return output.dodw.transpose();
 }
 

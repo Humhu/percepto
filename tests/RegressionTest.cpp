@@ -1,19 +1,25 @@
-#include "percepto/LinearRegressor.hpp"
-#include "percepto/ExponentialWrapper.hpp"
-#include "percepto/AffineWrapper.hpp"
+#include "percepto/compo/LinearRegressor.hpp"
+#include "percepto/compo/ExponentialWrapper.hpp"
+#include "percepto/compo/AffineWrapper.hpp"
+#include "percepto/compo/ModifiedCholeskyWrapper.hpp"
 
-#include "percepto/pdreg/ModifiedCholeskyWrapper.hpp"
-#include "percepto/pdreg/LowerTriangular.hpp"
+#include "percepto/utils/LowerTriangular.hpp"
+#include "percepto/utils/Randomization.hpp"
 
-#include "percepto/GaussianLogLikelihoodCost.hpp"
+#include "percepto/optim/GaussianLogLikelihoodCost.hpp"
+
+#include "percepto/neural/NetworkTypes.h"
+
 
 #include <ctime>
 #include <iostream>
 
 using namespace percepto;
 
-typedef ExponentialWrapper<LinearRegressor> ExpRegressor;
-typedef ModifiedCholeskyWrapper<LinearRegressor,ExpRegressor> ModCholRegressor;
+// TODO Implement ConstantRegressor
+typedef ReLUNet BaseRegressor;
+typedef ExponentialWrapper<BaseRegressor> ExpRegressor;
+typedef ModifiedCholeskyWrapper<BaseRegressor, ExpRegressor> ModCholRegressor;
 
 typedef AffineWrapper<ModCholRegressor> AffineModCholRegressor;
 
@@ -42,11 +48,22 @@ int main( void )
 	std::cout << "L Output dim: " << lOutDim << std::endl;
 	std::cout << "D Output dim: " << dOutDim << std::endl;
 
-	LinearRegressor linreg( LinearRegressor::ParamType::Random( lOutDim, lFeatDim ) );
+	//BaseRegressor lReg( BaseRegressor::ParamType::Random( lOutDim, lFeatDim ) );
+	HingeActivation relu( 1.0, 1E-3 );
+	BaseRegressor lReg = BaseRegressor::create_zeros( lFeatDim, lOutDim, 1, 10, relu );
+	VectorType params = lReg.GetParamsVec();
+	randomize_vector( params );
+	lReg.SetParamsVec( params );
 
-	ExpRegressor expreg( ExpRegressor::ParamType::Random( dOutDim, dFeatDim ) );
+	//ExpRegressor expreg( ExpRegressor::ParamType::Random( dOutDim, dFeatDim ) );
+	BaseRegressor dReg = BaseRegressor::create_zeros( dFeatDim, dOutDim, 1, 10, relu );
+	params = dReg.GetParamsVec();
+	randomize_vector( params );
+	dReg.SetParamsVec( params );
 
-	ModCholRegressor mcReg( linreg, expreg, 
+	ExpRegressor expreg( dReg );
+
+	ModCholRegressor mcReg( lReg, expreg, 
 	                        1E-3 * MatrixType::Identity( matDim, matDim ) );
 
 	AffineModCholRegressor amcReg( mcReg );

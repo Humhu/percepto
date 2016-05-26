@@ -1,26 +1,24 @@
 #pragma once
 
+#include "percepto/compo/BackpropInfo.hpp"
+
 namespace percepto
 {
 
-// Joins two networks together into a single network object
+// TODO Generalize to N series elements?
+// Joins two networks together into a single network object by
+// taking the output of head and feeding it into tail
 template <typename Head, typename Tail>
-class NetWrapper
+class SeriesWrapper
 {
 public:
 
 	typedef Head HeadType;
 	typedef typename HeadType::InputType InputType;
-	typedef  Tail TailType;
+	typedef Tail TailType;
 	typedef typename TailType::OutputType OutputType;
 
-	struct ParamType
-	{
-		typename HeadType::ParamType headParams;
-		typename TailType::ParamType tailParams;
-	};
-
-	NetWrapper( HeadType& head, TailType& tail )
+	SeriesWrapper( HeadType& head, TailType& tail )
 	: _head( head ), _tail( tail ) 
 	{
 		assert( head.OutputDim() == tail.InputDim() );
@@ -32,7 +30,7 @@ public:
 	}
 
 	BackpropInfo Backprop( const InputType& input,
-	                      const BackpropInfo& nextNets ) const
+	                       const BackpropInfo& nextNets ) const
 	{
 		BackpropInfo tailInfo = _tail.Backprop( _head.Evaluate( input ), nextNets );
 		BackpropInfo headInfo = _head.Backprop( input, tailInfo );
@@ -45,24 +43,10 @@ public:
 	unsigned int OutputDim() const { return _tail.OutputDim(); }
 	unsigned int ParamDim() const { return _head.ParamDim() + _tail.ParamDim(); }
 
-	void SetParams( const ParamType& params )
-	{
-		_head.SetParams( params.headParams );
-		_tail.SetParams( params.tailParams );
-	}
-
 	void SetParamsVec( const VectorType& params )
 	{
-		_head.SetParams( params.topRows( _head.ParamDim() ) );
-		_tail.SetParams( params.bottomRows( _tail.ParamDim() ) );
-	}
-
-	ParamType GetParams() const
-	{
-		ParamType params;
-		params.headParams = _head.GetParams();
-		params.tailParams = _tail.GetParams();
-		return params;
+		_head.SetParamsVec( params.topRows( _head.ParamDim() ) );
+		_tail.SetParamsVec( params.bottomRows( _tail.ParamDim() ) );
 	}
 
 	VectorType GetParamsVec() const
@@ -70,12 +54,6 @@ public:
 		VectorType vec( ParamDim() );
 		vec << _head.GetParamsVec(), _tail.GetParamsVec();
 		return vec;
-	}
-
-	void StepParams( const VectorType& step )
-	{
-		_head.StepParams( step.topRows( _head.ParamDim() ) );
-		_tail.StepParams( step.bottomRows( _tail.ParamDim() ) );
 	}
 
 private:

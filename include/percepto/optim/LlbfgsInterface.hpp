@@ -2,11 +2,12 @@
 
 #include <lbfgs.h>
 #include <stdexcept>
-#include "percepto/OptimizationProfiler.hpp"
+#include "percepto/optim/OptimizationInterface.hpp"
 
 namespace percepto
 {
 
+// TODO Update
 /*! \brief Optimization interface for Lib LBFGS */
 template <typename CostType>
 class LlbfgsInterface

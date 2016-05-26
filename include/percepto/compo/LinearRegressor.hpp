@@ -1,7 +1,6 @@
 #pragma once
 
-#include "percepto/PerceptoTypes.h"
-#include "percepto/BackpropInfo.hpp"
+#include "percepto/compo/BackpropInfo.hpp"
 #include <Eigen/Dense>
 
 namespace percepto 
@@ -56,11 +55,11 @@ public:
 		return Eigen::Map<const VectorType>( _W.data(), _W.size(), 1 );
 	}
 	
-	void Backprop( const InputType& input, const BackpropInfo& nextInfo, 
-	               BackpropInfo& thisInfo )
+	BackpropInfo Backprop( const InputType& input, const BackpropInfo& nextInfo )
 	{
 		assert( nextInfo.ModuleInputDim() == OutputDim() );
 
+		BackpropInfo thisInfo;
 		thisInfo.dodx = nextInfo.dodx * _W;
 		thisInfo.dodw = MatrixType( nextInfo.SystemOutputDim(), ParamDim() );
 		for( unsigned int i = 0; i < nextInfo.SystemOutputDim(); i++ )
@@ -71,6 +70,7 @@ public:
 					nextInfo.dodx(i,j) * input.transpose();
 			}
 		}
+		return thisInfo;
 	}
 	
 	/*! \brief Produce the output. */

@@ -30,7 +30,6 @@ void DiagonalToVec( const Eigen::DenseBase<DerivedMatrix>& mat,
 	}
 }
 
-
 /*! \brief Class that provides fast mapping between linear vectors and 
  * lower-triangular matrices using a mapping table. */
 class TriangularMapping

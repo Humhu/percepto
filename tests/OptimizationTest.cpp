@@ -1,26 +1,28 @@
-#include "percepto/LinearRegressor.hpp"
-#include "percepto/ExponentialWrapper.hpp"
-#include "percepto/AffineWrapper.hpp"
+#include "percepto/compo/LinearRegressor.hpp"
+#include "percepto/compo/ExponentialWrapper.hpp"
+#include "percepto/compo/AffineWrapper.hpp"
 
-#include "percepto/pdreg/LowerTriangular.hpp"
-#include "percepto/pdreg/ModifiedCholeskyWrapper.hpp"
+#include "percepto/utils/LowerTriangular.hpp"
+#include "percepto/compo/ModifiedCholeskyWrapper.hpp"
 
-#include "percepto/GaussianLogLikelihoodCost.hpp"
-#include "percepto/MeanPopulationCost.hpp"
-#include "percepto/ParameterL2Cost.hpp"
+#include "percepto/optim/GaussianLogLikelihoodCost.hpp"
+#include "percepto/optim/MeanPopulationCost.hpp"
+#include "percepto/optim/ParameterL2Cost.hpp"
 
 #include "percepto/optim/NlOptInterface.hpp"
 
 #include "percepto/utils/MultivariateGaussian.hpp"
+#include "percepto/utils/Randomization.hpp"
+#include "percepto/neural/NetworkTypes.h"
 
 #include <ctime>
 #include <iostream>
 
 using namespace percepto;
 
-typedef LinearRegressor LinReg;
-typedef ExponentialWrapper<LinearRegressor> ExpReg;
-typedef ModifiedCholeskyWrapper<LinearRegressor,ExpReg> ModCholReg;
+typedef ReLUNet BaseRegressor;
+typedef ExponentialWrapper<BaseRegressor> ExpReg;
+typedef ModifiedCholeskyWrapper<BaseRegressor, ExpReg> ModCholReg;
 
 typedef AffineWrapper<ModCholReg> AffineModCholReg;
 
@@ -83,6 +85,11 @@ int main( void )
 	unsigned int lOutDim = TriangularMapping::num_positions( matDim - 1 );
 	unsigned int dOutDim = matDim;
 
+	unsigned int lNumHiddenLayers = 1;
+	unsigned int lLayerWidth = 10;
+	unsigned int dNumHiddenLayers = 1;
+	unsigned int dLayerWidth = 10;
+
 	std::cout << "Matrix dim: " << matDim << std::endl;
 	std::cout << "L feature dim: " << lFeatDim << std::endl;
 	std::cout << "D feature dim: " << dFeatDim << std::endl;
@@ -92,9 +99,21 @@ int main( void )
 	MatrixType mcOffset = 1E-2 * MatrixType::Identity( matDim, matDim );
 
 	// True model
-	LinReg trueLinreg( LinReg::ParamType::Random( lOutDim, lFeatDim ) );
-	ExpReg trueExpreg( ExpReg::ParamType::Random( dOutDim, dFeatDim ) );
-	ModCholReg trueMc( trueLinreg, trueExpreg, mcOffset );
+	HingeActivation relu( 1.0, 1E-3 );
+	BaseRegressor trueLreg = BaseRegressor::create_zeros( lFeatDim, lOutDim, 
+	                                                      lNumHiddenLayers, lLayerWidth, relu );
+	VectorType params = trueLreg.GetParamsVec();
+	randomize_vector( params );
+	trueLreg.SetParamsVec( params );
+
+	BaseRegressor trueDreg = BaseRegressor::create_zeros( dFeatDim, dOutDim, 
+	                                                      dNumHiddenLayers, dLayerWidth, relu );
+	params = trueDreg.GetParamsVec();
+	randomize_vector( params );
+	trueDreg.SetParamsVec( params );
+
+	ExpReg trueExpreg( trueDreg );
+	ModCholReg trueMc( trueLreg, trueExpreg, mcOffset );
 	AffineModCholReg trueModel( trueMc );
 	VectorType trueParams = trueMc.GetParamsVec();
 
@@ -103,9 +122,21 @@ int main( void )
 	std::cout << "weights: " << weights.transpose() << std::endl;
 
 	// Initial model
-	ModCholReg mcReg( ModCholReg::create_zeros( lFeatDim, dFeatDim, matDim ),
-	                   mcOffset );
-	AffineModCholReg amcReg( mcReg );
+	BaseRegressor lreg = BaseRegressor::create_zeros( lFeatDim, lOutDim, 
+	                                                      lNumHiddenLayers, lLayerWidth, relu );
+	params = lreg.GetParamsVec();
+	randomize_vector( params );
+	lreg.SetParamsVec( params );
+
+	BaseRegressor dreg = BaseRegressor::create_zeros( dFeatDim, dOutDim, 
+	                                                      dNumHiddenLayers, dLayerWidth, relu );
+	params = dreg.GetParamsVec();
+	randomize_vector( params );
+	dreg.SetParamsVec( params );
+
+	ExpReg expreg( dreg );
+	ModCholReg initMc( lreg, expreg, mcOffset );
+	AffineModCholReg initModel( initMc );
 
 	// Create test population
 	unsigned int popSize = 1000;
@@ -131,24 +162,24 @@ int main( void )
 
 		mvg.SetCovariance( trueModel.Evaluate( amcInput ) );
 		VectorType sample = mvg.Sample(); 
-		baseCosts.emplace_back( amcInput, sample, amcReg );
+		baseCosts.emplace_back( amcInput, sample, initModel );
 	}
 	std::cout << "Sampling complete." << std::endl;
 
 	MeanGLL meanCost( baseCosts );
 	MeanGLL_L2 finalCost( meanCost, 1E-3 );
 
-	VectorType initParams = amcReg.GetParamsVec();
+	VectorType initParams = initModel.GetParamsVec();
 
 	NLOptParameters optParams;
 
 	// Benchmark the different methods
 	std::vector<nlopt::algorithm> algorithms =
-		{ 
-		  //nlopt::LD_SLSQP, 
-		  nlopt::LD_LBFGS, 
-		  //nlopt::LD_VAR2 
-		};
+	{ 
+	  //nlopt::LD_SLSQP, 
+	  nlopt::LD_LBFGS, 
+	  //nlopt::LD_VAR2 
+	};
 	BOOST_FOREACH( nlopt::algorithm algo, algorithms )
 	{
 		optParams.algorithm = algo;

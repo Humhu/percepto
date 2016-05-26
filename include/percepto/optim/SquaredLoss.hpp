@@ -1,7 +1,6 @@
 #pragma once
 
-#include "percepto/PerceptoTypes.h"
-#include "percepto/Backprop.hpp"
+#include "percepto/compo/BackpropInfo.hpp"
 
 namespace percepto
 {
@@ -22,31 +21,35 @@ public:
 	: _input( input ), _target( target ), _regressor( regressor ),
 	_scale ( scale ) {}
 
-	void EvaluateAndGradient( OutputType& output, VectorType& grad ) const
+	unsigned int OutputDim() { return 1; }
+	unsigned int ParamDim() { return _regressor.ParamDim(); }
+
+	void SetParamsVec( const VectorType& v )
 	{
-		VectorType err = ComputeError();
-		output = Evaluate( err );
-		grad = Gradient( grad );
+		_regressor.SetParamsVec( v );
 	}
+
+	VectorType GetParamsVec() const
+	{
+		return _regressor.GetParamsVec();
+	}
+
 
 	OutputType Evaluate() const
 	{
-		return Evaluate( ComputeError() );
-	}
-
-	VectorType Gradient() const
-	{
-		return Gradient( ComputeError() );
+		VectorType err = ComputeError();
+		return err.dot( err ) * _scale;
 	}
 
 	BackpropInfo Backprop( const BackpropInfo& nextInfo ) const
 	{
+		assert( nextInfo.ModuleInputDim() == OutputDim() );
+
 		BackpropInfo thisInfo;
-		thisInfo.sysOutDim = nextInfo.sysOutDim;
 		
 		VectorType err = ComputeError();
-		thisInfo.dodx = MatrixType( thisInfo.sysOutDim, err.size() );
-		for( unsigned int i = 0; i < thisInfo.sysOutDim; i++ )
+		thisInfo.dodx = MatrixType( nextInfo.SystemOutputDim(), err.size() );
+		for( unsigned int i = 0; i < nextInfo.SystemOutputDim(); i++ )
 		{
 			thisInfo.dodx.row(i) = nextInfo.dodx(i) * _scale * err.transpose();
 		}
@@ -66,21 +69,6 @@ private:
 	VectorType ComputeError() const
 	{
 		return _regressor.Evaluate( _input ) - _target;
-	}
-
-	OutputType Evaluate( const VectorType& err ) const
-	{
-		return err.dot( err ) * _scale;
-	}
-
-	VectorType Gradient( const VectorType& err ) const
-	{
-		BackpropInfo thisLayers;
-		thisLayers.sysOutDim = 1;
-		thisLayers.dodx = _scale * err.transpose();
-
-		BackpropInfo regressorsInfo = _regressor.Backprop( _input, thisLayers );
-		return regressorsInfo.dodw.transpose();
 	}
 
 };

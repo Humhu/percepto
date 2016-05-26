@@ -36,19 +36,20 @@ public:
 		return _costs[0].GetParamsVec();
 	}
 
-	void Backprop( const BackpropInfo& nextInfo, BackpropInfo& thisInfo )
+	BackpropInfo Backprop( const BackpropInfo& nextInfo )
 	{
 		assert( nextInfo.ModuleInputDim() == OutputDim() );
 
 		BackpropInfo midInfo, costInfo;
 		midInfo.dodx = nextInfo.dodx / _costs.size();
-		_costs[0].Backprop( midInfo, thisInfo );
+		BackpropInfo thisInfo = _costs[0].Backprop( midInfo );
 		for( unsigned int i = 1; i < _costs.size(); i++ )
 		{
-			_costs[i].Backprop( midInfo, costInfo );
+			costInfo = _costs[i].Backprop( midInfo );
 			thisInfo.dodx += costInfo.dodx;
 			thisInfo.dodw += costInfo.dodw;
 		}
+		return thisInfo;
 	}
 
 	/*! \brief Calculate the objective function by averaging the 
@@ -63,7 +64,18 @@ public:
 		return acc / _costs.size();
 	}
 
-private:
+	OutputType EvaluateMax() const
+	{
+		OutputType largest = -std::numeric_limits<OutputType>::infinity();
+		BOOST_FOREACH( const CostType& cost, _costs )
+		{
+			OutputType out = cost.Evaluate();
+			if( out > largest ) { largest = out; }
+		}
+		return largest;
+	}
+
+protected:
 
 	std::vector<CostType>& _costs;
 

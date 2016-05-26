@@ -1,6 +1,6 @@
 #pragma once
 
-#include "percepto/BackpropInfo.hpp"
+#include "percepto/compo/BackpropInfo.hpp"
 #include <memory>
 
 namespace percepto
@@ -17,7 +17,6 @@ class AffineWrapper
 public:
 
 	typedef Regressor RegressorType;
-	typedef typename RegressorType::ParamType ParamType;
 	typedef MatrixType OutputType;
 	struct InputType
 	{
@@ -45,13 +44,10 @@ public:
 	RegressorType& GetRegressor() { return _regressor; }
 	const RegressorType& GetRegressor() const { return _regressor; }
 
-	void SetParams( const ParamType& p ) { _regressor.SetParams( p ); }
 	void SetParamsVec( const VectorType& v ) { _regressor.SetParamsVec( v ); }
-	ParamType GetParams() const { return _regressor.GetParams(); }
 	VectorType GetParamsVec() const { return _regressor.GetParamsVec(); }
 
-	void Backprop( const InputType& input, const BackpropInfo& nextInfo, 
-	               BackpropInfo& thisInfo )
+	BackpropInfo Backprop( const InputType& input, const BackpropInfo& nextInfo )
 	{
 		assert( nextInfo.ModuleInputDim() == OutputDim() );
 
@@ -68,23 +64,7 @@ public:
 
 		BackpropInfo midInfo;
 		midInfo.dodx = nextInfo.dodx * dSdx;
-		_regressor.Backprop( input.baseInput, midInfo, thisInfo );
-	}
-
-	std::vector<OutputType> AllDerivatives( const InputType& input ) const
-	{
-		std::vector<OutputType> derivs = _regressor.AllDerivatives( input.baseInput );
-		for( unsigned int i = 0; i < derivs.size(); i++ )
-		{
-			derivs[i] = input.transform * derivs[i] * input.transform.transpose();
-		}
-		return derivs;
-	}
-
-	OutputType Derivative( const InputType& input, unsigned int ind ) const
-	{
-		return input.transform * _regressor.Derivative( input.baseInput, ind ) *
-		       input.transform.transpose();
+		return _regressor.Backprop( input.baseInput, midInfo );
 	}
 
 	OutputType Evaluate( const InputType& input ) const

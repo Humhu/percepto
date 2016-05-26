@@ -1,8 +1,8 @@
 #pragma once
 
 #include "percepto/PerceptoTypes.h"
-#include "percepto/BackpropInfo.hpp"
-#include "percepto/pdreg/LowerTriangular.hpp"
+#include "percepto/compo/BackpropInfo.hpp"
+#include "percepto/utils/LowerTriangular.hpp"
 
 namespace percepto
 {
@@ -18,12 +18,6 @@ public:
 
 	typedef LRegressor LRegressorType;
 	typedef DRegressor DRegressorType;
-
-	struct ParamType
-	{
-		typename LRegressorType::ParamType lParams;
-		typename DRegressorType::ParamType dParams;
-	};
 
 	struct InputType
 	{
@@ -45,21 +39,21 @@ public:
 		return weights;
 	}
 
-	static ParamType create_zeros( unsigned int lInputDim,
-	                               unsigned int dInputDim,
-	                               unsigned int outputDim )
-	{
-		typedef TriangularMapping TMap;
-		unsigned int lOutputDim = TMap::num_positions( outputDim - 1 );
-		unsigned int dOutputDim = outputDim;
+	// static ParamType create_zeros( unsigned int lInputDim,
+	//                                unsigned int dInputDim,
+	//                                unsigned int outputDim )
+	// {
+	// 	typedef TriangularMapping TMap;
+	// 	unsigned int lOutputDim = TMap::num_positions( outputDim - 1 );
+	// 	unsigned int dOutputDim = outputDim;
 
-		ParamType p;
-		p.lParams = LRegressorType::create_zeros( lInputDim,
-		                                              lOutputDim );
-		p.dParams = DRegressorType::create_zeros( dInputDim,
-		                                              dOutputDim );
-		return p;
-	}
+	// 	ParamType p;
+	// 	p.lParams = LRegressorType::create_zeros( lInputDim,
+	// 	                                          lOutputDim );
+	// 	p.dParams = DRegressorType::create_zeros( dInputDim,
+	// 	                                          dOutputDim );
+	// 	return p;
+	// }
 
 	/*! \brief Instantiate an estimator by giving it regressors for 
 	 * the modified Cholesky predictors. Makes copies of the regressors. */
@@ -67,14 +61,6 @@ public:
 	                         const MatrixType& offset )
 	: _lRegressor( l ), _dRegressor( d ), _tmap( _dRegressor.OutputDim() - 1 ),
 	 _offset( offset )
-	{
-		InitCheckDimensions();
-	}
-
-	ModifiedCholeskyWrapper( const ParamType& p, 
-	                         const MatrixType& offset )
-	: _lRegressor( p.lParams ), _dRegressor( p.dParams ), 
-	_tmap( _dRegressor.OutputDim() - 1 ), _offset( offset )
 	{
 		InitCheckDimensions();
 	}
@@ -103,11 +89,6 @@ public:
 		return _lRegressor.ParamDim() + _dRegressor.ParamDim(); 
 	}
 
-	void SetParams( const ParamType& p ) 
-	{ 
-		_lRegressor.SetParams( p.lParams );
-		_dRegressor.SetParams( p.dParams );
-	}
 
 	void SetParamsVec( const VectorType& v )
 	{
@@ -115,15 +96,6 @@ public:
 		_lRegressor.SetParamsVec( v.block( 0, 0, _lRegressor.ParamDim(), 1 ) );
 		_dRegressor.SetParamsVec( v.block( _lRegressor.ParamDim(), 0, 
 		                                   _dRegressor.ParamDim(), 1 ) );
-	}
-
-	/*! \brief Returns a deep copy of the current parameters. */
-	ParamType GetParams() const 
-	{ 
-		ParamType p;
-		p.lParams = _lRegressor.GetParams();
-		p.dParams = _dRegressor.GetParams();
-		return p;
 	}
 
 	VectorType GetParamsVec() const
@@ -136,8 +108,7 @@ public:
 	}
 
 	// Assuming that dodx is given w.r.t. matrix col-major ordering
-	void Backprop( const InputType& input, const BackpropInfo& nextInfo,
-	               BackpropInfo& thisInfo )
+	BackpropInfo Backprop( const InputType& input, const BackpropInfo& nextInfo )
 	{
 		assert( nextInfo.ModuleInputDim() == OutputDim() );
 
@@ -157,9 +128,9 @@ public:
 			dSdl.col(i) = dSdiVec;
 			d( ind.first + 1, ind.second ) = 0;
 		}
-		BackpropInfo midLInfo, lInfo;
+		BackpropInfo midLInfo;
 		midLInfo.dodx = nextInfo.dodx * dSdl;
-		_lRegressor.Backprop( input.lInput, midLInfo, lInfo );
+		BackpropInfo lInfo = _lRegressor.Backprop( input.lInput, midLInfo );
 
 		// Perform D backprop
 		MatrixType dSdd = MatrixType( OutputDim(), OutputSize().first );
@@ -171,36 +142,16 @@ public:
 			dSdd.col(i) = dSdiVec;
 			d( i, i ) = 0;
 		}
-		BackpropInfo midDInfo, dInfo;
+		BackpropInfo midDInfo;
 		midDInfo.dodx = nextInfo.dodx * dSdd;
-		_dRegressor.Backprop( input.dInput, midDInfo, dInfo );
+		BackpropInfo dInfo = _dRegressor.Backprop( input.dInput, midDInfo );
 
+		BackpropInfo thisInfo;
 		thisInfo.dodx = MatrixType( nextInfo.SystemOutputDim(), lInfo.ModuleInputDim() + dInfo.ModuleInputDim() );
 		thisInfo.dodx << lInfo.dodx, dInfo.dodx;
 		thisInfo.dodw = MatrixType( nextInfo.SystemOutputDim(), lInfo.ModuleParamDim() + dInfo.ModuleParamDim() );
 		thisInfo.dodw << lInfo.dodw, dInfo.dodw;
-	}
-
-	/*! \brief Compute all derivatives, ordered in a vector. */
-	std::vector<OutputType> AllDerivatives( const InputType& features ) const
-	{
-		std::vector<OutputType> lDerivatives = AllLDerivatives( features );
-		std::vector<OutputType> dDerivatives = AllDDerivatives( features );
-		lDerivatives.reserve( ParamDim() );
-		lDerivatives.insert( lDerivatives.end(), dDerivatives.begin(), dDerivatives.end() );
-		return lDerivatives;
-	}
-
-	OutputType Derivative( const InputType& features, unsigned int ind ) const
-	{
-		assert( ind < _lRegressor.ParamDim() + _dRegressor.ParamDim() );
-
-		if( ind < _lRegressor.ParamDim() )
-		{
-			return LDerivative( features, ind );
-		}
-		return DDerivative( features, ind - _lRegressor.ParamDim() );
-
+		return thisInfo;
 	}
 
 	OutputType Evaluate( const InputType& features ) const
@@ -230,66 +181,6 @@ private:
 		_D.diagonal() = _dRegressor.Evaluate( input.dInput );
 		return _D;
 	}
-
-	// std::vector<OutputType> AllLDerivatives( const InputType& features ) const
-	// {
-	// 	std::vector<OutputType> derivs( _lRegressor.ParamDim() );
-
-	// 	MatrixType& L = EvaluateL( features.lInput );
-	// 	DiagonalType& D = EvaluateD( features.dInput );
-
-	// 	// Diagonals will have 0 derivative
-	// 	MatrixType dL = MatrixType::Zero( _L.rows(), _L.cols() );
-	// 	for( unsigned int ind = 0; ind < _lRegressor.ParamDim(); ind++ )
-	// 	{
-	// 		_tmap.VecToLowerTriangular( _lRegressor.Derivative( features.lInput, ind ), dL );
-
-	// 		MatrixType prod = dL * D * L.transpose();
-	// 		derivs[ind] = prod + prod.transpose();
-	// 	}
-	// 	return derivs;
-	// }
-
-
-	// std::vector<OutputType> AllDDerivatives( const InputType& features ) const
-	// {
-	// 	std::vector<OutputType> derivs( _dRegressor.ParamDim() );
-
-	// 	MatrixType& L = EvaluateL( features.lInput );
-	// 	for( unsigned int ind = 0; ind < _dRegressor.ParamDim(); ind++ )
-	// 	{
-	// 		DiagonalType dD( _dRegressor.Derivative( features.dInput, ind ) );
-	// 		derivs[ind] = L * dD * L.transpose();
-	// 	}
-	// 	return derivs;
-	// }
-
-	// /*! \brief Returns the matrix derivative with respect to the ind-th L
-	//  * regressor parameter. */
-	// OutputType LDerivative( const InputType& features, 
-	//                         unsigned int ind ) const
-	// {
-	// 	MatrixType& L = EvaluateL( features.lInput );
-	// 	DiagonalType& D = EvaluateD( features.dInput );
-
-	// 	// Diagonals will have 0 derivative
-	// 	MatrixType dL = MatrixType::Zero( _L.rows(), _L.cols() );
-	// 	_tmap.VecToLowerTriangular( _lRegressor.Derivative( features.lInput, ind ), dL );
-
-	// 	MatrixType prod = dL * D * L.transpose();
-	// 	return prod + prod.transpose();
-	// }
-
-	// /*! \brief Returns the matrix derivative with respect to the ind-th D
-	//  * regressor parameter. */
-	// OutputType DDerivative( const InputType& features,
-	//                         unsigned int ind ) const
-	// {
-	// 	MatrixType& L = EvaluateL( features.lInput );
-	// 	DiagonalType dD( _dRegressor.Derivative( features.dInput, ind) );
-
-	// 	return L * dD * L.transpose();
-	// }
 
 	void InitCheckDimensions()
 	{

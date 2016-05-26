@@ -1,7 +1,6 @@
 #pragma once
 
-#include "percepto/PerceptoTypes.h"
-#include "percepto/Backprop.hpp"
+#include "percepto/compo/BackpropInfo.hpp"
 
 namespace percepto
 {
@@ -34,16 +33,17 @@ public:
 	 * convergence is reached. */
 	void Run()
 	{
-		double objective;
+		double value;
 		VectorType gradient, step, params;
 		do
 		{
-			_objective.EvaluateAndGradient( objective, gradient );
+			value = _objective.Evaluate();
+			VectorType gradient = BackpropGradient( _objective );
 			step = _stepper.GetStep( -gradient );
-			_objective.GetRegressor().StepParams( step );
-			params = _objective.GetRegressor().GetParamsVec();
+			params = _objective.GetParamsVec() + step;
+			_objective.SetParamsVec( params );
 		}
-		while( !_convergence.Converged( objective, params, gradient ) );
+		while( !_convergence.Converged( value, params, gradient ) );
 	}
 
 private:

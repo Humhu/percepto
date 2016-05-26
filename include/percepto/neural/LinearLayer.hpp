@@ -1,7 +1,6 @@
 #pragma once
 
-#include "percepto/PerceptoTypes.h"
-#include "percepto/Backprop.hpp"
+#include "percepto/compo/BackpropInfo.hpp"
 
 namespace percepto
 {
@@ -48,19 +47,20 @@ public:
 	BackpropInfo Backprop( const InputType& input,
 	                       const BackpropInfo& nextLayers ) const
 	{
+		assert( nextInfo.ModuleInputDim() == OutputDim() );
+
 		BackpropInfo thisLayers;
-		thisLayers.sysOutDim = nextLayers.sysOutDim;
 		MatrixType dody = nextLayers.dodx;
 
 		// TODO Implement Forward/Backward semantics to avoid double evaluation
 		OutputType preAct = _weights * input.homogeneous();
 
-		thisLayers.dodw = MatrixType::Zero( thisLayers.sysOutDim, ParamDim() );
-		thisLayers.dodx = MatrixType::Zero( thisLayers.sysOutDim, InputDim() );
+		thisLayers.dodw = MatrixType::Zero( nextLayers.SystemOutputDim(), ParamDim() );
+		thisLayers.dodx = MatrixType::Zero( nextLayers.SystemOutputDim(), InputDim() );
 		for( unsigned int j = 0; j < OutputDim(); j++ )
 		{
 			double actDeriv = _activation.Derivative( preAct(j) );
-			for( unsigned int i = 0; i < thisLayers.sysOutDim; i++ )
+			for( unsigned int i = 0; i < nextLayers.SystemOutputDim(); i++ )
 			{
 				thisLayers.dodw.block(i, j*(InputDim()+1), 1, InputDim()+1 )
 				    = dody(i,j) * input.homogeneous().transpose() * actDeriv;
@@ -96,13 +96,6 @@ public:
 	ConstVectorViewType GetParamsVec() const
 	{
 		return Eigen::Map<const VectorType>( _weights.data(), _weights.size(), 1 );
-	}
-
-	void StepParams( const VectorType& step )
-	{
-		assert( step.size() == _weights.size() );
-		Eigen::Map<const ParamType> weightMap( step.data(), _weights.rows(), _weights.cols() );
-		_weights = _weights + weightMap;
 	}
 
 private:

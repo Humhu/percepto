@@ -1,9 +1,9 @@
 #pragma once
 
-#include "percepto/GaussianLogLikelihoodCost.hpp"
-#include "percepto/ParameterL2Cost.hpp"
-#include "percepto/MeanPopulationCost.hpp"
-#include "percepto/NlOptInterface.hpp"
+#include "percepto/optim/GaussianLogLikelihoodCost.hpp"
+#include "percepto/optim/ParameterL2Cost.hpp"
+#include "percepto/optim/MeanPopulationCost.hpp"
+#include "percepto/optim/NlOptInterface.hpp"
 
 namespace percepto
 {

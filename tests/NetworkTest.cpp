@@ -2,15 +2,15 @@
 
 #include "percepto/neural/LinearLayer.hpp"
 #include "percepto/neural/FullyConnectedNet.hpp"
-#include "percepto/neural/NetWrapper.hpp"
+#include "percepto/compo/SeriesWrapper.hpp"
 
 #include "percepto/neural/HingeActivation.hpp"
 #include "percepto/neural/SigmoidActivation.hpp"
 #include "percepto/neural/NullActivation.hpp"
 
-#include "percepto/SquaredLoss.hpp"
-#include "percepto/StochasticPopulationLoss.hpp"
-#include "percepto/L2ParameterLoss.hpp"
+#include "percepto/optim/SquaredLoss.hpp"
+#include "percepto/optim/StochasticPopulationCost.hpp"
+#include "percepto/optim/ParameterL2Cost.hpp"
 
 #include "percepto/optim/Optimizer.hpp"
 #include "percepto/optim/AdamStepper.hpp"
@@ -28,7 +28,7 @@ using namespace percepto;
 typedef FullyConnectedNet<HingeActivation> ReLUNet;
 typedef FullyConnectedNet<SigmoidActivation> PerceptronNet;
 typedef LinearLayer<NullActivation> UnrectifiedLinearLayer;
-typedef NetWrapper<PerceptronNet, UnrectifiedLinearLayer> PerceptronOutputNet;
+typedef SeriesWrapper<PerceptronNet, UnrectifiedLinearLayer> PerceptronOutputNet;
 
 typedef PerceptronOutputNet TestNet;
 // Comment the above and unncomment this line to use Rectified Linear Units instead
@@ -139,8 +139,8 @@ int main( int argc, char** argv )
 
 	// Create the loss functions
 	typedef SquaredLoss<TestNet> Loss;
-	typedef StochasticPopulationLoss<Loss> StochasticLoss;
-	typedef L2ParameterLoss<StochasticLoss> RegularizedStochasticLoss;
+	typedef StochasticPopulationCost<Loss> StochasticLoss;
+	typedef ParameterL2Cost<StochasticLoss> RegularizedStochasticLoss;
 
 	std::cout << "Generating losses..." << std::endl;
 	std::vector<Loss> trainLosses, testLosses;
@@ -160,7 +160,7 @@ int main( int argc, char** argv )
 	AdamStepper stepper;
 	
 	SimpleConvergenceCriteria criteria;
-	criteria.maxRuntime = 180;
+	criteria.maxRuntime = 60;
 	criteria.minElementGradient = 1E-3;
 	criteria.minObjectiveDelta = 1E-3;
 	SimpleConvergence convergence( criteria );

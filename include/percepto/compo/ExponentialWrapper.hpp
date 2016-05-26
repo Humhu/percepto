@@ -1,7 +1,6 @@
 #pragma once
 
-#include "percepto/PerceptoTypes.h"
-#include "percepto/BackpropInfo.hpp"
+#include "percepto/compo/BackpropInfo.hpp"
 
 namespace percepto
 {
@@ -14,43 +13,21 @@ class ExponentialWrapper
 public:
 
 	typedef Regressor BaseType;
-	typedef typename BaseType::ParamType ParamType;
 	typedef typename BaseType::InputType InputType;
 	typedef typename BaseType::OutputType OutputType;
 
-	static ParamType create_zeros( unsigned int inputDim,
-	                               unsigned int outputDim )
-	{
-		return BaseType::create_zeros( inputDim, outputDim );
-	}
-
-	/*! \brief Creates an exponential regressor around a base regressor. Makes
-	 * a copy of the regressor. */
-	ExponentialWrapper( const BaseType& r )
+	/*! \brief Creates an exponential regressor around a base regressor. Stores
+	 * a reference to the regressor. */
+	ExponentialWrapper( BaseType& r )
 	: _regressor( r ) {}
-
-	ExponentialWrapper( const ParamType& p )
-	: _regressor( p ) {}
 
 	unsigned int InputDim() const { return _regressor.InputDim(); }
 	unsigned int OutputDim() const { return _regressor.OutputDim(); }
 	unsigned int ParamDim() const { return _regressor.ParamDim(); }
 
-	BaseType& GetRegressor() { return _regressor; }
-
-	void SetParams( const ParamType& p ) 
-	{ 
-		_regressor.SetParams( p ); 
-	}
-
 	void SetParamsVec( const VectorType& vec ) 
 	{
 		_regressor.SetParamsVec( vec );
-	}
-
-	ParamType GetParams() const 
-	{ 
-		return _regressor.GetParams(); 
 	}
 
 	VectorType GetParamsVec() const
@@ -59,8 +36,7 @@ public:
 	}
 
 	// TODO Remove extraneous forward passes
-	void Backprop( const InputType& input, const BackpropInfo& nextInfo,
-	               BackpropInfo& thisInfo )
+	BackpropInfo Backprop( const InputType& input, const BackpropInfo& nextInfo )
 	{
 		assert( nextInfo.ModuleInputDim() == OutputDim() );
 
@@ -74,7 +50,7 @@ public:
 		}
 		midInfo.dodx = nextInfo.dodx * dydx;
 
-		_regressor.Backprop( input, midInfo, thisInfo );
+		return _regressor.Backprop( input, midInfo );
 	}
 
 	OutputType Evaluate( const InputType& input ) const
@@ -84,7 +60,7 @@ public:
 
 private:
 
-	BaseType _regressor;
+	BaseType& _regressor;
 
 };
 

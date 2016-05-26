@@ -1,16 +1,16 @@
 #pragma once
 
-#include "percepto/LinearRegressor.hpp"
-#include "percepto/ExponentialWrapper.hpp"
-#include "percepto/ModifiedCholeskyWrapper.hpp"
-#include "percepto/AffineWrapper.hpp"
-#include "percepto/SummedRegressor.hpp"
+#include "percepto/compo/LinearRegressor.hpp"
+#include "percepto/compo/ExponentialWrapper.hpp"
+#include "percepto/pdreg/ModifiedCholeskyWrapper.hpp"
+#include "percepto/compo/AffineWrapper.hpp"
+#include "percepto/compo/AdditiveWrapper.hpp"
 
-#include "percepto/GaussianLogLikelihoodCost.hpp"
-#include "percepto/ParameterL2Cost.hpp"
-#include "percepto/MeanPopulationCost.hpp"
+#include "percepto/optim/GaussianLogLikelihoodCost.hpp"
+#include "percepto/optim/ParameterL2Cost.hpp"
+#include "percepto/optim/MeanPopulationCost.hpp"
 
-#include "percepto/ModelFitting.hpp"
+#include "percepto/optim/ModelFitting.hpp"
 
 namespace percepto
 {
@@ -19,7 +19,7 @@ typedef ExponentialWrapper<LinearRegressor> ExpLinReg;
 typedef ModifiedCholeskyWrapper<LinearRegressor, ExpLinReg> ModCholReg;
 typedef AffineWrapper<ModCholReg> AffineModCholReg;
 
-typedef SummedRegressor<TransModCholReg> SummedModCholReg;
+typedef AdditiveWrapper<TransModCholReg> SummedModCholReg;
 typedef DampedRegressor<SummedModCholReg> ChainedModCholReg;
 
 typedef OptimizationResults FittingResults;

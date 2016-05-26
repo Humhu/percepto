@@ -1,6 +1,6 @@
 #pragma once
 
-#include "percepto/BackpropInfo.hpp"
+#include "percepto/compo/BackpropInfo.hpp"
 
 namespace percepto
 {
@@ -13,7 +13,6 @@ class ParameterL2Cost
 public:
 
 	typedef typename CostType::RegressorType RegressorType;
-	typedef typename RegressorType::ParamType ParamType;
 	typedef ScalarType OutputType;
 
 	ParameterL2Cost( CostType& c, ScalarType w )
@@ -41,33 +40,18 @@ public:
 		return _base.GetParamsVec();
 	}
 
-	void Backprop( const BackpropInfo& nextInfo, BackpropInfo& thisInfo )
+	BackpropInfo Backprop( const BackpropInfo& nextInfo )
 	{
 		assert( nextInfo.ModuleInputDim() == OutputDim() );
 
 		// Add the L2 cost into the dodw
 		VectorType current = _base.GetParamsVec();
-		_base.Backprop( nextInfo, thisInfo );
+		BackpropInfo thisInfo = _base.Backprop( nextInfo );
 		for( unsigned int i = 0; i < nextInfo.SystemOutputDim(); i++ )
 		{
 			thisInfo.dodw.row(i) += ( _weights.array()*current.array() ).matrix().transpose();
 		}
-	}
-
-	VectorType Gradient() const
-	{
-		VectorType current = _base.GetParamsVec();
-		VectorType costGrad = _base.Gradient();
-
-		return costGrad + ( _weights.array()*current.array() ).matrix();
-	}
-
-	VectorType Derivative( unsigned int ind ) const
-	{
-		VectorType current = _base.GetParamsVec();
-		VectorType costGrad = _base.Derivative( ind );
-		costGrad(ind) += _weights(ind)*current(ind);
-		return costGrad;
+		return thisInfo;
 	}
 
 	OutputType Evaluate() const
