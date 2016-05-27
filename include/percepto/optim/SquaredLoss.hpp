@@ -21,8 +21,8 @@ public:
 	: _input( input ), _target( target ), _regressor( regressor ),
 	_scale ( scale ) {}
 
-	unsigned int OutputDim() { return 1; }
-	unsigned int ParamDim() { return _regressor.ParamDim(); }
+	unsigned int OutputDim() const { return 1; }
+	unsigned int ParamDim() const { return _regressor.ParamDim(); }
 
 	void SetParamsVec( const VectorType& v )
 	{

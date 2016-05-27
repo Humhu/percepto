@@ -34,6 +34,8 @@ public:
 		_generator.seed( rng );
 	}
 
+	unsigned int OutputDim() const { return 1; }
+
 	BackpropInfo Backprop( const BackpropInfo& nextInfo )
 	{
 		assert( nextInfo.ModuleInputDim() == OutputDim() );

@@ -1,67 +1,57 @@
 #pragma once
 
 #include "percepto/PerceptoTypes.h"
+#include "percepto/MatrixUtils.hpp"
 
 namespace percepto
 {
 
-/*! \brief A wrapper that adds two regressors together. Stores
- * the base regressors via references. */
-template <typename Regressor>
+// TODO Runtime dimension checking?
+/** 
+ * \brief A wrapper that adds two bases together. 
+ */
+template <typename Base>
 class AdditiveWrapper
 {
 public:
 
-	typedef Regressor RegressorType;
-	typedef typename RegressorType::OutputType OutputType;
+	typedef Base BaseType;
+	typedef typename BaseType::OutputType OutputType;
 	struct InputType
 	{
-		typename RegressorType::InputType inputA;
-		typename RegressorType::InputType inputB;
+		typename BaseType::InputType inputA;
+		typename BaseType::InputType inputB;
 	};
 
-	AdditiveWrapper( const RegressorType& regA, const RegressorType& regB )
-	: _regA( regA ), _regB( regB )
+	AdditiveWrapper( const BaseType& baeA, const BaseType& baseB )
+	: _baseA( baseA ), _baseB( baseB )
 	{}
 
-	unsigned int InputDim() const { return _regA.InputDim() + _regB.InputDim(); }
-	unsigned int OutputDim() const { return _regA.OutputDim() + _regB.OutputDim(); }
-	unsigned int ParamDim() const { return _regA.ParamDim() + _regB.ParamDim(); }
-
-	VectorType CreateWeightVector( double lWeight, double dWeight ) const
-	{
-		VectorType weights( ParamDim() );
-		weights.block( ind, 0, _regA->ParamDim(), 1 ) = 
-			_regA->CreateWeightVector( lWeight, dWeight );
-		weights.block( _regA->ParamDim(), 0, _regB->ParamDim(), 1 ) = 
-			_regB->CreateWeightVector( lWeight, dWeight );
-		return weights;
-	}
+	unsigned int InputDim() const { return _baseA.InputDim() + _baseB.InputDim(); }
+	unsigned int OutputDim() const { return _baseA.OutputDim() + _baseB.OutputDim(); }
+	unsigned int ParamDim() const { return _baseA.ParamDim() + _baseB.ParamDim(); }
 
 	void SetParamsVec( const VectorType& v )
 	{
 		assert( v.size() == ParamDim() );
-		_regA->SetParamsVec( v.block( 0, 0, _regA->ParamsDim(), 1 ) );
-		_regB->SetParamsVec( v.block( _regA->ParamsDim(), 0, _regB->ParamsDim(), 1 ) );
+		_baseA->SetParamsVec( v.block( 0, 0, _baseA->ParamsDim(), 1 ) );
+		_baseB->SetParamsVec( v.block( _baseA->ParamsDim(), 0, _baseB->ParamsDim(), 1 ) );
 	}
 
 	VectorType GetParamsVec() const
 	{
-		VectorType vec( ParamDim() );
-		vec.block( 0, 0, _regA->ParamDim(), 1 ) = _regA->GetParamsVec();
-		vec.block( _regA->ParamDim(), 0, _regB->ParamDim(), 1 ) = _regB->GetParamsVec();
-		return vec;
+		return ConcatenateVer( _baseA->GetParamsVec(), _baseB->GetParamsVec() );
 	}
 
 	OutputType Evaluate( const InputType& input ) const
 	{
-		return _regA.Evaluate( inputA ) + _regB.Evaluate( inputB );
+		return _baseA.Evaluate( inputA ) + _baseB.Evaluate( inputB );
 	}
 
 private:
 
-	RegressorType& _regA;
-	RegressorType& _regB;
+	BaseType& _baseA;
+	BaseType& _baseB;
 };
 
 }

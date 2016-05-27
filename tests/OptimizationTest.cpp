@@ -1,13 +1,17 @@
-#include "percepto/compo/LinearRegressor.hpp"
+#include "percepto/compo/ConstantRegressor.hpp"
 #include "percepto/compo/ExponentialWrapper.hpp"
-#include "percepto/compo/AffineWrapper.hpp"
+#include "percepto/compo/ModifiedCholeskyWrapper.hpp"
+#include "percepto/compo/TransformWrapper.hpp"
+#include "percepto/compo/OffsetWrapper.hpp"
+#include "percepto/compo/InputWrapper.hpp"
 
 #include "percepto/utils/LowerTriangular.hpp"
-#include "percepto/compo/ModifiedCholeskyWrapper.hpp"
 
+#include "percepto/optim/ParameterL2Cost.hpp"
 #include "percepto/optim/GaussianLogLikelihoodCost.hpp"
 #include "percepto/optim/MeanPopulationCost.hpp"
-#include "percepto/optim/ParameterL2Cost.hpp"
+#include "percepto/optim/StochasticPopulationCost.hpp"
+
 #include "percepto/optim/NlOptInterface.hpp"
 #include "percepto/optim/OptimizerTypes.h"
 
@@ -22,13 +26,18 @@ using namespace percepto;
 
 typedef ReLUNet BaseRegressor;
 typedef ExponentialWrapper<BaseRegressor> ExpReg;
-typedef ModifiedCholeskyWrapper<BaseRegressor, ExpReg> ModCholReg;
+typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpReg> PSDReg;
+typedef OffsetWrapper<PSDReg> PDReg;
 
-typedef AffineWrapper<ModCholReg> AffineModCholReg;
+typedef TransformWrapper<PDReg> TransPDReg;
+// TODO Test with offsets also
+typedef InputWrapper<TransPDReg> CovEst;
+typedef GaussianLogLikelihoodCost<CovEst> GLL;
 
-typedef GaussianLogLikelihoodCost<AffineModCholReg> GLL;
 typedef MeanPopulationCost<GLL> MeanGLL;
-typedef ParameterL2Cost<MeanGLL> MeanGLL_L2;
+typedef StochasticPopulationCost<GLL> StochasticGLL;
+typedef ParameterL2Cost<MeanGLL> PenalizedMeanGLL;
+typedef ParameterL2Cost<StochasticGLL> PenalizedStochasticGLL;
 
 typedef NLOptInterface NLOptimizer;
 
@@ -79,13 +88,11 @@ int main( void )
 {
 
 	unsigned int matDim = 6;
-	unsigned int lFeatDim = 5;
+	unsigned int lFeatDim = 1;
 	unsigned int dFeatDim = 5;
 	unsigned int lOutDim = TriangularMapping::num_positions( matDim - 1 );
 	unsigned int dOutDim = matDim;
 
-	unsigned int lNumHiddenLayers = 1;
-	unsigned int lLayerWidth = 10;
 	unsigned int dNumHiddenLayers = 1;
 	unsigned int dLayerWidth = 10;
 
@@ -95,106 +102,95 @@ int main( void )
 	std::cout << "L output dim: " << lOutDim << std::endl;
 	std::cout << "D output dim: " << dOutDim << std::endl;
 
-	MatrixType mcOffset = 1E-2 * MatrixType::Identity( matDim, matDim );
+	MatrixType pdOffset = 1E-2 * MatrixType::Identity( matDim, matDim );
 
 	// True model
-	HingeActivation relu( 1.0, 1E-3 );
-	BaseRegressor trueLreg = BaseRegressor::create_zeros( lFeatDim, lOutDim, 
-	                                                      lNumHiddenLayers, lLayerWidth, relu );
+	ConstantRegressor trueLreg = ConstantRegressor( MatrixType( lOutDim, 1 ) );
 	VectorType params = trueLreg.GetParamsVec();
 	randomize_vector( params );
 	trueLreg.SetParamsVec( params );
 
+	HingeActivation relu( 1.0, 1E-3 );
 	BaseRegressor trueDreg = BaseRegressor::create_zeros( dFeatDim, dOutDim, 
-	                                                      dNumHiddenLayers, dLayerWidth, relu );
+	                                                      dNumHiddenLayers, 
+	                                                      dLayerWidth, relu );
 	params = trueDreg.GetParamsVec();
 	randomize_vector( params );
 	trueDreg.SetParamsVec( params );
 
-	ExpReg trueExpreg( trueDreg );
-	ModCholReg trueMc( trueLreg, trueExpreg, mcOffset );
-	AffineModCholReg trueModel( trueMc );
-	VectorType trueParams = trueMc.GetParamsVec();
-
-	// Test weight creation
-	VectorType weights = trueMc.CreateWeightVector( 0.1, 0.2 );
-	std::cout << "weights: " << weights.transpose() << std::endl;
+	ExpReg trueExpReg( trueDreg );
+	PSDReg truePsdReg( trueLreg, trueExpReg );
+	PDReg truePdReg( truePsdReg, pdOffset );
+	VectorType trueParams = truePdReg.GetParamsVec();
 
 	// Initial model
-	BaseRegressor lreg = BaseRegressor::create_zeros( lFeatDim, lOutDim, 
-	                                                      lNumHiddenLayers, lLayerWidth, relu );
-	params = lreg.GetParamsVec();
-	randomize_vector( params );
-	lreg.SetParamsVec( params );
+	ConstantRegressor lreg( MatrixType::Zero( lOutDim, 1 ) );
 
 	BaseRegressor dreg = BaseRegressor::create_zeros( dFeatDim, dOutDim, 
-	                                                      dNumHiddenLayers, dLayerWidth, relu );
+	                                                  dNumHiddenLayers, 
+	                                                  dLayerWidth, relu );
 	params = dreg.GetParamsVec();
 	randomize_vector( params );
 	dreg.SetParamsVec( params );
 
-	ExpReg expreg( dreg );
-	ModCholReg initMc( lreg, expreg, mcOffset );
-	AffineModCholReg initModel( initMc );
+	ExpReg expReg( dreg );
+	PSDReg psdReg( lreg, dreg );
+	PDReg pdReg( psdReg, pdOffset );
 
 	// Create test population
 	unsigned int popSize = 1000;
 	std::cout << "Sampling " << popSize << " datapoints..." << std::endl;
+	
+	std::vector<TransPDReg> transformWrappers;
+	std::vector<CovEst> estimates;
 	std::vector<GLL> baseCosts;
+	transformWrappers.reserve( popSize );
+	estimates.reserve( popSize );
 	baseCosts.reserve( popSize );
 	MultivariateGaussian<> mvg( MultivariateGaussian<>::VectorType::Zero( matDim ),
 	                            MultivariateGaussian<>::MatrixType::Identity( matDim, matDim ) );
 
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		typedef ModCholReg::LRegressorType::InputType LInputType;
-		typedef ModCholReg::DRegressorType::InputType DInputType;
-		
-		ModCholReg::InputType mcInput;
-		mcInput.lInput = LInputType::Random( lFeatDim );
-		mcInput.dInput = DInputType::Random( dFeatDim );
+		PDReg::InputType pdInput;
+		pdInput.lInput = VectorType( lFeatDim );
+		pdInput.dInput = VectorType( dFeatDim );
+		randomize_vector( pdInput.lInput );
+		randomize_vector( pdInput.dInput );
 
-		AffineModCholReg::InputType amcInput;
-		amcInput.baseInput = mcInput;
-		amcInput.transform = MatrixType::Identity( matDim, matDim );
-		amcInput.offset = 1E-3 * MatrixType::Identity( matDim, matDim );
-
-		mvg.SetCovariance( trueModel.Evaluate( amcInput ) );
+		MatrixType transform = MatrixType::Identity( matDim, matDim );
+		MatrixType trueCov = transform * truePdReg.Evaluate( pdInput ) * transform.transpose();
+		mvg.SetCovariance( trueCov );
 		VectorType sample = mvg.Sample(); 
-		baseCosts.emplace_back( amcInput, sample, initModel );
+
+		transformWrappers.emplace_back( pdReg, transform );
+		estimates.emplace_back( transformWrappers.back(), pdInput );
+		baseCosts.emplace_back( estimates.back(), sample );
 	}
 	std::cout << "Sampling complete." << std::endl;
 
 	MeanGLL meanCost( baseCosts );
-	MeanGLL_L2 finalCost( meanCost, 1E-3 );
+	PenalizedMeanGLL penalizedMeanCosts( meanCost, 0 );
 
-	VectorType initParams = initModel.GetParamsVec();
+	unsigned int minibatchSize = 20;
+	StochasticGLL stochasticCost( baseCosts, minibatchSize );
+	PenalizedStochasticGLL penalizedStochasticCosts( stochasticCost, 1E-3 );
+
+	VectorType initParams = pdReg.GetParamsVec();
 
 	NLOptParameters optParams;
+	optParams.algorithm = nlopt::LD_LBFGS;
+	NLOptimizer nlOpt( optParams );
+	TestOptimization( nlOpt, penalizedMeanCosts, initParams, trueParams );
 
-	// Benchmark the different methods
-	std::vector<nlopt::algorithm> algorithms =
-	{ 
-	  //nlopt::LD_SLSQP, 
-	  nlopt::LD_LBFGS, 
-	  //nlopt::LD_VAR2 
-	};
-	BOOST_FOREACH( nlopt::algorithm algo, algorithms )
-	{
-		optParams.algorithm = algo;
-		NLOptimizer opt( optParams );
-		TestOptimization( opt, finalCost, initParams, trueParams );
-	}
-
-	AdamStepper stepper;
-	
+	AdamStepper stepper;	
 	SimpleConvergenceCriteria criteria;
-	criteria.maxRuntime = 60;
+	criteria.maxRuntime = 10;
 	criteria.minElementGradient = 1E-3;
 	criteria.minObjectiveDelta = 1E-3;
 	SimpleConvergence convergence( criteria );
 
-	AdamOptimizer opt( stepper, convergence );
-	TestOptimization( opt, finalCost, initParams, trueParams );
+	AdamOptimizer modOpt( stepper, convergence );
+	TestOptimization( modOpt, penalizedStochasticCosts, initParams, trueParams );
 
 }

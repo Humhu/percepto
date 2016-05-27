@@ -26,48 +26,45 @@ ScalarType GaussianLogLikelihood( const VectorType& x,
 
 /*! \brief Represents a cost function calculated as the log likelihood of a
  * set of samples drawn from a zero mean Gaussian with the covariance specified
- * per sample by a MatrixRegressor. Returns negative log-likelihood since
+ * per sample by a MatrixBase. Returns negative log-likelihood since
  * it is supposed to be a cost. */
-template <typename Regressor>
+template <typename Base>
 class GaussianLogLikelihoodCost 
 {
 public:
 	
-	typedef Regressor RegressorType;
-	typedef typename RegressorType::InputType InputType;
+	typedef Base BaseType;
 	typedef VectorType SampleType;
 	typedef ScalarType OutputType;
 
-	const InputType _input;
 	const SampleType _sample;
 
 	/*! \brief Create a cost representing the log likelihood under the matrix
 	 * outputted by the regressor.  Stores references, not value. */
-	GaussianLogLikelihoodCost( const InputType& input, const SampleType& sample,
-	                           RegressorType& r )
-	: _input( input ), _sample( sample ), _regressor( r ) {}
+	GaussianLogLikelihoodCost( BaseType& r, const SampleType& sample )
+	: _sample( sample ), _base( r ) {}
 
 	unsigned int OutputDim() const { return 1; }
 	unsigned int ParamDim() const 
 	{
-		return _regressor.ParamDim();
+		return _base.ParamDim();
 	}
 
 	void SetParamsVec( const VectorType& v )
 	{
-		return _regressor.SetParamsVec( v );
+		_base.SetParamsVec( v );
 	}
 
 	VectorType GetParamsVec() const
 	{
-		return _regressor.GetParamsVec();
+		return _base.GetParamsVec();
 	}
 
 	BackpropInfo Backprop( const BackpropInfo& nextInfo )
 	{
 		assert( nextInfo.ModuleInputDim() == 1 );
 
-		MatrixType cov = _regressor.Evaluate( _input );
+		MatrixType cov = _base.Evaluate();
 		Eigen::LDLT<MatrixType> ldlt( cov );
 		VectorType errSol = ldlt.solve( _sample );
 		MatrixType I = MatrixType::Identity( cov.rows(), cov.cols() );
@@ -81,20 +78,19 @@ public:
 			midInfo.dodx.row(i) = dydSVec * nextInfo.dodx(i);
 		}
 
-		return _regressor.Backprop( _input, midInfo );
+		return _base.Backprop( midInfo );
 	}
 
 	/*! \brief Computes the log-likelihood of the input sample using the
 	 * covariance generated from the input features. */
 	OutputType Evaluate() const
 	{
-		return -GaussianLogLikelihood( _sample, 
-		                               _regressor.Evaluate( _input ) );
+		return -GaussianLogLikelihood( _sample, _base.Evaluate() );
 	}
 
 private:
 	
-	RegressorType& _regressor;
+	BaseType& _base;
 };
 
 }

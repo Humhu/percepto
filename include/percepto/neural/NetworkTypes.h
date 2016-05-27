@@ -27,5 +27,9 @@ typedef FullyConnectedNet<SigmoidActivation> PerceptronNet;
  */
 typedef LinearLayer<NullActivation> UnrectifiedLinearLayer;
 
-typedef SeriesWrapper<PerceptronNet, UnrectifiedLinearLayer> PerceptronOutputNet;
+/**
+ * @brief A fully connected unit with sigmoid activations followed by a final
+ * linear output layer.
+ */
+typedef SeriesWrapper<PerceptronNet, UnrectifiedLinearLayer> PerceptronRegressionNet;
 }

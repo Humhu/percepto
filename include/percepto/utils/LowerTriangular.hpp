@@ -84,7 +84,7 @@ public:
 
 		for( unsigned int pos = 0; pos < _inds.size(); pos++ )
 		{
-			mat( _inds[pos].first, _inds[pos].second ) = vec[pos];
+			mat( _inds[pos].first, _inds[pos].second ) = vec(pos);
 		}
 	}
 

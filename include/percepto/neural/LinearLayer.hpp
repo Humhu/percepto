@@ -45,22 +45,22 @@ public:
 
 	// TODO Clean this up!
 	BackpropInfo Backprop( const InputType& input,
-	                       const BackpropInfo& nextLayers ) const
+	                       const BackpropInfo& nextInfo ) const
 	{
 		assert( nextInfo.ModuleInputDim() == OutputDim() );
 
 		BackpropInfo thisLayers;
-		MatrixType dody = nextLayers.dodx;
+		MatrixType dody = nextInfo.dodx;
 
 		// TODO Implement Forward/Backward semantics to avoid double evaluation
 		OutputType preAct = _weights * input.homogeneous();
 
-		thisLayers.dodw = MatrixType::Zero( nextLayers.SystemOutputDim(), ParamDim() );
-		thisLayers.dodx = MatrixType::Zero( nextLayers.SystemOutputDim(), InputDim() );
+		thisLayers.dodw = MatrixType::Zero( nextInfo.SystemOutputDim(), ParamDim() );
+		thisLayers.dodx = MatrixType::Zero( nextInfo.SystemOutputDim(), InputDim() );
 		for( unsigned int j = 0; j < OutputDim(); j++ )
 		{
 			double actDeriv = _activation.Derivative( preAct(j) );
-			for( unsigned int i = 0; i < nextLayers.SystemOutputDim(); i++ )
+			for( unsigned int i = 0; i < nextInfo.SystemOutputDim(); i++ )
 			{
 				thisLayers.dodw.block(i, j*(InputDim()+1), 1, InputDim()+1 )
 				    = dody(i,j) * input.homogeneous().transpose() * actDeriv;

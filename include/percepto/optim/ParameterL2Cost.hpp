@@ -7,22 +7,21 @@ namespace percepto
 
 /*! \brief A cost function that adds a weighted L2-norm to an
  * existing cost. For maximization tasks, the weight should be negative. */
-template <typename CostType>
+template <typename BaseType>
 class ParameterL2Cost
 {
 public:
 
-	typedef typename CostType::RegressorType RegressorType;
 	typedef ScalarType OutputType;
 
-	ParameterL2Cost( CostType& c, ScalarType w )
-	: _base( c )
+	ParameterL2Cost( BaseType& b, ScalarType w )
+	: _base( b )
 	{
 		_weights = w * VectorType::Ones( _base.ParamDim() );
 	}
 
-	ParameterL2Cost( CostType& c, const VectorType& weights )
-	: _base( c ), _weights( weights ) {}
+	ParameterL2Cost( BaseType& b, const VectorType& weights )
+	: _base( b ), _weights( weights ) {}
 
 	unsigned int OutputDim() const { return 1; }
 	unsigned int ParamDim() const
@@ -63,7 +62,7 @@ public:
 
 private:
 
-	CostType& _base;
+	BaseType& _base;
 	VectorType _weights;
 
 };

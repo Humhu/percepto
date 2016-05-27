@@ -6,17 +6,17 @@
 namespace percepto
 {
 
-template <typename CostType>
+template <typename BaseCost>
 class MeanPopulationCost
 {
 public:
 
-	typedef typename CostType::RegressorType RegressorType;
+	typedef BaseCost BaseCostType;
 	typedef ScalarType OutputType;
 
 	/*! \brief Creates a cost by averaging costs on a poulation of
 	 * inputs. Assumes all costs use the same regressor. */
-	MeanPopulationCost( std::vector<CostType>& costs )
+	MeanPopulationCost( std::vector<BaseCostType>& costs )
 	: _costs( costs )
 	{}
 
@@ -57,7 +57,7 @@ public:
 	OutputType Evaluate() const
 	{
 		OutputType acc = 0;
-		BOOST_FOREACH( const CostType& cost, _costs )
+		BOOST_FOREACH( const BaseCostType& cost, _costs )
 		{
 			acc += cost.Evaluate();
 		}
@@ -67,7 +67,7 @@ public:
 	OutputType EvaluateMax() const
 	{
 		OutputType largest = -std::numeric_limits<OutputType>::infinity();
-		BOOST_FOREACH( const CostType& cost, _costs )
+		BOOST_FOREACH( const BaseCostType& cost, _costs )
 		{
 			OutputType out = cost.Evaluate();
 			if( out > largest ) { largest = out; }
@@ -77,7 +77,7 @@ public:
 
 protected:
 
-	std::vector<CostType>& _costs;
+	std::vector<BaseCostType>& _costs;
 
 };
 

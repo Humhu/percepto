@@ -1,7 +1,10 @@
-#include "percepto/compo/LinearRegressor.hpp"
+#include "percepto/compo/ConstantRegressor.hpp"
 #include "percepto/compo/ExponentialWrapper.hpp"
-#include "percepto/compo/AffineWrapper.hpp"
+#include "percepto/compo/OffsetWrapper.hpp"
 #include "percepto/compo/ModifiedCholeskyWrapper.hpp"
+
+#include "percepto/compo/InputWrapper.hpp"
+#include "percepto/compo/TransformWrapper.hpp"
 
 #include "percepto/utils/LowerTriangular.hpp"
 #include "percepto/utils/Randomization.hpp"
@@ -16,13 +19,15 @@
 using namespace percepto;
 
 typedef TriangularMapping TriMapd;
+
 typedef ReLUNet BaseRegressor;
 typedef ExponentialWrapper<BaseRegressor> ExpRegressor;
-typedef ModifiedCholeskyWrapper<BaseRegressor, ExpRegressor> ModCholRegressor;
+typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpRegressor> PSDRegressor;
+typedef OffsetWrapper<PSDRegressor> PDRegressor;
 
-typedef AffineWrapper<ModCholRegressor> AffineModCholReg;
-
-typedef GaussianLogLikelihoodCost<AffineModCholReg> GLLd;
+typedef TransformWrapper<PDRegressor> TransPDRegressor;
+typedef InputWrapper<TransPDRegressor> CovEstimate;
+typedef GaussianLogLikelihoodCost<CovEstimate> GLL;
 
 /*! \brief Tests a gradient calculation numerically by taking a small step and
  * checking the output. */
@@ -81,13 +86,17 @@ std::vector<double> EvalMatDeriv( Regressor& r,
 		testOutput = r.Evaluate( input );
 		r.SetParamsVec( paramsVec );
 		
-		double change = ( output - testOutput ).norm();
-		
 		VectorType gi = grad.row(ind);
-		Eigen::Map<MatrixType> dS( gi.data(), r.OutputSize().first, r.OutputSize().second );
+		Eigen::Map<MatrixType> dS( gi.data(), r.OutputSize().rows, r.OutputSize().cols );
 		MatrixType predOut = output + dS*stepSize;
 		double predErr = ( predOut - testOutput ).norm();
-		errors[ind] = predErr/change;
+
+		// std::cout << "nominal: " << std::endl << output << std::endl;
+		// std::cout << "pred: " << std::endl << predOut << std::endl;
+		// std::cout << "actual: " << std::endl << testOutput << std::endl;
+		// std::cout << "err: " << predErr << std::endl;
+
+		errors[ind] = predErr;
 	}
 	return errors;
 }
@@ -129,13 +138,11 @@ int main( void )
 
 	TriMapd triMap( matDim - 1 );
 
-	unsigned int lFeatDim = 5;
+	unsigned int lFeatDim = 1;
 	unsigned int dFeatDim = 5;
 	unsigned int lOutDim = triMap.NumPositions();
 	unsigned int dOutDim = matDim;
 	
-	unsigned int lNumHiddenLayers = 1;
-	unsigned int lLayerWidth = 10;
 	unsigned int dNumHiddenLayers = 1;
 	unsigned int dLayerWidth = 10;
 
@@ -145,116 +152,87 @@ int main( void )
 	std::cout << "L Output dim: " << lOutDim << std::endl;
 	std::cout << "D Output dim: " << dOutDim << std::endl;
 
-	//BaseRegressor lReg( BaseRegressor::ParamType::Random( lOutDim, lFeatDim ) );
+	ConstantRegressor lReg( MatrixType::Random( lOutDim, 1 ) );
+	
 	HingeActivation relu( 1.0, 1E-3 );
-	BaseRegressor lReg = BaseRegressor::create_zeros( lFeatDim, lOutDim, 
-	                                                  lNumHiddenLayers, lLayerWidth, relu );
-	VectorType params = lReg.GetParamsVec();
-	randomize_vector( params );
-	lReg.SetParamsVec( params );
-
-	//ExpRegressor expreg( ExpRegressor::ParamType::Random( dOutDim, dFeatDim ) );
 	BaseRegressor dReg = BaseRegressor::create_zeros( dFeatDim, dOutDim, 
 	                                                  dNumHiddenLayers, dLayerWidth, relu );
-	params = dReg.GetParamsVec();
+	VectorType params = dReg.GetParamsVec();
 	randomize_vector( params );
 	dReg.SetParamsVec( params );
 
 	ExpRegressor expreg( dReg );
 
-	ModCholRegressor mcReg( lReg, expreg, 
-	                        1E-3 * MatrixType::Identity( matDim, matDim ) );
+	PSDRegressor psdReg( lReg, expreg );
+	PDRegressor pdReg( psdReg, 1E-3 * MatrixType::Identity( matDim, matDim ) );
 
-	AffineModCholReg amcReg( mcReg );
 	// Test derivatives of various functions here
 	unsigned int popSize = 100;
 
 	// 1. Generate test set
-	std::vector<GLLd> testCosts;
-	testCosts.reserve( popSize );
+	std::vector<TransPDRegressor> transformedRegs;
+	std::vector<CovEstimate> estimates;
+	std::vector<GLL> likelihoods;
+
+	transformedRegs.reserve( popSize );
+	estimates.reserve( popSize );
+	likelihoods.reserve( popSize );
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		typedef ModCholRegressor::LRegressorType::InputType LInputType;
-		typedef ModCholRegressor::DRegressorType::InputType DInputType;
-		
-		ModCholRegressor::InputType mcInput;
-		mcInput.lInput = LInputType::Random( lFeatDim );
-		mcInput.dInput = DInputType::Random( dFeatDim );
+		PDRegressor::InputType pdInput;
+		pdInput.lInput = VectorType( lFeatDim );
+		pdInput.dInput = VectorType( dFeatDim );
+		randomize_vector( pdInput.lInput );
+		randomize_vector( pdInput.dInput );
 
-		AffineModCholReg::InputType amcInput;
-		amcInput.baseInput = mcInput;
-		amcInput.transform = MatrixType::Random( matDim, matDim );
-		amcInput.offset = MatrixType::Identity( matDim, matDim );
-
-		VectorType sample = VectorType::Random( matDim );
-		AffineModCholReg::InputType input = amcInput;
-
-		testCosts.emplace_back( amcInput, sample, amcReg );
+		transformedRegs.emplace_back( pdReg, MatrixType::Random( matDim - 1, matDim ) );
+		estimates.emplace_back( transformedRegs.back(), pdInput );
+		likelihoods.emplace_back( estimates.back(), VectorType::Random( matDim - 1 ) );
 	}
 
-	// 2. Test linear gradients
-	std::cout << "Testing base gradients..." << std::endl;
-	double maxSeen = -std::numeric_limits<double>::infinity();
-	for( unsigned int i = 0; i < popSize; i++ )
-	{
-		const BaseRegressor::InputType& input = testCosts[i]._input.baseInput.lInput;
-		std::vector<double> errors = EvalVecDeriv( lReg, input );
-		std::vector<double>::iterator iter;
-		iter = std::max_element( errors.begin(), errors.end() );
-		if( *iter > maxSeen ) { maxSeen = *iter; }
-	}
-	std::cout << "Max error: " << maxSeen << std::endl;
-
-	// 3. Test exponential gradients
-	std::cout << "Testing exponential gradients..." << std::endl;
-	maxSeen = -std::numeric_limits<double>::infinity();
-	for( unsigned int i = 0; i < popSize; i++ )
-	{
-		const ExpRegressor::InputType& input = testCosts[i]._input.baseInput.dInput;
-		std::vector<double> errors = EvalVecDeriv( expreg, input );
-		std::vector<double>::iterator iter;
-		iter = std::max_element( errors.begin(), errors.end() );
-		if( *iter > maxSeen ) { maxSeen = *iter; }
-	}
-	std::cout << "Max error: " << maxSeen << std::endl;
+	std::vector<double>::iterator iter;
 
 	// 4. Test cholesky gradients
-	std::cout << "Testing modified Cholesky gradients..." << std::endl;
-	maxSeen = -std::numeric_limits<double>::infinity();
+	std::cout << "Testing regressor gradients..." << std::endl;
+	double maxSeen = -std::numeric_limits<double>::infinity();
+	double acc = 0;
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		const ModCholRegressor::InputType& input = testCosts[i]._input.baseInput;
-		std::vector<double> errors = EvalMatDeriv( mcReg, input );
-		std::vector<double>::iterator iter;
+		std::vector<double> errors = EvalMatDeriv( pdReg, estimates[i].input );
 		iter = std::max_element( errors.begin(), errors.end() );
+		acc += *iter;
 		if( *iter > maxSeen ) { maxSeen = *iter; }
 	}
 	std::cout << "Max error: " << maxSeen << std::endl;
+	std::cout << "Avg max error: " << acc / popSize << std::endl;
 
 	// 5. Test transformed and damped cholesky gradients
 	std::cout << "Testing affine modified Cholesky gradients..." << std::endl;
 	maxSeen = -std::numeric_limits<double>::infinity();
+	acc = 0;
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		const AffineModCholReg::InputType& input = testCosts[i]._input;
-		std::vector<double> errors = EvalMatDeriv( amcReg, input );
-		std::vector<double>::iterator iter;
+		std::vector<double> errors = EvalMatDeriv( transformedRegs[i], estimates[i].input );
 		iter = std::max_element( errors.begin(), errors.end() );
+		acc += *iter;
 		if( *iter > maxSeen ) { maxSeen = *iter; }
 	}
 	std::cout << "Max error: " << maxSeen << std::endl;
+	std::cout << "Avg max error: " << acc / popSize << std::endl;
 
 	// 6. Test log-likelihood gradients
 	std::cout << "Testing log-likelihood gradients..." << std::endl;
 	maxSeen = -std::numeric_limits<double>::infinity();
+	acc = 0;
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		std::vector<double> errors = EvaluateCostDerivative<GLLd>( testCosts[i] );
-		std::vector<double>::iterator iter;
+		std::vector<double> errors = EvaluateCostDerivative<GLL>( likelihoods[i] );
 		iter = std::max_element( errors.begin(), errors.end() );
+		acc += *iter;
 		if( *iter > maxSeen ) { maxSeen = *iter; }
 	}
 	std::cout << "Max error: " << maxSeen << std::endl;
+	std::cout << "Avg max error: " << acc / popSize << std::endl;
 
 }	
 

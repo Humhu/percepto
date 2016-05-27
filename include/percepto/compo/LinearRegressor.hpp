@@ -6,6 +6,7 @@
 namespace percepto 
 {
 
+// TODO Support matrix inputs?
 /*! \brief A simple linear regression class. Outputs Weights matrix * input. 
  * The matrix and input are dynamically-sized. Assumes row-major ordering
  * for vectorizing the weights matrix. */
@@ -35,7 +36,8 @@ public:
 	 * matrix. */
 	void SetParams( const ParamType& p ) 
 	{ 
-		assert( p.size() == _W.size() );
+		assert( p.rows() == _W.rows() &&
+		        p.cols() == _W.cols() );
 		_W = p;
 	}
 

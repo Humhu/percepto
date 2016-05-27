@@ -1,5 +1,6 @@
 #pragma once
 
+#include "percepto/utils/MatrixUtils.hpp"
 #include "percepto/compo/BackpropInfo.hpp"
 
 namespace percepto
@@ -34,9 +35,11 @@ public:
 	{
 		BackpropInfo tailInfo = _tail.Backprop( _head.Evaluate( input ), nextNets );
 		BackpropInfo headInfo = _head.Backprop( input, tailInfo );
-		headInfo.dodw.conservativeResize( Eigen::NoChange, ParamDim() );
-		headInfo.dodw.rightCols( _tail.ParamDim() ) = tailInfo.dodw;
-		return headInfo;
+		BackpropInfo thisInfo;
+		
+		thisInfo.dodw = ConcatenateHor( headInfo.dodw, tailInfo.dodw );
+		thisInfo.dodx = headInfo.dodx * tailInfo.dodx;
+		return thisInfo;
 	}
 
 	unsigned int InputDim() const { return _head.InputDim(); }
@@ -45,8 +48,8 @@ public:
 
 	void SetParamsVec( const VectorType& params )
 	{
-		_head.SetParamsVec( params.topRows( _head.ParamDim() ) );
-		_tail.SetParamsVec( params.bottomRows( _tail.ParamDim() ) );
+		_head.SetParamsVec( params.head( _head.ParamDim() ) );
+		_tail.SetParamsVec( params.tail( _tail.ParamDim() ) );
 	}
 
 	VectorType GetParamsVec() const

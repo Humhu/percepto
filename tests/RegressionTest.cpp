@@ -1,7 +1,10 @@
-#include "percepto/compo/LinearRegressor.hpp"
+#include "percepto/compo/ConstantRegressor.hpp"
 #include "percepto/compo/ExponentialWrapper.hpp"
-#include "percepto/compo/AffineWrapper.hpp"
+#include "percepto/compo/OffsetWrapper.hpp"
 #include "percepto/compo/ModifiedCholeskyWrapper.hpp"
+
+#include "percepto/compo/InputWrapper.hpp"
+#include "percepto/compo/TransformWrapper.hpp"
 
 #include "percepto/utils/LowerTriangular.hpp"
 #include "percepto/utils/Randomization.hpp"
@@ -17,13 +20,13 @@
 using namespace percepto;
 
 // TODO Implement ConstantRegressor
-typedef ReLUNet BaseRegressor;
-typedef ExponentialWrapper<BaseRegressor> ExpRegressor;
-typedef ModifiedCholeskyWrapper<BaseRegressor, ExpRegressor> ModCholRegressor;
+typedef ExponentialWrapper<ReLUNet> ExpRegressor;
+typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpRegressor> PSDReg;
+typedef OffsetWrapper<PSDReg> PDReg;
 
-typedef AffineWrapper<ModCholRegressor> AffineModCholRegressor;
-
-typedef GaussianLogLikelihoodCost<AffineModCholRegressor> GLL;
+typedef TransformWrapper<PDReg> TransPDReg;
+typedef InputWrapper<TransPDReg> CovEstimate;
+typedef GaussianLogLikelihoodCost<CovEstimate> GLL;
 
 double ClocksToMicrosecs( clock_t c )
 {
@@ -48,57 +51,51 @@ int main( void )
 	std::cout << "L Output dim: " << lOutDim << std::endl;
 	std::cout << "D Output dim: " << dOutDim << std::endl;
 
-	//BaseRegressor lReg( BaseRegressor::ParamType::Random( lOutDim, lFeatDim ) );
-	HingeActivation relu( 1.0, 1E-3 );
-	BaseRegressor lReg = BaseRegressor::create_zeros( lFeatDim, lOutDim, 1, 10, relu );
-	VectorType params = lReg.GetParamsVec();
-	randomize_vector( params );
-	lReg.SetParamsVec( params );
+	ConstantRegressor lReg( VectorType::Random( lOutDim ) );
 
-	//ExpRegressor expreg( ExpRegressor::ParamType::Random( dOutDim, dFeatDim ) );
-	BaseRegressor dReg = BaseRegressor::create_zeros( dFeatDim, dOutDim, 1, 10, relu );
-	params = dReg.GetParamsVec();
+	HingeActivation relu( 1.0, 1E-3 );
+	ReLUNet dReg = ReLUNet::create_zeros( dFeatDim, dOutDim, 1, 10, relu );
+	VectorType params = dReg.GetParamsVec();
 	randomize_vector( params );
 	dReg.SetParamsVec( params );
 
-	ExpRegressor expreg( dReg );
+	ExpRegressor expReg( dReg );
 
-	ModCholRegressor mcReg( lReg, expreg, 
-	                        1E-3 * MatrixType::Identity( matDim, matDim ) );
-
-	AffineModCholRegressor amcReg( mcReg );
+	PSDReg psdReg( lReg, expReg );
+	PDReg pdReg( psdReg, 1E-3 * MatrixType::Identity( matDim, matDim ) );
 
 	// Test speed of various functions here
 	unsigned int popSize = 1000;
 
 	// 1. Generate test set
+	std::vector<TransPDReg> transforms;
+	std::vector<CovEstimate> estimates;
 	std::vector<GLL> testCosts;
+
+	transforms.reserve( popSize );
+	estimates.reserve( popSize );
 	testCosts.reserve( popSize );
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		typedef ModCholRegressor::LRegressorType::InputType LInputType;
-		typedef ModCholRegressor::DRegressorType::InputType DInputType;
-		
-		ModCholRegressor::InputType mcInput;
-		mcInput.lInput = LInputType::Random( lFeatDim );
-		mcInput.dInput = DInputType::Random( dFeatDim );
+		TransPDReg::InputType input;
+		input.lInput = VectorType::Random( lFeatDim );
+		input.dInput = VectorType::Random( dFeatDim );
 
-		AffineModCholRegressor::InputType amcInput;
-		amcInput.baseInput = mcInput;
-		amcInput.transform = MatrixType::Random( matDim, matDim );
-		amcInput.offset = MatrixType::Identity( matDim, matDim );
-
+		MatrixType transform = MatrixType::Random( matDim, matDim );
 		VectorType sample = VectorType::Random( matDim );
-		testCosts.emplace_back( amcInput, sample, amcReg );
+
+		transforms.emplace_back( pdReg, transform );
+		estimates.emplace_back( transforms.back(), input );
+		testCosts.emplace_back( estimates.back(), sample );
 	}
 
 	// 2. Test speed of matrix regression
 	std::cout << "Testing LDL regression speed..." << std::endl;
-	AffineModCholRegressor::OutputType regOutput;
+	MatrixType regOutput;
 	clock_t start = clock();
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		regOutput = amcReg.Evaluate( testCosts[i]._input );
+		regOutput = pdReg.Evaluate( estimates[i].input );
 	}
 	clock_t finish = clock();
 	double totalTime = ClocksToMicrosecs( finish - start );
