@@ -8,8 +8,8 @@
 #include "percepto/optim/GaussianLogLikelihoodCost.hpp"
 #include "percepto/optim/MeanPopulationCost.hpp"
 #include "percepto/optim/ParameterL2Cost.hpp"
-
 #include "percepto/optim/NlOptInterface.hpp"
+#include "percepto/optim/OptimizerTypes.h"
 
 #include "percepto/utils/MultivariateGaussian.hpp"
 #include "percepto/utils/Randomization.hpp"
@@ -30,22 +30,21 @@ typedef GaussianLogLikelihoodCost<AffineModCholReg> GLL;
 typedef MeanPopulationCost<GLL> MeanGLL;
 typedef ParameterL2Cost<MeanGLL> MeanGLL_L2;
 
-typedef NLOptInterface<MeanGLL_L2> NLOptimizer;
+typedef NLOptInterface NLOptimizer;
 
-template <class Optimizer>
-void TestOptimization( Optimizer& opt,
+template <class Optimizer, typename Cost>
+void TestOptimization( Optimizer& opt, Cost& cost,
                        const VectorType& initParams,
                        const VectorType& trueParams )
 {
-	std::cout << "Beginning test of " << opt.GetAlgorithmName()
-	          << " with " << opt.GetCost().ParamDim() << " parameters... " << std::endl;
+	std::cout << "Beginning test of with " << cost.ParamDim() << " parameters... " << std::endl;
 
-	opt.SetVerbosity( false );
-	typename Optimizer::ResultsType results;
+	// opt.SetVerbosity( false );
+	OptimizationResults results;
 	try
 	{
-		opt.GetCost().SetParamsVec( initParams );
-		results = opt.Optimize();
+		cost.SetParamsVec( initParams );
+		results = opt.Optimize( cost );
 	}
 	catch( std::runtime_error e )
 	{
@@ -53,13 +52,13 @@ void TestOptimization( Optimizer& opt,
 		return;
 	}
 
-	VectorType finalParams = opt.GetCost().GetParamsVec();
+	VectorType finalParams = cost.GetParamsVec();
 	VectorType delta = trueParams - finalParams;
 	double errorNorm = delta.norm() / delta.size();
 	double errorMax = std::max( -delta.minCoeff(), delta.maxCoeff() );
 
-	opt.GetCost().SetParamsVec( trueParams );
-	double minCost = opt.GetCost().Evaluate();
+	cost.SetParamsVec( trueParams );
+	double minCost = cost.Evaluate();
 
 	std::cout << "True params: " << std::endl << trueParams.transpose() << std::endl;
 	std::cout << "Final params: " << std::endl << finalParams.transpose() << std::endl;
@@ -183,8 +182,19 @@ int main( void )
 	BOOST_FOREACH( nlopt::algorithm algo, algorithms )
 	{
 		optParams.algorithm = algo;
-		NLOptimizer opt( finalCost, optParams );
-		TestOptimization( opt, initParams, trueParams );
+		NLOptimizer opt( optParams );
+		TestOptimization( opt, finalCost, initParams, trueParams );
 	}
+
+	AdamStepper stepper;
+	
+	SimpleConvergenceCriteria criteria;
+	criteria.maxRuntime = 60;
+	criteria.minElementGradient = 1E-3;
+	criteria.minObjectiveDelta = 1E-3;
+	SimpleConvergence convergence( criteria );
+
+	AdamOptimizer opt( stepper, convergence );
+	TestOptimization( opt, finalCost, initParams, trueParams );
 
 }

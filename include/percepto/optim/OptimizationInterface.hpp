@@ -22,14 +22,13 @@ struct OptimizationResults
 	double totalGradientSecs;
 };
 
-template <typename ResultsType>
 class OptimizationProfiler
 {
 public:
 
 	OptimizationProfiler() {}
 
-	ResultsType GetResults() 
+	OptimizationResults GetResults() 
 	{ 
 		_results.totalObjectiveSecs = TicksToSecs( _objAcc );
 		_results.totalGradientSecs = TicksToSecs( _gradAcc );
@@ -106,7 +105,7 @@ private:
 		return  1.0 * t / CLOCKS_PER_SEC;
 	}
 
-	ResultsType _results;
+	OptimizationResults _results;
 	clock_t _allStart; // Clock counter on optimization start
 	clock_t _objStart; // Clock counter on objective evaluation start
 	clock_t _objAcc; // Accumulated objective ticks

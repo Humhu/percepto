@@ -12,9 +12,7 @@
 #include "percepto/optim/StochasticPopulationCost.hpp"
 #include "percepto/optim/ParameterL2Cost.hpp"
 
-#include "percepto/optim/Optimizer.hpp"
-#include "percepto/optim/AdamStepper.hpp"
-#include "percepto/optim/SimpleConvergence.hpp"
+#include "percepto/optim/OptimizerTypes.h"
 
 #include <boost/random/uniform_real_distribution.hpp>
 #include <boost/random/random_device.hpp>
@@ -166,9 +164,8 @@ int main( int argc, char** argv )
 	SimpleConvergence convergence( criteria );
 
 	std::cout << "Beginning optimization..." << std::endl;
-	typedef Optimizer<RegularizedStochasticLoss, AdamStepper, SimpleConvergence> Opt;
-	Opt optimizer( trainObjective, stepper, convergence );
-	optimizer.Run();
+	AdamOptimizer optimizer( stepper, convergence );
+	optimizer.Optimize( trainObjective );
 
 	std::cout << "train avg loss: " << trainLoss.ParentCost::Evaluate() << std::endl;
 	std::cout << "train max loss: " << trainLoss.ParentCost::EvaluateMax() << std::endl;

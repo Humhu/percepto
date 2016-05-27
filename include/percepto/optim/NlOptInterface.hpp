@@ -81,68 +81,55 @@ inline nlopt::algorithm StrToNLAlgo( const std::string& str )
 }
 
 /*! \brief Optimization interface for NLOpt*/
-template <typename CostType>
 class NLOptInterface
 {
 public:
 
-	typedef typename CostType::RegressorType RegressorType;
-	//typedef typename RegressorType::ParamType RegressorParamType;
-	//typedef OptimizationResults<RegressorParamType> ResultsType;
-	typedef OptimizationResults ResultsType;
-
 	// TODO Add progress printouts for verbose mode
 	/*! \brief Create an optimizer interface with the specified algorithm. */
-	NLOptInterface( CostType& cost, const NLOptParameters& params )
-	: _cost( cost ), _verbose( false ), 
-	_optimizer( params.algorithm, cost.ParamDim() )
-	{
-		_optimizer.set_min_objective( &NLOptInterface::ObjectiveCallback, this );
-		_optimizer.set_stopval( params.objStopValue );
-		_optimizer.set_ftol_abs( params.absFuncTolerance );
-		_optimizer.set_ftol_rel( params.relFuncTolerance );
-		_optimizer.set_xtol_abs( params.absParamTolerance );
-		_optimizer.set_xtol_rel( params.relParamTolerance );
-		_optimizer.set_maxeval( params.maxFunctionEvals );
-		_optimizer.set_maxtime( params.maxSeconds );
-	}
+	NLOptInterface( const NLOptParameters& params )
+	: _verbose( false ), 
+	_optParams( params ) {}
 
 	void SetVerbosity( bool v ) { _verbose = v; }
 
-	CostType& GetCost() { return _cost; }
-	const CostType& GetCost() const { return _cost; }
-
-	std::string GetAlgorithmName() 
-	{ 
-		return std::string( _optimizer.get_algorithm_name() ); 
-	}
+	// std::string GetAlgorithmName() 
+	// { 
+	// 	return std::string( optimizer.get_algorithm_name() ); 
+	// }
 
 	/*! \brief Begins the optimization */
-	ResultsType Optimize()
+	template <typename CostType>
+	OptimizationResults Optimize( CostType& cost )
 	{
+		nlopt::opt optimizer( _optParams.algorithm, cost.ParamDim() );
+		optimizer.set_stopval( _optParams.objStopValue );
+		optimizer.set_ftol_abs( _optParams.absFuncTolerance );
+		optimizer.set_ftol_rel( _optParams.relFuncTolerance );
+		optimizer.set_xtol_abs( _optParams.absParamTolerance );
+		optimizer.set_xtol_rel( _optParams.relParamTolerance );
+		optimizer.set_maxeval( _optParams.maxFunctionEvals );
+		optimizer.set_maxtime( _optParams.maxSeconds );
+
+		OptInfo<CostType> info( *this, cost );
+
+		optimizer.set_min_objective( &NLOptInterface::ObjectiveCallback<CostType>, 
+		                              &info );
+
 		_profiler.StartOverall();
 		
 		double finalVal;
 
-		//VectorType paramVec = reg.GetParamsVec();
-		// for( unsigned int i = 0; i < paramVec.size(); i++ )
-		// {
-		// 	params[i] = paramVec(i);
-		// }
-		std::vector<double> params( _cost.ParamDim() );
-		Eigen::Map<VectorType> paramsMap( params.data(), _cost.ParamDim(), 1 );
-		paramsMap = _cost.GetParamsVec();
+		std::vector<double> params( cost.ParamDim() );
+		Eigen::Map<VectorType> paramsMap( params.data(), cost.ParamDim(), 1 );
+		paramsMap = cost.GetParamsVec();
 		
-		_optimizer.optimize( params, finalVal );
+		optimizer.optimize( params, finalVal );
 		_profiler.StopOverall();
 
-		ResultsType results = _profiler.GetResults();
+		OptimizationResults results = _profiler.GetResults();
 		
-		// for( unsigned int i = 0; i < paramVec.size(); i++ )
-		// {
-		// 	paramVec(i) = params[i];
-		// }
-		_cost.SetParamsVec( paramsMap );
+		cost.SetParamsVec( paramsMap );
 
 		results.finalObjective = finalVal;
 		return results;
@@ -150,49 +137,57 @@ public:
 
 private:
 
-	typedef OptimizationProfiler<ResultsType> ProfilerType;
+	template <typename CostType>
+	struct OptInfo
+	{
+		NLOptInterface& _interface;
+		CostType& _cost;
+
+		OptInfo( NLOptInterface& interface, CostType& cost )
+		: _interface( interface ), _cost( cost ) {}
+	};
 
 	/*! \brief Objective and gradient function used by NLOpt. */
+	template <typename CostType>
 	static double ObjectiveCallback( unsigned n, const double* x, 
 	                                 double* grad, void* f_data )
 	{
 		assert( f_data != nullptr );
-		NLOptInterface* obj = static_cast<NLOptInterface*>( f_data );
+		OptInfo<CostType>* info = static_cast<OptInfo<CostType>*>( f_data );
+		CostType& cost = info->_cost;
+		NLOptInterface& interface = info->_interface;
 
-		assert( n == obj->_cost.ParamDim() );
+		assert( n == cost.ParamDim() );
 
 		Eigen::Map<const VectorType> paramVec( x, n, 1 );
-		obj->_cost.SetParamsVec( paramVec );
+		cost.SetParamsVec( paramVec );
 		// std::cout << "params: " << paramVec.transpose() << std::endl;
 
-		obj->_profiler.StartObjectiveCall();
-		double objective = obj->_cost.Evaluate();
+		interface._profiler.StartObjectiveCall();
+		double objective = cost.Evaluate();
 		// std::cout << "obj: " << objective << std::endl;
-		obj->_profiler.FinishObjectiveCall();
+		interface._profiler.FinishObjectiveCall();
 
 		// NLOpt requests gradient by giving non-null pointer
 		if( grad != nullptr )
 		{
-			// Efficient batch implementation
-			obj->_profiler.StartGradientCall();
-			//VectorType gradient = obj->_cost.Gradient();
-			VectorType gradient = BackpropGradient( obj->_cost );
+			interface._profiler.StartGradientCall();
+			VectorType gradient = BackpropGradient( cost );
 			for( unsigned int ind = 0; ind < n; ind++ )
 			{
 				grad[ind] = gradient(ind);
 			}
 			// std::cout << "grad: " << gradient.transpose() << std::endl;
-			obj->_profiler.FinishGradientCall();
+			interface._profiler.FinishGradientCall();
 		}
 
 
 		return objective;
 	}
 
-	ProfilerType _profiler;
-	CostType& _cost;
 	bool _verbose;
-	nlopt::opt _optimizer;
+	OptimizationProfiler _profiler;
+	NLOptParameters _optParams;
 
 };
 
