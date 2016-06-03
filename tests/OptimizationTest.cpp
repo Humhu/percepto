@@ -111,9 +111,8 @@ int main( void )
 	trueLreg.SetParamsVec( params );
 
 	HingeActivation relu( 1.0, 1E-3 );
-	BaseRegressor trueDreg = BaseRegressor::create_zeros( dFeatDim, dOutDim, 
-	                                                      dNumHiddenLayers, 
-	                                                      dLayerWidth, relu );
+	BaseRegressor trueDreg( dFeatDim, dOutDim, dNumHiddenLayers, 
+	                        dLayerWidth, relu );
 	params = trueDreg.GetParamsVec();
 	randomize_vector( params );
 	trueDreg.SetParamsVec( params );
@@ -126,9 +125,8 @@ int main( void )
 	// Initial model
 	ConstantRegressor lreg( MatrixType::Zero( lOutDim, 1 ) );
 
-	BaseRegressor dreg = BaseRegressor::create_zeros( dFeatDim, dOutDim, 
-	                                                  dNumHiddenLayers, 
-	                                                  dLayerWidth, relu );
+	BaseRegressor dreg( dFeatDim, dOutDim, dNumHiddenLayers, 
+	                    dLayerWidth, relu );
 	params = dreg.GetParamsVec();
 	randomize_vector( params );
 	dreg.SetParamsVec( params );

@@ -21,32 +21,25 @@ public:
 	typedef typename LayerType::ActivationType ActivationType;
 	typedef std::vector< typename LayerType::ParamType> ParamType;
 
-	// TODO Remove knowledge of LinearLayer internals
-	static FullyConnectedNet<Activation>
-	create_zeros( unsigned int inputDim, 
-	              unsigned int outputDim,
-	              unsigned int numHiddenLayers, 
-	              unsigned int layerWidth,
-	              const ActivationType& activation )
+	FullyConnectedNet( unsigned int inputDim, unsigned int outputDim,
+	                   unsigned int numHiddenLayers, unsigned int layerWidth,
+	                   const ActivationType& activation )
 	{
-		typename FullyConnectedNet<Activation>::ParamType params;
-		params.reserve( numHiddenLayers );
-		// Create input layer (first hidden layer)
-		LayerType layer = LayerType::create_zeros( inputDim, layerWidth, activation );
-		params.push_back( layer.GetParams() );
-		
-		// Create hidden layers
-		layer = LayerType::create_zeros( layerWidth, layerWidth, activation );
-		for( int i = 0; i < ((int)numHiddenLayers)-2; ++i )
+		layers.reserve( numHiddenLayers + 1 );
+
+		// First layer takes input to width
+		layers.emplace_back( inputDim, layerWidth, activation );
+
+		// Middle layers take width to width
+		for( unsigned int i = 1; i < numHiddenLayers-1; ++i )
 		{
-			params.push_back( layer.GetParams() );
+			layers.emplace_back( layerWidth, layerWidth, activation );
 		}
 
-		// Create output layer (last hidden layer)
-		layer = LayerType::create_zeros( layerWidth, outputDim, activation );
-		params.push_back( layer.GetParams() );
+		// Last layer takes width to output
+		layers.emplace_back( layerWidth, outputDim, activation );
 
-		return FullyConnectedNet<Activation>( params, activation );
+		ValidateNet();
 	}
 
 	FullyConnectedNet( const ParamType& params, const ActivationType& activation )

@@ -18,7 +18,9 @@ public:
 	 * inputs. Assumes all costs use the same regressor. */
 	MeanPopulationCost( std::vector<BaseCostType>& costs )
 	: _costs( costs )
-	{}
+	{
+		if( _costs.size() == 0 ) { throw std::runtime_error( "No costs given!"); }
+	}
 
 	unsigned int OutputDim() const { return 1; }
 	unsigned int ParamDim() const

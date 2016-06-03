@@ -18,13 +18,10 @@ public:
 	typedef Activation ActivationType;
 
 	/*! Creates a layer with the specified dimensionality and all zero parameters. */
-	static LinearLayer<Activation>
-	create_zeros( unsigned int inputDim, unsigned int outputDim, 
-	              const ActivationType& activation )
-	{
-		return LinearLayer<Activation>( MatrixType::Zero( outputDim, inputDim + 1 ),
-		                                activation ); 
-	}
+	LinearLayer( unsigned int inputDim, unsigned int outputDim,
+	             const ActivationType& activation )
+	: _weights( ParamType::Zero( outputDim, inputDim + 1 ) ),
+	_activation( activation ) {}
 
 	/*! Creates a layer with specified weight matrix and activation object.
 	 * params - An output_dim x input_dim matrix
@@ -67,6 +64,7 @@ public:
 				thisLayers.dodx.row(i) += dody(i,j) * _weights.block(j, 0, 1, InputDim() ) * actDeriv;
 			}
 		}
+
 		return thisLayers;
 	}
 

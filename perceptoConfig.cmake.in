@@ -1,0 +1,14 @@
+# - Config file for the percepto package
+# It defines the following variables
+#  percepto_INCLUDE_DIRS - include directories for percepto
+#  percepto_LIBS    - libraries to link against
+#  percepto_DEFINITIONS  - define flags for percepto
+
+get_filename_component(percepto_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
+
+get_filename_component(percepto_INCLUDE_DIRS "${percepto_CMAKE_DIR}/include/" ABSOLUTE)
+list(APPEND percepto_INCLUDE_DIRS "@percepto_INCLUDES@")
+
+set(percepto_LIBS "@percepto_LIBRARIES@")
+
+set(percepto_DEFINITIONS "@percepto_DEFS@")

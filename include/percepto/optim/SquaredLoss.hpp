@@ -6,34 +6,30 @@ namespace percepto
 {
 
 /*! \brief Provides a squared loss on a vector regression target. */
-template <typename VectorRegressor>
+template <typename Base>
 class SquaredLoss
 {
 public:
 
-	typedef VectorRegressor RegressorType;
-	typedef typename RegressorType::InputType InputType;
+	typedef Base BaseType;
 	typedef VectorType TargetType;
 	typedef double OutputType;
 
-	SquaredLoss( const InputType& input, const TargetType& target, 
-	             RegressorType& regressor, double scale = 1.0 )
-	: _input( input ), _target( target ), _regressor( regressor ),
-	_scale ( scale ) {}
+	SquaredLoss( BaseType& r, const TargetType& target, double scale = 1.0 )
+	: _base( r ), _target( target ), _scale( scale ) {}
 
 	unsigned int OutputDim() const { return 1; }
-	unsigned int ParamDim() const { return _regressor.ParamDim(); }
+	unsigned int ParamDim() const { return _base.ParamDim(); }
 
 	void SetParamsVec( const VectorType& v )
 	{
-		_regressor.SetParamsVec( v );
+		_base.SetParamsVec( v );
 	}
 
 	VectorType GetParamsVec() const
 	{
-		return _regressor.GetParamsVec();
+		return _base.GetParamsVec();
 	}
-
 
 	OutputType Evaluate() const
 	{
@@ -45,30 +41,27 @@ public:
 	{
 		assert( nextInfo.ModuleInputDim() == OutputDim() );
 
-		BackpropInfo thisInfo;
+		BackpropInfo midInfo;
 		
 		VectorType err = ComputeError();
-		thisInfo.dodx = MatrixType( nextInfo.SystemOutputDim(), err.size() );
+		midInfo.dodx = MatrixType( nextInfo.SystemOutputDim(), err.size() );
 		for( unsigned int i = 0; i < nextInfo.SystemOutputDim(); i++ )
 		{
-			thisInfo.dodx.row(i) = nextInfo.dodx(i) * _scale * err.transpose();
+			midInfo.dodx.row(i) = nextInfo.dodx(i) * _scale * err.transpose();
 		}
-		// thisLayers.dodw is empty
-		return thisInfo;
-	}
 
-	RegressorType& GetRegressor() const { return _regressor; }
+		return _base.Backprop( midInfo );
+	}
 
 private:
 
-	InputType _input;
-	TargetType _target;
-	RegressorType& _regressor;
-	double _scale;
+	BaseType& _base;
+	const TargetType _target;
+	const double _scale;
 
-	VectorType ComputeError() const
+	inline VectorType ComputeError() const
 	{
-		return _regressor.Evaluate( _input ) - _target;
+		return _base.Evaluate() - _target;
 	}
 
 };

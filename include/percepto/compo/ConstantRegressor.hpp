@@ -16,6 +16,10 @@ public:
 	typedef MatrixType ParamType;
 	typedef MatrixType OutputType;
 
+	/*! \brief Creates a regressor with params set to zero. */
+	ConstantRegressor( unsigned int outputRows, unsigned int outputCols )
+	: _W( ParamType::Zero( outputRows, outputCols ) ) {}
+
 	ConstantRegressor( const ParamType& params )
 	: _W( params ) {}
 

@@ -10,6 +10,7 @@
 #include "percepto/utils/Randomization.hpp"
 
 #include "percepto/optim/GaussianLogLikelihoodCost.hpp"
+#include "percepto/optim/ParameterL2Cost.hpp"
 
 #include "percepto/neural/NetworkTypes.h"
 
@@ -28,6 +29,7 @@ typedef OffsetWrapper<PSDRegressor> PDRegressor;
 typedef TransformWrapper<PDRegressor> TransPDRegressor;
 typedef InputWrapper<TransPDRegressor> CovEstimate;
 typedef GaussianLogLikelihoodCost<CovEstimate> GLL;
+typedef ParameterL2Cost<GLL> PenalizedGLL;
 
 /*! \brief Tests a gradient calculation numerically by taking a small step and
  * checking the output. */
@@ -91,11 +93,6 @@ std::vector<double> EvalMatDeriv( Regressor& r,
 		MatrixType predOut = output + dS*stepSize;
 		double predErr = ( predOut - testOutput ).norm();
 
-		// std::cout << "nominal: " << std::endl << output << std::endl;
-		// std::cout << "pred: " << std::endl << predOut << std::endl;
-		// std::cout << "actual: " << std::endl << testOutput << std::endl;
-		// std::cout << "err: " << predErr << std::endl;
-
 		errors[ind] = predErr;
 	}
 	return errors;
@@ -155,8 +152,8 @@ int main( void )
 	ConstantRegressor lReg( MatrixType::Random( lOutDim, 1 ) );
 	
 	HingeActivation relu( 1.0, 1E-3 );
-	BaseRegressor dReg = BaseRegressor::create_zeros( dFeatDim, dOutDim, 
-	                                                  dNumHiddenLayers, dLayerWidth, relu );
+	BaseRegressor dReg ( dFeatDim, dOutDim, dNumHiddenLayers, 
+	                     dLayerWidth, relu );
 	VectorType params = dReg.GetParamsVec();
 	randomize_vector( params );
 	dReg.SetParamsVec( params );
@@ -227,6 +224,21 @@ int main( void )
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
 		std::vector<double> errors = EvaluateCostDerivative<GLL>( likelihoods[i] );
+		iter = std::max_element( errors.begin(), errors.end() );
+		acc += *iter;
+		if( *iter > maxSeen ) { maxSeen = *iter; }
+	}
+	std::cout << "Max error: " << maxSeen << std::endl;
+	std::cout << "Avg max error: " << acc / popSize << std::endl;
+
+	// 7. Test penalized log-likelihood gradients
+	std::cout << "Testing penalized log-likelihood gradients..." << std::endl;
+	maxSeen = -std::numeric_limits<double>::infinity();
+	acc = 0;
+	for( unsigned int i = 0; i < popSize; i++ )
+	{
+		PenalizedGLL penalizedCost( likelihoods[i], 1E-3 );
+		std::vector<double> errors = EvaluateCostDerivative<PenalizedGLL>( penalizedCost );
 		iter = std::max_element( errors.begin(), errors.end() );
 		acc += *iter;
 		if( *iter > maxSeen ) { maxSeen = *iter; }

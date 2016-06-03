@@ -37,18 +37,13 @@ public:
 	typedef VectorType SampleType;
 	typedef ScalarType OutputType;
 
-	const SampleType _sample;
-
 	/*! \brief Create a cost representing the log likelihood under the matrix
 	 * outputted by the regressor.  Stores references, not value. */
 	GaussianLogLikelihoodCost( BaseType& r, const SampleType& sample )
-	: _sample( sample ), _base( r ) {}
+	: _base( r ), _sample( sample ) {}
 
 	unsigned int OutputDim() const { return 1; }
-	unsigned int ParamDim() const 
-	{
-		return _base.ParamDim();
-	}
+	unsigned int ParamDim() const { return _base.ParamDim(); }
 
 	void SetParamsVec( const VectorType& v )
 	{
@@ -62,7 +57,7 @@ public:
 
 	BackpropInfo Backprop( const BackpropInfo& nextInfo )
 	{
-		assert( nextInfo.ModuleInputDim() == 1 );
+		assert( nextInfo.ModuleInputDim() == OutputDim() );
 
 		MatrixType cov = _base.Evaluate();
 		Eigen::LDLT<MatrixType> ldlt( cov );
@@ -91,6 +86,8 @@ public:
 private:
 	
 	BaseType& _base;
+	const SampleType _sample;
+	
 };
 
 }

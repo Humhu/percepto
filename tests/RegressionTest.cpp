@@ -54,7 +54,7 @@ int main( void )
 	ConstantRegressor lReg( VectorType::Random( lOutDim ) );
 
 	HingeActivation relu( 1.0, 1E-3 );
-	ReLUNet dReg = ReLUNet::create_zeros( dFeatDim, dOutDim, 1, 10, relu );
+	ReLUNet dReg( dFeatDim, dOutDim, 1, 10, relu );
 	VectorType params = dReg.GetParamsVec();
 	randomize_vector( params );
 	dReg.SetParamsVec( params );

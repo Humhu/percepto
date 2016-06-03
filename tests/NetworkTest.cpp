@@ -3,6 +3,7 @@
 #include "percepto/neural/LinearLayer.hpp"
 #include "percepto/neural/FullyConnectedNet.hpp"
 #include "percepto/compo/SeriesWrapper.hpp"
+#include "percepto/compo/InputWrapper.hpp"
 
 #include "percepto/neural/HingeActivation.hpp"
 #include "percepto/neural/SigmoidActivation.hpp"
@@ -28,9 +29,9 @@ typedef FullyConnectedNet<SigmoidActivation> PerceptronNet;
 typedef LinearLayer<NullActivation> UnrectifiedLinearLayer;
 typedef SeriesWrapper<PerceptronNet, UnrectifiedLinearLayer> PerceptronOutputNet;
 
-typedef PerceptronOutputNet TestNet;
+// typedef PerceptronOutputNet TestNet;
 // Comment the above and unncomment this line to use Rectified Linear Units instead
-// typedef ReLUNet TestNet;
+typedef ReLUNet TestNet;
 
 // The highly nonlinear function we will try to fit
 double f( double x )
@@ -105,53 +106,59 @@ int main( int argc, char** argv )
 	std::cout << "Creating linear layers..." << std::endl;
 
 	// Perceptron initialization
-	SigmoidActivation act;
-	PerceptronNet testHeadNet = PerceptronNet::create_zeros( inputDim, 
-	                                                         layerWidth, 
-	                                                         numHiddenLayers, 
-	                                                         layerWidth, 
-	                                                         act );
+	// SigmoidActivation act;
+	// PerceptronNet testHeadNet( inputDim, layerWidth, numHiddenLayers, 
+	//                            layerWidth, act );
+
+	// VectorType headParams = testHeadNet.GetParamsVec();
+	// randomize_vector( headParams );
+	// testHeadNet.SetParamsVec( headParams );
+
+	// std::cout << "Creating output layer..." << std::endl;
+	// UnrectifiedLinearLayer testOutNet( layerWidth, outputDim,
+	//                                    NullActivation() );
+	// VectorType outParams = testOutNet.GetParamsVec();
+	// randomize_vector( outParams );
+	// testOutNet.SetParamsVec( outParams );
+
+	// TestNet testNet( testHeadNet, testOutNet );
 
 	// // ReLU initialization
-	// HingeActivation act;
-	// ReLUNet testHeadNet = ReLUNet::create_zeros( inputDim,
-	//                                              layerWidth,
-	//                                              numHiddenLayers,
-	//                                              layerWidth,
-	//                                              act );
-
-	VectorType headParams = testHeadNet.GetParamsVec();
-	randomize_vector( headParams );
-	testHeadNet.SetParamsVec( headParams );
-
-	std::cout << "Creating output layer..." << std::endl;
-	UnrectifiedLinearLayer testOutNet = 
-	    UnrectifiedLinearLayer::create_zeros( layerWidth,
-	                                          outputDim,
-	                                          NullActivation() );
-	VectorType outParams = testOutNet.GetParamsVec();
-	randomize_vector( outParams );
-	testOutNet.SetParamsVec( outParams );
-
-	TestNet testNet( testHeadNet, testOutNet );
+	HingeActivation act( 1, 1E-3 );
+	ReLUNet testNet( inputDim, outputDim, numHiddenLayers,
+	                 layerWidth, act );
+	VectorType netParams = testNet.GetParamsVec();
+	randomize_vector( netParams );
+	testNet.SetParamsVec( netParams );
 
 	// Create the loss functions
-	typedef SquaredLoss<TestNet> Loss;
+	typedef InputWrapper<TestNet> NetEst;
+	typedef SquaredLoss<NetEst> Loss;
 	typedef StochasticPopulationCost<Loss> StochasticLoss;
 	typedef ParameterL2Cost<StochasticLoss> RegularizedStochasticLoss;
 
 	std::cout << "Generating losses..." << std::endl;
+	std::vector<NetEst> trainEsts, testEsts;
 	std::vector<Loss> trainLosses, testLosses;
+	
+	// NOTE If we don't reserve, the vector resizing and moving may
+	// invalidate the references
+	trainEsts.reserve( numTrain );
+	trainLosses.reserve( numTrain );
 	for( unsigned int i = 0; i < numTrain; i++ )
 	{
-		trainLosses.emplace_back( xTrain[i], yTrain[i], testNet );
+		trainEsts.emplace_back( testNet, xTrain[i] );
+		trainLosses.emplace_back( trainEsts.back(), yTrain[i] );
 	}
 	StochasticLoss trainLoss( trainLosses, batchSize );
 	RegularizedStochasticLoss trainObjective( trainLoss, l2Weight );
 
+	testEsts.reserve( numTest );
+	testLosses.reserve( numTest );
 	for( unsigned int i = 0; i < numTest; i++ )
 	{
-		testLosses.emplace_back( xTest[i], yTest[i], testNet );
+		testEsts.emplace_back( testNet, xTest[i] );
+		testLosses.emplace_back( testEsts.back(), yTest[i] );
 	}
 	StochasticLoss testLoss( testLosses, batchSize );
 
