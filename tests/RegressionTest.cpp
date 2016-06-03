@@ -24,8 +24,8 @@ typedef ExponentialWrapper<ReLUNet> ExpRegressor;
 typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpRegressor> PSDReg;
 typedef OffsetWrapper<PSDReg> PDReg;
 
-typedef TransformWrapper<PDReg> TransPDReg;
-typedef InputWrapper<TransPDReg> CovEstimate;
+typedef InputWrapper<PDReg> CovEstimate;
+typedef TransformWrapper<CovEstimate> TransEst;
 typedef GaussianLogLikelihoodCost<CovEstimate> GLL;
 
 double ClocksToMicrosecs( clock_t c )
@@ -68,24 +68,24 @@ int main( void )
 	unsigned int popSize = 1000;
 
 	// 1. Generate test set
-	std::vector<TransPDReg> transforms;
 	std::vector<CovEstimate> estimates;
+	std::vector<TransEst> transforms;
 	std::vector<GLL> testCosts;
 
-	transforms.reserve( popSize );
 	estimates.reserve( popSize );
+	transforms.reserve( popSize );
 	testCosts.reserve( popSize );
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		TransPDReg::InputType input;
+		PDReg::InputType input;
 		input.lInput = VectorType::Random( lFeatDim );
 		input.dInput = VectorType::Random( dFeatDim );
 
 		MatrixType transform = MatrixType::Random( matDim, matDim );
 		VectorType sample = VectorType::Random( matDim );
 
-		transforms.emplace_back( pdReg, transform );
-		estimates.emplace_back( transforms.back(), input );
+		estimates.emplace_back( pdReg, input );
+		transforms.emplace_back( estimates.back(), transform );
 		testCosts.emplace_back( estimates.back(), sample );
 	}
 

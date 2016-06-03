@@ -26,9 +26,9 @@ typedef ExponentialWrapper<BaseRegressor> ExpRegressor;
 typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpRegressor> PSDRegressor;
 typedef OffsetWrapper<PSDRegressor> PDRegressor;
 
-typedef TransformWrapper<PDRegressor> TransPDRegressor;
-typedef InputWrapper<TransPDRegressor> CovEstimate;
-typedef GaussianLogLikelihoodCost<CovEstimate> GLL;
+typedef InputWrapper<PDRegressor> CovEstimate;
+typedef TransformWrapper<CovEstimate> TransCovEstimate;
+typedef GaussianLogLikelihoodCost<TransCovEstimate> GLL;
 typedef ParameterL2Cost<GLL> PenalizedGLL;
 
 /*! \brief Tests a gradient calculation numerically by taking a small step and
@@ -65,8 +65,7 @@ std::vector<double> EvalVecDeriv( Regressor& r,
 }
 
 template <typename Regressor>
-std::vector<double> EvalMatDeriv( Regressor& r, 
-                                  const typename Regressor::InputType& input )
+std::vector<double> EvalMatDeriv( Regressor& r )
 {
 	static double stepSize = 1E-3;
 
@@ -76,8 +75,8 @@ std::vector<double> EvalMatDeriv( Regressor& r,
 
 	OutType output, testOutput;
 	VectorType paramsVec = r.GetParamsVec();
-	MatrixType grad = BackpropGradient( r, input );
-	output = r.Evaluate( input );
+	MatrixType grad = BackpropGradient( r );
+	output = r.Evaluate();
 
 	for( unsigned int ind = 0; ind < r.ParamDim(); ind++ )
 	{
@@ -85,7 +84,7 @@ std::vector<double> EvalMatDeriv( Regressor& r,
 		VectorType testParamsVec = paramsVec;
 		testParamsVec[ind] += stepSize;
 		r.SetParamsVec( testParamsVec );
-		testOutput = r.Evaluate( input );
+		testOutput = r.Evaluate();
 		r.SetParamsVec( paramsVec );
 		
 		VectorType gi = grad.row(ind);
@@ -167,11 +166,11 @@ int main( void )
 	unsigned int popSize = 100;
 
 	// 1. Generate test set
-	std::vector<TransPDRegressor> transformedRegs;
 	std::vector<CovEstimate> estimates;
+	std::vector<TransCovEstimate> transformedEsts;
 	std::vector<GLL> likelihoods;
 
-	transformedRegs.reserve( popSize );
+	transformedEsts.reserve( popSize );
 	estimates.reserve( popSize );
 	likelihoods.reserve( popSize );
 	for( unsigned int i = 0; i < popSize; i++ )
@@ -182,9 +181,9 @@ int main( void )
 		randomize_vector( pdInput.lInput );
 		randomize_vector( pdInput.dInput );
 
-		transformedRegs.emplace_back( pdReg, MatrixType::Random( matDim - 1, matDim ) );
-		estimates.emplace_back( transformedRegs.back(), pdInput );
-		likelihoods.emplace_back( estimates.back(), VectorType::Random( matDim - 1 ) );
+		estimates.emplace_back( pdReg, pdInput );
+		transformedEsts.emplace_back( estimates.back(), MatrixType::Random( matDim - 1, matDim ) );
+		likelihoods.emplace_back( transformedEsts.back(), VectorType::Random( matDim - 1 ) );
 	}
 
 	std::vector<double>::iterator iter;
@@ -195,7 +194,7 @@ int main( void )
 	double acc = 0;
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		std::vector<double> errors = EvalMatDeriv( pdReg, estimates[i].input );
+		std::vector<double> errors = EvalMatDeriv( estimates[i] );
 		iter = std::max_element( errors.begin(), errors.end() );
 		acc += *iter;
 		if( *iter > maxSeen ) { maxSeen = *iter; }
@@ -209,7 +208,7 @@ int main( void )
 	acc = 0;
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		std::vector<double> errors = EvalMatDeriv( transformedRegs[i], estimates[i].input );
+		std::vector<double> errors = EvalMatDeriv( transformedEsts[i] );
 		iter = std::max_element( errors.begin(), errors.end() );
 		acc += *iter;
 		if( *iter > maxSeen ) { maxSeen = *iter; }

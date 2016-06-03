@@ -30,8 +30,8 @@ typedef ExponentialWrapper<BaseRegressor> ExpReg;
 typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpReg> PSDReg;
 typedef OffsetWrapper<PSDReg> PDReg;
 
-typedef TransformWrapper<PDReg> TransPDReg;
-typedef InputWrapper<TransPDReg> CovEst;
+typedef InputWrapper<PDReg> CovEst;
+typedef TransformWrapper<CovEst> TransCovEst;
 typedef AdditiveWrapper<CovEst,CovEst> SumCovEst;
 typedef GaussianLogLikelihoodCost<SumCovEst> GLL;
 
@@ -71,6 +71,8 @@ void TestOptimization( Optimizer& opt, Cost& cost,
 
 	cost.SetParamsVec( trueParams );
 	double minCost = cost.Evaluate();
+
+	cost.SetParamsVec( finalParams );
 
 	std::cout << "True params: " << std::endl << trueParams.transpose() << std::endl;
 	std::cout << "Final params: " << std::endl << finalParams.transpose() << std::endl;
@@ -175,14 +177,14 @@ int main( void )
 	unsigned int popSize = 1000;
 	std::cout << "Sampling " << popSize << " datapoints..." << std::endl;
 	
-	std::vector<TransPDReg> transformWrappersA, transformWrappersB;
 	std::vector<CovEst> estimatesA, estimatesB;
+	std::vector<TransCovEst> transEstsA, transEstsB;
 	std::vector<SumCovEst> sumEsts;
 	std::vector<GLL> baseCosts;
-	transformWrappersA.reserve( popSize );
-	transformWrappersB.reserve( popSize );
 	estimatesA.reserve( popSize );
 	estimatesB.reserve( popSize );
+	transEstsA.reserve( popSize );
+	transEstsB.reserve( popSize );
 	sumEsts.reserve( popSize );
 	baseCosts.reserve( popSize );
 
@@ -203,18 +205,17 @@ int main( void )
 		randomize_vector( pdInputB.lInput );
 		randomize_vector( pdInputB.dInput );
 
-		MatrixType transformA = MatrixType::Identity( matDim, matDim );
-		MatrixType trueCovA = transformA * truePdRegA.Evaluate( pdInputA ) * transformA.transpose();
-		MatrixType transformB = MatrixType::Identity( matDim, matDim );
-		MatrixType trueCovB = transformB * truePdRegB.Evaluate( pdInputB ) * transformB.transpose();
+		MatrixType transform = MatrixType::Random( matDim, matDim );
+		MatrixType trueCovA = transform * truePdRegA.Evaluate( pdInputA ) * transform.transpose();
+		MatrixType trueCovB = transform * truePdRegB.Evaluate( pdInputB ) * transform.transpose();
 
 		mvg.SetCovariance( trueCovA + trueCovB );
 		VectorType sample = mvg.Sample(); 
 
-		transformWrappersA.emplace_back( pdRegA, transformA );
-		transformWrappersB.emplace_back( pdRegA, transformB );
-		estimatesA.emplace_back( transformWrappersA.back(), pdInputA );
-		estimatesB.emplace_back( transformWrappersB.back(), pdInputB );
+		estimatesA.emplace_back( pdRegA, pdInputA );
+		estimatesB.emplace_back( pdRegB, pdInputB );
+		transEstsA.emplace_back( estimatesA.back(), transform );
+		transEstsB.emplace_back( estimatesB.back(), transform );
 		sumEsts.emplace_back( estimatesA.back(), estimatesB.back() );
 		baseCosts.emplace_back( sumEsts.back(), sample );
 	}
@@ -223,9 +224,9 @@ int main( void )
 	MeanGLL meanCost( baseCosts );
 	PenalizedMeanGLL penalizedMeanCosts( meanCost, 0 );
 
-	unsigned int minibatchSize = 20;
+	unsigned int minibatchSize = 30;
 	StochasticGLL stochasticCost( baseCosts, minibatchSize );
-	PenalizedStochasticGLL penalizedStochasticCosts( stochasticCost, 1E-3 );
+	PenalizedStochasticGLL penalizedStochasticCosts( stochasticCost, 1E-6 );
 
 	VectorType initParams = sumEsts[0].GetParamsVec();
 	VectorType trueParams( trueParamsA.size() + trueParamsB.size() );
@@ -237,7 +238,7 @@ int main( void )
 	// NLOptimizer nlOpt( optParams );
 	// TestOptimization( nlOpt, penalizedMeanCosts, initParams, trueParams );
 
-	AdamStepper stepper;	
+	AdamStepper stepper;
 	SimpleConvergenceCriteria criteria;
 	criteria.maxRuntime = 60;
 	criteria.minElementGradient = 1E-3;
@@ -246,5 +247,13 @@ int main( void )
 
 	AdamOptimizer modOpt( stepper, convergence );
 	TestOptimization( modOpt, penalizedStochasticCosts, initParams, trueParams );
+	double finalMeanObj = meanCost.Evaluate();
+	meanCost.SetParamsVec( initParams );
+	double initialMeanObj = meanCost.Evaluate();
+	meanCost.SetParamsVec( trueParams );
+	double trueMeanObj = meanCost.Evaluate();
+	std::cout << "Initial mean objective: " << initialMeanObj << std::endl;
+	std::cout << "Final mean objective: " << finalMeanObj << std::endl;
+	std::cout << "True mean objective: " << trueMeanObj << std::endl;
 
 }

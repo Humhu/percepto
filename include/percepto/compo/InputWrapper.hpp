@@ -1,5 +1,7 @@
 #pragma once
 
+#include "percepto/utils/MatrixUtils.hpp"
+
 namespace percepto
 {
 
@@ -20,6 +22,7 @@ public:
 	InputWrapper( RegressorType& b, const HeldInputType& in )
 	: input( in ), _base( b ){}
 
+	MatrixSize OutputSize() const { return _base.OutputSize(); }
 	unsigned int OutputDim() const { return _base.OutputDim(); }
 	unsigned int ParamDim() const { return _base.ParamDim(); }
 

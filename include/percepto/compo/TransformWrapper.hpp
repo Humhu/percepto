@@ -17,7 +17,6 @@ public:
 
 	typedef Base BaseType;
 	typedef MatrixType OutputType;
-	typedef typename BaseType::InputType InputType;
 
 	TransformWrapper( BaseType& b, const MatrixType& transform )
 	: _base( b ), _transform( transform )
@@ -45,7 +44,7 @@ public:
 	void SetParamsVec( const VectorType& v ) { _base.SetParamsVec( v ); }
 	VectorType GetParamsVec() const { return _base.GetParamsVec(); }
 
-	BackpropInfo Backprop( const InputType& input, const BackpropInfo& nextInfo )
+	BackpropInfo Backprop( const BackpropInfo& nextInfo )
 	{
 		assert( nextInfo.ModuleInputDim() == OutputDim() );
 
@@ -63,12 +62,12 @@ public:
 
 		BackpropInfo midInfo;
 		midInfo.dodx = nextInfo.dodx * dSdx;
-		return _base.Backprop( input, midInfo );
+		return _base.Backprop( midInfo );
 	}
 
-	OutputType Evaluate( const InputType& input ) const
+	OutputType Evaluate() const
 	{
-		return _transform * _base.Evaluate( input ) *
+		return _transform * _base.Evaluate() *
 		       _transform.transpose();
 	}
 

@@ -39,7 +39,8 @@ class SimpleConvergence
 {
 public:
 
-	SimpleConvergence( const SimpleConvergenceCriteria& criteria )
+	SimpleConvergence( const SimpleConvergenceCriteria& criteria = 
+	                         SimpleConvergenceCriteria() )
 	: _criteria( criteria ), _initialized( false ), _iteration( 0 ),
 	_startTicks( clock() ) {}
 

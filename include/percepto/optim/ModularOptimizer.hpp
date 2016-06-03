@@ -24,7 +24,7 @@ public:
 	/** 
 	 * @brief Create an optimization object with references to an cost,
 	 * stepper, and convergence object. Keeps references only. */
-	ModularOptimizer( const StepperType& stepper, const ConvergenceType& convergence )
+	ModularOptimizer( StepperType& stepper, ConvergenceType& convergence )
 	: _stepper( stepper ), _convergence( convergence ) {}
 
 	/** 
@@ -62,8 +62,8 @@ public:
 private:
 
 	OptimizationProfiler _profiler;
-	StepperType _stepper; /**< A reference to this optimizer's stepper. */
-	ConvergenceType _convergence; /**< A reference to this optimizer's convergence object. */
+	StepperType& _stepper; /**< A reference to this optimizer's stepper. */
+	ConvergenceType& _convergence; /**< A reference to this optimizer's convergence object. */
 
 };
 
