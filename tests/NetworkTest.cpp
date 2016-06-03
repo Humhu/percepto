@@ -86,7 +86,6 @@ void randomize_vector( Eigen::DenseBase<Derived>& mat,
 
 int main( int argc, char** argv )
 {
-
 	unsigned int numTrain = 150;
 	unsigned int numTest = 200;
 	unsigned int batchSize = 25;
@@ -98,7 +97,7 @@ int main( int argc, char** argv )
 
 	unsigned int inputDim = 1;
 	unsigned int outputDim = 1;
-	unsigned int numHiddenLayers = 1;
+	unsigned int numHiddenLayers = 3;
 	unsigned int layerWidth = 50;
 
 	// Randomize the net parameters
@@ -165,7 +164,7 @@ int main( int argc, char** argv )
 	AdamStepper stepper;
 	
 	SimpleConvergenceCriteria criteria;
-	criteria.maxRuntime = 60;
+	criteria.maxRuntime = 600;
 	criteria.minElementGradient = 1E-3;
 	criteria.minObjectiveDelta = 1E-3;
 	SimpleConvergence convergence( criteria );

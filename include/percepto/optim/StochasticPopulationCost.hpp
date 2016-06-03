@@ -15,19 +15,25 @@ namespace percepto
  * estimates of the objective and gradient. 
  *
  * Resampling is executed on calls to Evaluate() only, since adding an
- * explicit Resample() method would break the cost function interface. */
-template <typename CostType>
+ * explicit Resample() method would break the cost function interface. 
+ *
+ * The container holding the costs can be altered to change the
+ * population. Make sure to call Evaluate() after alteration to set
+ * the active indices.
+ */
+template <typename CostType, template<typename,typename> class Container = std::vector>
 class StochasticPopulationCost
-: public MeanPopulationCost<CostType>
+: public MeanPopulationCost<CostType, Container>
 {
 public:
 
 	typedef ScalarType OutputType;
-	typedef MeanPopulationCost<CostType> ParentCost;
+	typedef MeanPopulationCost<CostType, Container> ParentCost;
+	typedef typename ParentCost::ContainerType ContainerType;
 
 	/*! \brief Creates a cost by averaging costs on a poulation of
 	 * inputs. */
-	StochasticPopulationCost( std::vector<CostType>& costs, unsigned int subsize )
+	StochasticPopulationCost( ContainerType& costs, unsigned int subsize )
 	: ParentCost( costs ), _subsetSize( subsize )
 	{
 		boost::random::random_device rng;

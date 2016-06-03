@@ -1,22 +1,25 @@
 #pragma once
 
 #include <boost/foreach.hpp>
+#include <deque>
 #include "percepto/PerceptoTypes.h"
 
 namespace percepto
 {
 
-template <typename BaseCost>
+template <typename BaseCost, template<typename,typename> class Container = std::vector>
 class MeanPopulationCost
 {
 public:
 
 	typedef BaseCost BaseCostType;
 	typedef ScalarType OutputType;
+	typedef Container<BaseCost, std::allocator<BaseCost>> ContainerType;
 
 	/*! \brief Creates a cost by averaging costs on a poulation of
-	 * inputs. Assumes all costs use the same regressor. */
-	MeanPopulationCost( std::vector<BaseCostType>& costs )
+	 * inputs. Assumes all costs use the same regressor. Keeps a reference
+	 * to the container so it can be changed easily. */
+	MeanPopulationCost( ContainerType& costs )
 	: _costs( costs )
 	{
 		if( _costs.size() == 0 ) { throw std::runtime_error( "No costs given!"); }
@@ -79,7 +82,7 @@ public:
 
 protected:
 
-	std::vector<BaseCostType>& _costs;
+	ContainerType& _costs;
 
 };
 
