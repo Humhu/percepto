@@ -22,8 +22,17 @@ public:
 
 	struct InputType
 	{
-		typename LRegressorType::InputType lInput;
-		typename DRegressorType::InputType dInput;
+		typedef typename LRegressorType::InputType LInputType;
+		typedef typename DRegressorType::InputType DInputType;
+		
+		LInputType lInput;
+		DInputType dInput;
+
+		EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+
+		InputType() {}
+		InputType( const LInputType& lIn, const DInputType& dIn )
+		: lInput( lIn ), dInput( dIn ) {}
 	};
 
 	typedef MatrixType OutputType;

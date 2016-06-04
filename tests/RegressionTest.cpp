@@ -22,7 +22,7 @@ using namespace percepto;
 // TODO Implement ConstantRegressor
 typedef ExponentialWrapper<ReLUNet> ExpRegressor;
 typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpRegressor> PSDReg;
-typedef OffsetWrapper<PSDReg> PDReg;
+typedef RegressorOffsetWrapper<PSDReg> PDReg;
 
 typedef InputWrapper<PDReg> CovEstimate;
 typedef TransformWrapper<CovEstimate> TransEst;

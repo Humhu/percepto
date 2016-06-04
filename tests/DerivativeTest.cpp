@@ -24,7 +24,7 @@ typedef TriangularMapping TriMapd;
 typedef ReLUNet BaseRegressor;
 typedef ExponentialWrapper<BaseRegressor> ExpRegressor;
 typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpRegressor> PSDRegressor;
-typedef OffsetWrapper<PSDRegressor> PDRegressor;
+typedef RegressorOffsetWrapper<PSDRegressor> PDRegressor;
 
 typedef InputWrapper<PDRegressor> CovEstimate;
 typedef TransformWrapper<CovEstimate> TransCovEstimate;
@@ -175,9 +175,9 @@ int main( void )
 	likelihoods.reserve( popSize );
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		PDRegressor::InputType pdInput;
-		pdInput.lInput = VectorType( lFeatDim );
-		pdInput.dInput = VectorType( dFeatDim );
+		VectorType l( lFeatDim );
+		VectorType d( dFeatDim );
+		PDRegressor::InputType pdInput( l, d );
 		randomize_vector( pdInput.lInput );
 		randomize_vector( pdInput.dInput );
 

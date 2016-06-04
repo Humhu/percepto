@@ -20,6 +20,7 @@ public:
 	: _baseA( baseA ), _baseB( baseB )
 	{}
 
+	MatrixSize OutputSize() const { return _baseA.OutputSize(); }
 	unsigned int OutputDim() const { return _baseA.OutputDim(); }
 	unsigned int ParamDim() const { return _baseA.ParamDim() + _baseB.ParamDim(); }
 
@@ -73,11 +74,11 @@ public:
 	typedef Container<Base, std::allocator<Base>> ContainerType;
 	typedef typename BaseType::OutputType OutputType;
 
-	AdditiveSumWrapper( const ContainerType& bases )
+	AdditiveSumWrapper( ContainerType& bases )
 	: _bases( bases ) {}
 
+	MatrixSize OutputSize() const { return _bases[0].OutputSize(); }
 	unsigned int OutputDim() const { return _bases[0].OutputDim(); }
-
 	unsigned int ParamDim() const 
 	{ 
 		unsigned int acc = 0;
@@ -94,8 +95,8 @@ public:
 		unsigned int ind = 0;
 		for( unsigned int i = 0; i < _bases.size(); ++i )
 		{
-			_bases[i].SetParamsVec( v.segment( ind, _bases[i].ParamsDim() ) );
-			ind += _bases[i].ParamsDim();
+			_bases[i].SetParamsVec( v.segment( ind, _bases[i].ParamDim() ) );
+			ind += _bases[i].ParamDim();
 		}
 	}
 
@@ -105,8 +106,8 @@ public:
 		unsigned int ind = 0;
 		for( unsigned int i = 0; i < _bases.size(); ++i )
 		{
-			v.segment( ind, _bases[i].ParamsDim() ) = _bases[i].GetParamsVec();
-			ind += _bases[i].ParamsDim();
+			v.segment( ind, _bases[i].ParamDim() ) = _bases[i].GetParamsVec();
+			ind += _bases[i].ParamDim();
 		}
 		return v;
 	}
@@ -118,6 +119,7 @@ public:
 		{
 			out += _bases[i].Evaluate();
 		}
+		return out;
 	}
 
 	BackpropInfo Backprop( const BackpropInfo& nextInfo )
@@ -143,7 +145,7 @@ public:
 
 private:
 
-	const ContainerType& _bases;
+	ContainerType& _bases;
 };
 
 }

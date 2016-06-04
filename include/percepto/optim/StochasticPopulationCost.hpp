@@ -47,9 +47,9 @@ public:
 		assert( nextInfo.ModuleInputDim() == OutputDim() );
 		
 		BackpropInfo midInfo, costInfo;
-		midInfo.dodx = nextInfo.dodx / _subsetSize;
+		midInfo.dodx = nextInfo.dodx / _activeInds.size();
 		BackpropInfo thisInfo = ParentCost::_costs[ _activeInds[0] ].Backprop( midInfo );
-		for( unsigned int i = 1; i < _subsetSize; i++ )
+		for( unsigned int i = 1; i < _activeInds.size(); i++ )
 		{
 			BackpropInfo costInfo = ParentCost::_costs[ _activeInds[i] ].Backprop( midInfo );
 			thisInfo.dodx += costInfo.dodx;
@@ -68,7 +68,7 @@ public:
 		RandomSample();
 
 		OutputType acc = 0;
-		for( unsigned int i = 0; i < _subsetSize; i++ )
+		for( unsigned int i = 0; i < _activeInds.size(); i++ )
 		{
 			acc += ParentCost::_costs[ _activeInds[i] ].Evaluate();
 		}
@@ -86,8 +86,20 @@ private:
 
 	void RandomSample()
 	{
-		BitmapSampling( ParentCost::_costs.size(), _subsetSize, 
-		                   _activeInds, _generator );
+		if( ParentCost::_costs.size() > _subsetSize )
+		{
+			BitmapSampling( ParentCost::_costs.size(), _subsetSize, 
+			                   _activeInds, _generator );
+			return;
+		}
+
+		// If there isn't enough data, just use all of it
+		_activeInds.clear();
+		_activeInds.reserve( ParentCost::_costs.size() );
+		for( unsigned int i = 0; i < ParentCost::_costs.size(); ++i )
+		{
+			_activeInds.push_back( i );
+		}
 	}
 
 };

@@ -13,6 +13,8 @@ class InputWrapper
 {
 public:
 
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+
 	typedef Regressor RegressorType;
 	typedef typename RegressorType::InputType HeldInputType;
 	typedef typename RegressorType::OutputType OutputType;

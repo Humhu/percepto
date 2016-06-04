@@ -33,6 +33,7 @@ public:
 	template <typename CostType>
 	OptimizationResults Optimize( CostType& cost )
 	{
+		_convergence.Reset();
 		_profiler.StartOverall();
 
 		double value;

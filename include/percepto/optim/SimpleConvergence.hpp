@@ -44,6 +44,17 @@ public:
 	: _criteria( criteria ), _initialized( false ), _iteration( 0 ),
 	_startTicks( clock() ) {}
 
+	void SetCriteria( const SimpleConvergenceCriteria& criteria )
+	{
+		_criteria = criteria;
+	}
+
+	void Reset()
+	{
+		_iteration = 0;
+		_initialized = false;
+	}
+
 	bool Converged( double objective, const VectorType& params,
 	                const VectorType& gradient )
 	{
