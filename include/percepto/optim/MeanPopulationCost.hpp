@@ -21,9 +21,7 @@ public:
 	 * to the container so it can be changed easily. */
 	MeanPopulationCost( ContainerType& costs )
 	: _costs( costs )
-	{
-		if( _costs.size() == 0 ) { throw std::runtime_error( "No costs given!"); }
-	}
+	{}
 
 	unsigned int OutputDim() const { return 1; }
 	unsigned int ParamDim() const
