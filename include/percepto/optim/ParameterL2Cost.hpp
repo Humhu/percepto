@@ -15,13 +15,8 @@ public:
 	typedef ScalarType OutputType;
 
 	ParameterL2Cost( BaseType& b, ScalarType w )
-	: _base( b )
-	{
-		_weights = w * VectorType::Ones( _base.ParamDim() );
-	}
-
-	ParameterL2Cost( BaseType& b, const VectorType& weights )
-	: _base( b ), _weights( weights ) {}
+	: _base( b ), _w( w )
+	{}
 
 	unsigned int OutputDim() const { return 1; }
 	unsigned int ParamDim() const
@@ -48,7 +43,7 @@ public:
 		BackpropInfo thisInfo = _base.Backprop( nextInfo );
 		for( unsigned int i = 0; i < nextInfo.SystemOutputDim(); i++ )
 		{
-			thisInfo.dodw.row(i) += ( _weights.array()*current.array() ).matrix().transpose();
+			thisInfo.dodw.row(i) += ( _w * current.array() ).matrix().transpose();
 		}
 		return thisInfo;
 	}
@@ -57,13 +52,13 @@ public:
 	{
 		VectorType current = _base.GetParamsVec();
 		OutputType base = _base.Evaluate();
-		return base + 0.5 * (_weights.array() * current.array() * current.array() ).sum();
+		return base + 0.5 * ( _w * current.array() * current.array() ).sum();
 	}
 
 private:
 
 	BaseType& _base;
-	VectorType _weights;
+	ScalarType _w;
 
 };
 
