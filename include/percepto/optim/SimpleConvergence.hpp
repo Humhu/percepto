@@ -51,13 +51,23 @@ public:
 
 	void Reset()
 	{
-		_iteration = 0;
 		_initialized = false;
 	}
 
 	bool Converged( double objective, const VectorType& params,
 	                const VectorType& gradient )
 	{
+		if( !_initialized )
+		{
+			_lastObjective = objective;
+			_lastGradient = gradient;
+			_lastParams = params;
+			_startTicks = clock();
+			_iteration = 0;
+			_initialized = true;
+			return false;
+		}
+
 		_iteration++;
 		if( _criteria.maxIterations > 0 &&
 		   _iteration >= _criteria.maxIterations ) { return true; }
@@ -65,14 +75,6 @@ public:
 		clock_t now = clock();
 		double timeSinceStart = ((double) now - _startTicks ) / CLOCKS_PER_SEC;
 		if( timeSinceStart > _criteria.maxRuntime ) { return true; }
-
-		if( !_initialized )
-		{
-			_lastObjective = objective;
-			_lastGradient = gradient;
-			_lastParams = params;
-			return false;
-		}
 
 		VectorType deltaParams = (params - _lastParams).array().abs().matrix();
 		double maxDeltaParams = deltaParams.maxCoeff();

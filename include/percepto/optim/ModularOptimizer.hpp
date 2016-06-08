@@ -4,6 +4,7 @@
 #include "percepto/optim/OptimizationInterface.hpp"
 
 #include <iostream>
+#include <functional>
 
 namespace percepto
 {

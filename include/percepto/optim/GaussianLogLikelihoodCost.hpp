@@ -76,6 +76,8 @@ public:
 		return -GaussianLogLikelihood( _sample, _base.Evaluate() );
 	}
 
+	const SampleType& GetSample() const { return _sample; }
+
 private:
 	
 	BaseType& _base;
