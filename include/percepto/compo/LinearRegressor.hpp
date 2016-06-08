@@ -1,6 +1,6 @@
 #pragma once
 
-#include "percepto/compo/BackpropInfo.hpp"
+#include "percepto/compo/Parametric.hpp"
 #include <Eigen/Dense>
 
 namespace percepto 
@@ -11,6 +11,7 @@ namespace percepto
  * The matrix and input are dynamically-sized. Assumes row-major ordering
  * for vectorizing the weights matrix. */
 class LinearRegressor
+: public Parametric
 {
 public:
 	
@@ -18,11 +19,8 @@ public:
 	typedef VectorType InputType;
 	typedef VectorType OutputType;
 
-	static ParamType create_zeros( unsigned int inputDim,
-	                               unsigned int outputDim )
-	{
-		return ParamType::Zero( outputDim, inputDim );
-	}
+	LinearRegressor( unsigned int inputDim, unsigned int outputDim )
+	: _W( ParamType::Zero( outputDim, inputDim ) ) {}
 
 	/*! \brief Create a linear regressor with specified weights. */
 	LinearRegressor( const ParamType& weightMat )
@@ -30,7 +28,6 @@ public:
 	
 	unsigned int InputDim() const { return _W.cols(); }
 	unsigned int OutputDim() const { return _W.rows(); }
-	unsigned int ParamDim() const { return _W.size(); }
 
 	/*! \brief Retrieve the parameter vector by returning a vector view of the
 	 * matrix. */
@@ -41,7 +38,7 @@ public:
 		_W = p;
 	}
 
-	void SetParamsVec( const VectorType& vec ) 
+	virtual void SetParamsVec( const VectorType& vec ) 
 	{
 		assert( vec.size() == _W.size() );
 		_W = Eigen::Map<const ParamType>( vec.data(), OutputDim(), InputDim() );
@@ -52,27 +49,29 @@ public:
 		return _W;
 	}
 
-	VectorType GetParamsVec() const
+	virtual VectorType GetParamsVec() const
 	{
 		return Eigen::Map<const VectorType>( _W.data(), _W.size(), 1 );
 	}
 	
-	BackpropInfo Backprop( const InputType& input, const BackpropInfo& nextInfo )
+	MatrixType Backprop( const InputType& input, const MatrixType& nextDodx )
 	{
-		assert( nextInfo.ModuleInputDim() == OutputDim() );
+		assert( nextDodx.cols() == OutputDim() );
 
-		BackpropInfo thisInfo;
-		thisInfo.dodx = nextInfo.dodx * _W;
-		thisInfo.dodw = MatrixType( nextInfo.SystemOutputDim(), ParamDim() );
-		for( unsigned int i = 0; i < nextInfo.SystemOutputDim(); i++ )
+		MatrixType thisDodw = MatrixType( nextDodx.rows(), ParamDim() );
+		for( unsigned int i = 0; i < nextDodx.rows(); i++ )
 		{
 			for( unsigned int j = 0; j < OutputDim(); j++ )
 			{
-				thisInfo.dodw.block(i, j*InputDim(), 1, InputDim()) =
-					nextInfo.dodx(i,j) * input.transpose();
+				thisDodw.block(i, j*InputDim(), 1, InputDim()) =
+					nextDodx(i,j) * input.transpose();
 			}
 		}
-		return thisInfo;
+		MatrixType thisDodx = nextInfo.dodx * _W;
+		Parametric::AccumulateWeightDerivs( thisDodw );
+		// Parametric::AccumulateInputDerivs( thisDodx );
+
+		return thisDodx;
 	}
 	
 	/*! \brief Produce the output. */

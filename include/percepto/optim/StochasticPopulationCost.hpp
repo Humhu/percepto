@@ -5,6 +5,8 @@
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int_distribution.hpp>
 
+#include <iostream>
+
 #include "percepto/optim/MeanPopulationCost.hpp"
 #include "percepto/utils/SubsetSamplers.hpp"
 
@@ -42,20 +44,17 @@ public:
 
 	unsigned int OutputDim() const { return 1; }
 
-	BackpropInfo Backprop( const BackpropInfo& nextInfo )
+	MatrixType Backprop( const MatrixType& nextDodx )
 	{
-		assert( nextInfo.ModuleInputDim() == OutputDim() );
+		assert( nextDodx.cols() == OutputDim() );
 		
-		BackpropInfo midInfo, costInfo;
-		midInfo.dodx = nextInfo.dodx / _activeInds.size();
-		BackpropInfo thisInfo = ParentCost::_costs[ _activeInds[0] ].Backprop( midInfo );
+		MatrixType thisDodx = nextDodx / _activeInds.size();
+		MatrixType indDodx = ParentCost::_costs[ _activeInds[0] ].Backprop( thisDodx );
 		for( unsigned int i = 1; i < _activeInds.size(); i++ )
 		{
-			BackpropInfo costInfo = ParentCost::_costs[ _activeInds[i] ].Backprop( midInfo );
-			thisInfo.dodx += costInfo.dodx;
-			thisInfo.dodw += costInfo.dodw;
+			indDodx += ParentCost::_costs[ _activeInds[i] ].Backprop( thisDodx );
 		}
-		return thisInfo;
+		return indDodx;
 	}
 
 	/*! \brief Calculate the objective function by averaging the 

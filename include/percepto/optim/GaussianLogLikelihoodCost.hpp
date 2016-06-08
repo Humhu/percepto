@@ -1,6 +1,6 @@
 #pragma once
 
-#include "percepto/compo/BackpropInfo.hpp"
+#include "percepto/PerceptoTypes.h"
 #include <boost/foreach.hpp>
 #include <Eigen/Cholesky>
 #include <cmath>
@@ -38,42 +38,35 @@ public:
 	typedef ScalarType OutputType;
 
 	/*! \brief Create a cost representing the log likelihood under the matrix
-	 * outputted by the regressor.  Stores references, not value. */
+	 * outputted by the regressor. */
 	GaussianLogLikelihoodCost( BaseType& r, const SampleType& sample )
 	: _base( r ), _sample( sample ) {}
 
 	unsigned int OutputDim() const { return 1; }
-	unsigned int ParamDim() const { return _base.ParamDim(); }
 
-	void SetParamsVec( const VectorType& v )
+	MatrixType Backprop( const MatrixType& nextDodx )
 	{
-		_base.SetParamsVec( v );
-	}
-
-	VectorType GetParamsVec() const
-	{
-		return _base.GetParamsVec();
-	}
-
-	BackpropInfo Backprop( const BackpropInfo& nextInfo )
-	{
-		assert( nextInfo.ModuleInputDim() == OutputDim() );
+		if( nextDodx.cols() != OutputDim() )
+		{
+			throw std::runtime_error( "GLL: Backprop dim error." );
+		}
 
 		MatrixType cov = _base.Evaluate();
 		Eigen::LDLT<MatrixType> ldlt( cov );
 		VectorType errSol = ldlt.solve( _sample );
 		MatrixType I = MatrixType::Identity( cov.rows(), cov.cols() );
-		MatrixType dydS = ldlt.solve( I - _sample * errSol.transpose() );
-		Eigen::Map<VectorType> dydSVec( dydS.data(), dydS.size(), 1 );
+		MatrixType dydS = 0.5 * ldlt.solve( I - _sample * errSol.transpose() );
+		Eigen::Map<MatrixType> dydSVec( dydS.data(), 1, dydS.size() );
 
-		BackpropInfo midInfo;
-		midInfo.dodx = MatrixType( nextInfo.SystemOutputDim(), cov.rows()*cov.cols() );
-		for( unsigned int i = 0; i < nextInfo.SystemOutputDim(); i++ )
-		{
-			midInfo.dodx.row(i) = dydSVec * nextInfo.dodx(i);
-		}
+		// MatrixType thisDodxM( nextDodx.rows(), cov.rows()*cov.cols() );
+		// for( unsigned int i = 0; i < nextDodx.rows(); i++ )
+		// {
+		// 	thisDodxM.row(i) = dydSVec * nextDodx(i,0);
+		// }
+		MatrixType thisDodx = nextDodx * dydSVec;
 
-		return _base.Backprop( midInfo );
+		_base.Backprop( thisDodx );
+		return thisDodx;
 	}
 
 	/*! \brief Computes the log-likelihood of the input sample using the

@@ -24,35 +24,18 @@ public:
 	{}
 
 	unsigned int OutputDim() const { return 1; }
-	unsigned int ParamDim() const
-	{
-		return _costs[0].ParamDim();
-	}
 
-	void SetParamsVec( const VectorType& v )
+	MatrixType Backprop( const MatrixType& nextDodx )
 	{
-		_costs[0].SetParamsVec( v );
-	}
+		assert( nextDodx.cols() == OutputDim() );
 
-	VectorType GetParamsVec() const
-	{
-		return _costs[0].GetParamsVec();
-	}
-
-	BackpropInfo Backprop( const BackpropInfo& nextInfo )
-	{
-		assert( nextInfo.ModuleInputDim() == OutputDim() );
-
-		BackpropInfo midInfo, costInfo;
-		midInfo.dodx = nextInfo.dodx / _costs.size();
-		BackpropInfo thisInfo = _costs[0].Backprop( midInfo );
-		for( unsigned int i = 1; i < _costs.size(); i++ )
+		MatrixType thisDodx = nextDodx / _costs.size();
+		MatrixType indDodx = _costs[0].Backprop( thisDodx );
+		for( unsigned int i = 0; i < _costs.size(); i++ )
 		{
-			costInfo = _costs[i].Backprop( midInfo );
-			thisInfo.dodx += costInfo.dodx;
-			thisInfo.dodw += costInfo.dodw;
+			indDodx += _costs[i].Backprop( thisDodx );
 		}
-		return thisInfo;
+		return indDodx;
 	}
 
 	/*! \brief Calculate the objective function by averaging the 

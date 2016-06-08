@@ -1,7 +1,6 @@
 #pragma once
 
 #include "percepto/PerceptoTypes.h"
-#include "percepto/compo/BackpropInfo.hpp"
 #include "percepto/utils/LowerTriangular.hpp"
 #include "percepto/utils/MatrixUtils.hpp"
 
@@ -12,75 +11,42 @@ namespace percepto
  * of a modified Cholesky decomposition and reforms them into a matrix. Uses
  * a different regressor for the L and D terms, but the same features. Orders
  * concatenated parameters with L parameters first, then D. */
-template <typename LRegressor, typename DRegressor>
+template <typename LBase, typename DBase>
 class ModifiedCholeskyWrapper
 {
 public:
 
-	typedef LRegressor LRegressorType;
-	typedef DRegressor DRegressorType;
-
-	struct InputType
-	{
-		typedef typename LRegressorType::InputType LInputType;
-		typedef typename DRegressorType::InputType DInputType;
-		
-		LInputType lInput;
-		DInputType dInput;
-
-		EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
-
-		InputType() {}
-		InputType( const LInputType& lIn, const DInputType& dIn )
-		: lInput( lIn ), dInput( dIn ) {}
-	};
-
+	typedef LBase LBaseType;
+	typedef DBase DBaseType;
 	typedef MatrixType OutputType;
 
 	/*! \brief Instantiate an estimator by giving it regressors for 
 	 * the modified Cholesky predictors. Makes copies of the regressors. */
-	ModifiedCholeskyWrapper( const LRegressorType& l, const DRegressorType& d )
-	: _lRegressor( l ), _dRegressor( d ), _tmap( _dRegressor.OutputDim() - 1 )
+	ModifiedCholeskyWrapper( LBaseType& l, DBaseType& d )
+	: _lBase( l ), _dBase( d ), _tmap( _dBase.OutputDim() - 1 )
 	{
 		InitCheckDimensions();
 	}
 
 	MatrixSize OutputSize() const
 	{
-		return MatrixSize( _dRegressor.OutputDim(), _dRegressor.OutputDim() );
+		return MatrixSize( _dBase.OutputDim(), _dBase.OutputDim() );
 	}
 	unsigned int OutputDim() const 
 	{ 
-		return _dRegressor.OutputDim() * _dRegressor.OutputDim(); 
-	}
-	
-	unsigned int ParamDim() const 
-	{ 
-		return _lRegressor.ParamDim() + _dRegressor.ParamDim(); 
-	}
-
-
-	void SetParamsVec( const VectorType& v )
-	{
-		assert( v.size() == ParamDim() );
-		_lRegressor.SetParamsVec( v.head( _lRegressor.ParamDim() ) );
-		_dRegressor.SetParamsVec( v.head( _dRegressor.ParamDim() ) );
-	}
-
-	VectorType GetParamsVec() const
-	{
-		VectorType vec( ParamDim() );
-		vec << _lRegressor.GetParamsVec(), _dRegressor.GetParamsVec();
-		return vec;
+		return _dBase.OutputDim() * _dBase.OutputDim(); 
 	}
 
 	// Assuming that dodx is given w.r.t. matrix col-major ordering
-	BackpropInfo Backprop( const InputType& input, const BackpropInfo& nextInfo )
+	MatrixType Backprop( const MatrixType& nextDodx )
 	{
-		assert( nextInfo.ModuleInputDim() == OutputDim() );
+		if( nextDodx.cols() != OutputDim() )
+		{
+			throw std::runtime_error( "ModifiedCholeskyWrapper: Backprop dim error." );
+		}
 
-		MatrixType D = EvaluateD( input );
-		MatrixType L = EvaluateL( input );
+		MatrixType D = EvaluateD();
+		MatrixType L = EvaluateL();
 
 		// Calculate output matrix deriv wrt L inputs
 		MatrixType d = MatrixType::Zero( OutputSize().rows, OutputSize().cols );
@@ -95,9 +61,8 @@ public:
 			dSdl.col(i) = dSdiVec;
 			d( ind.first + 1, ind.second ) = 0;
 		}
-		BackpropInfo midLInfo;
-		midLInfo.dodx = nextInfo.dodx * dSdl;
-		BackpropInfo lInfo = _lRegressor.Backprop( input.lInput, midLInfo );
+		MatrixType midLInfoDodx = nextDodx * dSdl;
+		_lBase.Backprop( midLInfoDodx );
 
 		// Perform D backprop
 		MatrixType dSdd = MatrixType( OutputDim(), OutputSize().rows );
@@ -110,52 +75,47 @@ public:
 			dSdd.col(i) = dSdiVec;
 			d( i, i ) = 0;
 		}
-		BackpropInfo midDInfo;
-		midDInfo.dodx = nextInfo.dodx * dSdd;
-		BackpropInfo dInfo = _dRegressor.Backprop( input.dInput, midDInfo );
+		MatrixType midDInfoDodx = nextDodx * dSdd;
+		_dBase.Backprop( midDInfoDodx );
 
-		BackpropInfo thisInfo;
-		thisInfo.dodx = ConcatenateHor( lInfo.dodx, dInfo.dodx );
-		thisInfo.dodw = ConcatenateHor( lInfo.dodw, dInfo.dodw );
-		return thisInfo;
+		return ConcatenateHor( midLInfoDodx, midDInfoDodx );
 	}
 
-	OutputType Evaluate( const InputType& features ) const
+	OutputType Evaluate() const
 	{
-		MatrixType& L = EvaluateL( features );
-		DiagonalType& D = EvaluateD( features );
+		MatrixType& L = EvaluateL();
+		DiagonalType& D = EvaluateD();
 		return L * D * L.transpose();
 	}
 	
 private:
 	
-	LRegressorType _lRegressor;
-	DRegressorType _dRegressor;
+	LBaseType& _lBase;
+	DBaseType& _dBase;
 	TriangularMapping _tmap;
 
 	typedef Eigen::DiagonalMatrix <ScalarType, 
 	                               Eigen::Dynamic, 
 	                               Eigen::Dynamic> DiagonalType;
 
-	MatrixType& EvaluateL( const InputType& input ) const
+	MatrixType& EvaluateL() const
 	{
-		MatrixType l = _lRegressor.Evaluate( input.lInput );
-		_tmap.VecToLowerTriangular( _lRegressor.Evaluate( input.lInput ), _L );
+		_tmap.VecToLowerTriangular( _lBase.Evaluate(), _L );
 		return _L;
 	}
 
-	DiagonalType& EvaluateD( const InputType& input ) const
+	DiagonalType& EvaluateD() const
 	{
-		_D.diagonal() = _dRegressor.Evaluate( input.dInput );
+		_D.diagonal() = _dBase.Evaluate();
 		return _D;
 	}
 
 	void InitCheckDimensions()
 	{
-		assert( _lRegressor.OutputDim() == _tmap.NumPositions() );
+		assert( _lBase.OutputDim() == _tmap.NumPositions() );
 
 		_L =  MatrixType::Identity( OutputSize().rows, OutputSize().cols );
-		_D = DiagonalType( _dRegressor.OutputDim() );
+		_D = DiagonalType( _dBase.OutputDim() );
 		_D.setZero();
 	}
 

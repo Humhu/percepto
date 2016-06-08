@@ -2,6 +2,8 @@
 
 #include "percepto/PerceptoTypes.h"
 
+#include <iostream>
+
 namespace percepto
 {
 
@@ -37,6 +39,7 @@ public:
 		{
 			throw std::runtime_error( "beta2 must be between 0 and 1." );
 		}
+		Reset();
 	}
 
 	/*! \brief Reset the stepper state. */
@@ -55,7 +58,13 @@ public:
 			_m = VectorType::Zero( gradient.size() );
 			_v = VectorType::Zero( gradient.size() );
 		}
-		assert( gradient.size() == _m.size() );
+
+		if( gradient.size() != _m.size() )
+		{
+			std::cout << "m.size(): " << _m.size() << std::endl;
+			std::cout << "grad.size(): " << gradient.size() << std::endl;
+			throw std::runtime_error( "Improperly sized gradient." );
+		}
 
 		++_t;
 		_m = _params.beta1 * _m + (1.0 - _params.beta1 ) * gradient;
@@ -65,8 +74,9 @@ public:
 		VectorType mhat = _m / ( 1.0 - std::pow(_params.beta1, _t) );
 		VectorType vhat = _v / ( 1.0 - std::pow(_params.beta2, _t) );
 
-		return ( _params.alpha * mhat.array() / 
+		VectorType ret = ( _params.alpha * mhat.array() / 
 		         ( vhat.array().sqrt() + _params.epsilon ) ).matrix();
+		return ret;
 	}
 
 private:

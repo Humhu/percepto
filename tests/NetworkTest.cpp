@@ -1,5 +1,6 @@
 #include "percepto/PerceptoTypes.h"
 
+#include "percepto/compo/AdditiveWrapper.hpp"
 #include "percepto/neural/LinearLayer.hpp"
 #include "percepto/neural/FullyConnectedNet.hpp"
 #include "percepto/compo/SeriesWrapper.hpp"
@@ -8,6 +9,7 @@
 #include "percepto/neural/HingeActivation.hpp"
 #include "percepto/neural/SigmoidActivation.hpp"
 #include "percepto/neural/NullActivation.hpp"
+#include "percepto/neural/NetworkTypes.h"
 
 #include "percepto/optim/SquaredLoss.hpp"
 #include "percepto/optim/StochasticPopulationCost.hpp"
@@ -19,18 +21,16 @@
 #include <boost/random/random_device.hpp>
 #include <boost/random/mersenne_twister.hpp>
 
+#include "percepto/utils/Derivatives.hpp"
+#include "percepto/utils/Randomization.hpp"
+
 #include <cstdlib>
 #include <iostream>
 
 using namespace percepto;
 
-typedef FullyConnectedNet<HingeActivation> ReLUNet;
-typedef FullyConnectedNet<SigmoidActivation> PerceptronNet;
-typedef LinearLayer<NullActivation> UnrectifiedLinearLayer;
-typedef SeriesWrapper<PerceptronNet, UnrectifiedLinearLayer> PerceptronOutputNet;
-
-// typedef PerceptronOutputNet TestNet;
-// Comment the above and unncomment this line to use Rectified Linear Units instead
+// Comment the above and uncomment below to use Rectified Linear Units instead
+// typedef PerceptronNet TestNet;
 typedef ReLUNet TestNet;
 
 // The highly nonlinear function we will try to fit
@@ -65,30 +65,11 @@ void generate_data( std::vector<VectorType>& xs,
 	}
 }
 
-// For initializing vectors to random in a range
-template <typename Derived>
-void randomize_vector( Eigen::DenseBase<Derived>& mat, 
-                       double minRange = -1.0, double maxRange = 1.0 )
-{
-	boost::random::mt19937 generator;
-	boost::random::random_device rng;
-	generator.seed( rng );
-	boost::random::uniform_real_distribution<> xDist( minRange, maxRange );
-
-	for( unsigned int i = 0; i < mat.rows(); ++i )
-	{
-		for( unsigned int j = 0; j < mat.cols(); ++j )
-		{
-			mat(i,j) = xDist( generator );
-		}
-	}
-}
-
 int main( int argc, char** argv )
 {
 	unsigned int numTrain = 150;
 	unsigned int numTest = 200;
-	unsigned int batchSize = 25;
+	unsigned int batchSize = 10;
 	double l2Weight = 0;
 
 	std::vector<VectorType> xTest, yTest, xTrain, yTrain;
@@ -104,44 +85,46 @@ int main( int argc, char** argv )
 	std::cout << "Initializing net..." << std::endl;
 	std::cout << "Creating linear layers..." << std::endl;
 
+	ParametricWrapper netParametrics;
+
 	// Perceptron initialization
 	// SigmoidActivation act;
-	// PerceptronNet testHeadNet( inputDim, layerWidth, numHiddenLayers, 
-	//                            layerWidth, act );
+	// PerceptronSubnet subnet( inputDim, layerWidth, numHiddenLayers, 
+	//                          layerWidth, act );
+	// LinearLayer<NullActivation> outputLayer( layerWidth, outputDim, NullActivation() );
+	// InputWrapper<PerceptronSubnet> subnetWrapper( subnet );
+	// PerceptronSeries netSeries( subnetWrapper, outputLayer );
+	// PerceptronNet testNet( subnetWrapper, netSeries );
 
-	// VectorType headParams = testHeadNet.GetParamsVec();
-	// randomize_vector( headParams );
-	// testHeadNet.SetParamsVec( headParams );
-
-	// std::cout << "Creating output layer..." << std::endl;
-	// UnrectifiedLinearLayer testOutNet( layerWidth, outputDim,
-	//                                    NullActivation() );
-	// VectorType outParams = testOutNet.GetParamsVec();
-	// randomize_vector( outParams );
-	// testOutNet.SetParamsVec( outParams );
-
-	// TestNet testNet( testHeadNet, testOutNet );
+	// netParametrics.AddParametric( &subnet );
+	// netParametrics.AddParametric( &outputLayer );
 
 	// // ReLU initialization
-	HingeActivation act( 1, 1E-3 );
-	ReLUNet testNet( inputDim, outputDim, numHiddenLayers,
+	HingeActivation act( 1, 1E-1 );
+	TestNet testNet( inputDim, outputDim, numHiddenLayers,
 	                 layerWidth, act );
-	VectorType netParams = testNet.GetParamsVec();
+	netParametrics.AddParametric( &testNet );
+
+	// Randomize parameters
+	VectorType netParams = netParametrics.GetParamsVec();
 	randomize_vector( netParams );
-	testNet.SetParamsVec( netParams );
+	netParametrics.SetParamsVec( netParams );
+	ParameterL2Cost l2Loss( netParametrics, l2Weight );
 
 	// Create the loss functions
 	typedef InputWrapper<TestNet> NetEst;
 	typedef SquaredLoss<NetEst> Loss;
+	typedef MeanPopulationCost<Loss> MeanLoss;
 	typedef StochasticPopulationCost<Loss> StochasticLoss;
-	typedef ParameterL2Cost<StochasticLoss> RegularizedStochasticLoss;
+	typedef AdditiveWrapper <StochasticLoss,
+	                         ParameterL2Cost> RegularizedStochasticLoss;
 
 	std::cout << "Generating losses..." << std::endl;
 	std::vector<NetEst> trainEsts, testEsts;
 	std::vector<Loss> trainLosses, testLosses;
 	
 	// NOTE If we don't reserve, the vector resizing and moving may
-	// invalidate the references
+	// invalidate the references. Alternatively we can use a deque
 	trainEsts.reserve( numTrain );
 	trainLosses.reserve( numTrain );
 	for( unsigned int i = 0; i < numTrain; i++ )
@@ -150,7 +133,7 @@ int main( int argc, char** argv )
 		trainLosses.emplace_back( trainEsts.back(), yTrain[i] );
 	}
 	StochasticLoss trainLoss( trainLosses, batchSize );
-	RegularizedStochasticLoss trainObjective( trainLoss, l2Weight );
+	RegularizedStochasticLoss trainObjective( trainLoss, l2Loss );
 
 	testEsts.reserve( numTest );
 	testLosses.reserve( numTest );
@@ -159,6 +142,7 @@ int main( int argc, char** argv )
 		testEsts.emplace_back( testNet, xTest[i] );
 		testLosses.emplace_back( testEsts.back(), yTest[i] );
 	}
+	MeanLoss meanLossS( testLosses );
 	StochasticLoss testLoss( testLosses, batchSize );
 
 	AdamStepper stepper;
@@ -169,33 +153,34 @@ int main( int argc, char** argv )
 	criteria.minObjectiveDelta = 1E-3;
 	SimpleConvergence convergence( criteria );
 
+	// std::cout << "Evaluating derivatives..." << std::endl;
+	// double acc = 0;
+	// unsigned int num = 0;
+	// double maxSeen = -std::numeric_limits<double>::infinity();
+	// for( unsigned int i = 0; i < numTrain; i++ )
+	// {
+	// 	std::vector<double> errors = EvalCostDeriv( testLosses[i], netParametrics );
+	// 	double trialMax = *std::max_element( errors.begin(), errors.end() );
+	// 	if( trialMax > maxSeen ) { maxSeen = trialMax; }
+	// 	acc += trialMax;
+	// 	++num;
+	// }
+	// std::cout << "Mean max error: " << acc / num << std::endl;
+	// std::cout << "Max overall error: " << maxSeen << std::endl;
+
+	std::cout << "initial train avg loss: " << trainLoss.ParentCost::Evaluate() << std::endl;
+	std::cout << "initial train max loss: " << trainLoss.ParentCost::EvaluateMax() << std::endl;
+	std::cout << "initial test avg loss: " << testLoss.ParentCost::Evaluate() << std::endl;
+	std::cout << "initial test max loss: " << testLoss.ParentCost::EvaluateMax() << std::endl;
+
 	std::cout << "Beginning optimization..." << std::endl;
-	AdamOptimizer optimizer( stepper, convergence );
+	AdamOptimizer optimizer( stepper, convergence, netParametrics );
 	optimizer.Optimize( trainObjective );
 
 	std::cout << "train avg loss: " << trainLoss.ParentCost::Evaluate() << std::endl;
 	std::cout << "train max loss: " << trainLoss.ParentCost::EvaluateMax() << std::endl;
 	std::cout << "test avg loss: " << testLoss.ParentCost::Evaluate() << std::endl;
 	std::cout << "test max loss: " << testLoss.ParentCost::EvaluateMax() << std::endl;
-
-	// Test the evaluation speed
-	unsigned int numEvaluationPoints = 1000;
-	unsigned int numTrials = 10;
-	std::vector<VectorType> xTiming, yTiming;
-	generate_data( xTiming, yTiming, numEvaluationPoints );
-
-	for( unsigned int trial = 0; trial < numTrials; trial++ )
-	{
-		clock_t startTime = clock();
-		for( unsigned int i = 0; i < numEvaluationPoints; i++ )
-		{
-			testNet.Evaluate( xTiming[i] );
-		}
-		clock_t endTime = clock();
-		double runtime = ((double) endTime - startTime ) / CLOCKS_PER_SEC;
-		std::cout << "Time per evaluation: " << runtime/numEvaluationPoints << std::endl;
-	}
-
 
 	return 0;
 }

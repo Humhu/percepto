@@ -1,6 +1,7 @@
 #pragma once
 
 #include "percepto/compo/BackpropInfo.hpp"
+#include <iostream>
 
 namespace percepto
 {
@@ -18,39 +19,30 @@ public:
 	SquaredLoss( BaseType& r, const TargetType& target, double scale = 1.0 )
 	: _base( r ), _target( target ), _scale( scale ) {}
 
+	MatrixSize OutputSize() const { return MatrixSize(1,1); }
 	unsigned int OutputDim() const { return 1; }
-	unsigned int ParamDim() const { return _base.ParamDim(); }
-
-	void SetParamsVec( const VectorType& v )
-	{
-		_base.SetParamsVec( v );
-	}
-
-	VectorType GetParamsVec() const
-	{
-		return _base.GetParamsVec();
-	}
 
 	OutputType Evaluate() const
 	{
 		VectorType err = ComputeError();
-		return err.dot( err ) * _scale;
+		return 0.5 * err.dot( err ) * _scale;
 	}
 
-	BackpropInfo Backprop( const BackpropInfo& nextInfo ) const
+	MatrixType Backprop( const MatrixType& nextDodx ) const
 	{
-		assert( nextInfo.ModuleInputDim() == OutputDim() );
+		assert( nextDodx.cols() == OutputDim() );
 
 		BackpropInfo midInfo;
 		
 		VectorType err = ComputeError();
-		midInfo.dodx = MatrixType( nextInfo.SystemOutputDim(), err.size() );
-		for( unsigned int i = 0; i < nextInfo.SystemOutputDim(); i++ )
-		{
-			midInfo.dodx.row(i) = nextInfo.dodx(i) * _scale * err.transpose();
-		}
+		MatrixType thisDodx = _scale * nextDodx * err.transpose();
+		// MatrixType thisDodx = MatrixType( nextDodx.rows(), err.size() );
+		// for( unsigned int i = 0; i < nextDodx.rows(); i++ )
+		// {
+		// 	thisDodx.row(i) = nextInfo.dodx(i,0) * _scale * err.transpose();
+		// }
 
-		return _base.Backprop( midInfo );
+		return _base.Backprop( thisDodx );
 	}
 
 private:

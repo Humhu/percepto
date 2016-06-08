@@ -22,40 +22,23 @@ public:
 
 	MatrixSize OutputSize() const { return _baseA.OutputSize(); }
 	unsigned int OutputDim() const { return _baseA.OutputDim(); }
-	unsigned int ParamDim() const { return _baseA.ParamDim() + _baseB.ParamDim(); }
-
-	void SetParamsVec( const VectorType& v )
-	{
-		assert( v.size() == ParamDim() );
-		_baseA.SetParamsVec( v.head( _baseA.ParamDim() ) );
-		_baseB.SetParamsVec( v.tail( _baseB.ParamDim() ) );
-	}
-
-	VectorType GetParamsVec() const
-	{
-		return ConcatenateVer( _baseA.GetParamsVec(), _baseB.GetParamsVec() );
-	}
 
 	OutputType Evaluate() const
 	{
 		return _baseA.Evaluate() + _baseB.Evaluate();
 	}
 
-	BackpropInfo Backprop( const BackpropInfo& nextInfo )
+	MatrixType Backprop( const MatrixType& nextDodx )
 	{
-		assert( nextInfo.ModuleInputDim() == OutputDim() );
+		if( nextDodx.cols() != OutputDim() )
+		{
+			throw std::runtime_error( "AdditiveWrapper: Backprop dim error." );
+		}
 
-		BackpropInfo accInfo; // We are going to concatenate all infos
-		accInfo.dodx = MatrixType( nextInfo.SystemOutputDim(), 2 * OutputDim() );
-		accInfo.dodw = MatrixType( nextInfo.SystemOutputDim(), ParamDim() );
-		
-		BackpropInfo baseInfo = _baseA.Backprop( nextInfo );
-		accInfo.dodx.leftCols( _baseA.OutputDim() ) = baseInfo.dodx;
-		accInfo.dodw.leftCols( _baseA.ParamDim() ) = baseInfo.dodw;
-		baseInfo = _baseB.Backprop( nextInfo );
-		accInfo.dodx.rightCols( _baseB.OutputDim() ) = baseInfo.dodx;
-		accInfo.dodw.rightCols( _baseB.ParamDim() ) = baseInfo.dodw;
-		return accInfo;
+		// Pass the info to the constituents
+		// This module's inputs are A and B, respectively
+		return ConcatenateHor( _baseA.Backprop( nextDodx ),
+		                       _baseB.Backprop( nextDodx ) );
 	}
 
 private:
@@ -79,38 +62,6 @@ public:
 
 	MatrixSize OutputSize() const { return _bases[0].OutputSize(); }
 	unsigned int OutputDim() const { return _bases[0].OutputDim(); }
-	unsigned int ParamDim() const 
-	{ 
-		unsigned int acc = 0;
-		for( unsigned int i = 0; i < _bases.size(); ++i )
-		{
-			acc += _bases[i].ParamDim();
-		}
-		return acc;
-	}
-
-	void SetParamsVec( const VectorType& v )
-	{
-		assert( v.size() == ParamDim() );
-		unsigned int ind = 0;
-		for( unsigned int i = 0; i < _bases.size(); ++i )
-		{
-			_bases[i].SetParamsVec( v.segment( ind, _bases[i].ParamDim() ) );
-			ind += _bases[i].ParamDim();
-		}
-	}
-
-	VectorType GetParamsVec() const
-	{
-		VectorType v( ParamDim() );
-		unsigned int ind = 0;
-		for( unsigned int i = 0; i < _bases.size(); ++i )
-		{
-			v.segment( ind, _bases[i].ParamDim() ) = _bases[i].GetParamsVec();
-			ind += _bases[i].ParamDim();
-		}
-		return v;
-	}
 
 	OutputType Evaluate() const
 	{
@@ -122,25 +73,24 @@ public:
 		return out;
 	}
 
-	BackpropInfo Backprop( const BackpropInfo& nextInfo )
+	MatrixType Backprop( const MatrixType& nextDodx )
 	{
-		assert( nextInfo.ModuleInputDim() == OutputDim() );
+		if( nextDodx.cols() != OutputDim() )
+		{
+			throw std::runtime_error( "AdditiveSumWrapper: Backprop dim error." );
+		}
 
-		BackpropInfo accInfo; // We are going to concatenate all infos
-		unsigned int sumInputDim = _bases.size() * OutputDim();
-		accInfo.dodx = MatrixType( nextInfo.SystemOutputDim(), sumInputDim );
-		accInfo.dodw = MatrixType( nextInfo.SystemOutputDim(), ParamDim() );
-		
-		unsigned int xInd = 0, wInd = 0;
+		MatrixType thisDodx = MatrixType( nextDodx.rows(), 
+		                            _bases.size() * nextDodx.cols() );
 		for( unsigned int i = 0; i < _bases.size(); ++i )
 		{
-			BackpropInfo baseInfo = _bases[i].Backprop( nextInfo );
-			accInfo.dodx.block( 0, xInd, 0, _bases[i].OutputDim() ) = baseInfo.dodx;
-			accInfo.dodw.block( 0, wInd, 0, _bases[i].ParamDim() ) = baseInfo.dodw;
-			xInd += _bases[i].OutputDim();
-			wInd += _bases[i].ParamDim();
+			_bases[i].Backprop( nextDodx );
+			thisDodx.block( 0, 
+			                nextDodx.cols() * i, 
+			                nextDodx.rows(), 
+			                nextDodx.cols() ) = nextDodx;
 		}
-		return accInfo;
+		return thisDodx;
 	}
 
 private:

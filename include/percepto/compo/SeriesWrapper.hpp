@@ -2,11 +2,12 @@
 
 #include "percepto/utils/MatrixUtils.hpp"
 #include "percepto/compo/BackpropInfo.hpp"
+#include <deque>
+#include <iostream>
 
 namespace percepto
 {
 
-// TODO Generalize to N series elements?
 // Joins two networks together into a single network object by
 // taking the output of head and feeding it into tail
 template <typename Head, typename Tail>
@@ -15,55 +16,89 @@ class SeriesWrapper
 public:
 
 	typedef Head HeadType;
-	typedef typename HeadType::InputType InputType;
 	typedef Tail TailType;
 	typedef typename TailType::OutputType OutputType;
 
 	SeriesWrapper( HeadType& head, TailType& tail )
 	: _head( head ), _tail( tail ) 
+	{}
+
+	OutputType Evaluate() const
 	{
-		assert( head.OutputDim() == tail.InputDim() );
+		return _tail.Evaluate( _head.Evaluate() );
 	}
 
-	OutputType Evaluate( const InputType& input ) const
+	MatrixType Backprop( const MatrixType& nextDodx ) const
 	{
-		return _tail.Evaluate( _head.Evaluate( input ) );
+		MatrixType tailDodx = _tail.Backprop( _head.Evaluate(), nextDodx );
+		return _head.Backprop( tailDodx );
 	}
 
-	BackpropInfo Backprop( const InputType& input,
-	                       const BackpropInfo& nextNets ) const
-	{
-		BackpropInfo tailInfo = _tail.Backprop( _head.Evaluate( input ), nextNets );
-		BackpropInfo headInfo = _head.Backprop( input, tailInfo );
-		BackpropInfo thisInfo;
-		
-		thisInfo.dodw = ConcatenateHor( headInfo.dodw, tailInfo.dodw );
-		thisInfo.dodx = headInfo.dodx * tailInfo.dodx;
-		return thisInfo;
-	}
-
-	unsigned int InputDim() const { return _head.InputDim(); }
+	MatrixSize OutputSize() const { return _tail.OutputSize(); }
 	unsigned int OutputDim() const { return _tail.OutputDim(); }
-	unsigned int ParamDim() const { return _head.ParamDim() + _tail.ParamDim(); }
-
-	void SetParamsVec( const VectorType& params )
-	{
-		_head.SetParamsVec( params.head( _head.ParamDim() ) );
-		_tail.SetParamsVec( params.tail( _tail.ParamDim() ) );
-	}
-
-	VectorType GetParamsVec() const
-	{
-		VectorType vec( ParamDim() );
-		vec << _head.GetParamsVec(), _tail.GetParamsVec();
-		return vec;
-	}
 
 private:
 
 	HeadType& _head;
 	TailType& _tail;
+};
 
+template <typename Head, typename Tail, 
+          template<typename,typename> class Container = std::deque>
+class SequenceWrapper
+{
+public:
+
+	typedef Head HeadType;
+	typedef Tail TailType;
+	typedef Container<TailType, std::allocator<TailType>> ContainerType;
+	typedef typename Tail::OutputType OutputType;
+
+	SequenceWrapper( HeadType& head, ContainerType& tails ) 
+	: _head( head ), _tails( tails ) {}
+
+	OutputType Evaluate() const
+	{
+		OutputType out = _head.Evaluate();
+		for( unsigned int i = 0; i < _tails.size(); i++ )
+		{
+			out = _tails[i].Evaluate( out );
+		}
+		return out;
+	}
+
+	MatrixSize OutputSize() const { return _tails.back().OutputSize(); }
+	unsigned int OutputDim() const { return _tails.back().OutputDim(); }
+
+	MatrixType Backprop( const MatrixType& nextDodx )
+	{
+		if( nextDodx.cols() != OutputDim() )
+		{
+			throw std::runtime_error( "SequenceWrapper: Backprop dim error." );
+		}
+
+		std::vector<OutputType> inputs;
+		inputs.reserve( _tails.size() + 1 );
+		inputs.push_back( _head.Evaluate() );
+		for( unsigned int i = 0; i < _tails.size(); ++i )
+		{
+			inputs.push_back( _tails[i].Evaluate( inputs[i] ) );
+		}
+
+		MatrixType layerDodx = nextDodx;
+		for( int i = _tails.size()-1; i >= 0; --i )
+		{
+			layerDodx = _tails[i].Backprop( inputs[i], layerDodx );
+		}
+		// This module's input is head's input
+
+		return _head.Backprop( layerDodx );
+	}
+
+private:
+
+	HeadType& _head;
+	ContainerType& _tails;
 };
 
 }

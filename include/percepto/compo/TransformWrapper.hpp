@@ -1,5 +1,5 @@
 #pragma once
-#include "percepto/compo/BackpropInfo.hpp"
+#include "percepto/PerceptoTypes.h"
 #include <memory>
 #include <stdexcept>
 
@@ -27,8 +27,6 @@ public:
 		}
 	}
 
-	unsigned int ParamDim() const { return _base.ParamDim(); }
-
 	unsigned int OutputDim() const { return _transform.rows() * _transform.rows(); }
 	MatrixSize OutputSize() const 
 	{ 
@@ -41,12 +39,12 @@ public:
 		return MatrixSize( _transform.cols(), _transform.cols() );
 	}
 
-	void SetParamsVec( const VectorType& v ) { _base.SetParamsVec( v ); }
-	VectorType GetParamsVec() const { return _base.GetParamsVec(); }
-
-	BackpropInfo Backprop( const BackpropInfo& nextInfo )
+	MatrixType Backprop( const MatrixType& nextDodx )
 	{
-		assert( nextInfo.ModuleInputDim() == OutputDim() );
+		if( nextDodx.cols() != OutputDim() )
+		{
+			throw std::runtime_error( "TransformWrapper: Backprop dim error." );
+		}
 
 		MatrixType dSdx( OutputDim(), InputDim() );
 		MatrixType d = MatrixType::Zero( _base.OutputSize().rows, 
@@ -60,9 +58,9 @@ public:
 			d(i) = 0;
 		}
 
-		BackpropInfo midInfo;
-		midInfo.dodx = nextInfo.dodx * dSdx;
-		return _base.Backprop( midInfo );
+		MatrixType thisDodx = nextDodx * dSdx;
+		_base.Backprop( thisDodx );
+		return thisDodx;
 	}
 
 	OutputType Evaluate() const

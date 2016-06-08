@@ -14,22 +14,14 @@ namespace percepto
 /**
  * @brief A fully connected unit with rectified linear unit activation. 
  */
-typedef FullyConnectedNet<HingeActivation> ReLUNet;
-
-/**
- * @brief A fully connected unit with sigmoid activation.
- */
-typedef FullyConnectedNet<SigmoidActivation> PerceptronNet;
-
-/**
- * @brief A fully connected unit without any activation units. Should be
- * composed with another unit as a final output layer.
- */
-typedef LinearLayer<NullActivation> UnrectifiedLinearLayer;
+typedef FullyConnectedNet<LinearLayer, HingeActivation> ReLUNet;
 
 /**
  * @brief A fully connected unit with sigmoid activations followed by a final
  * linear output layer.
  */
-typedef SeriesWrapper<PerceptronNet, UnrectifiedLinearLayer> PerceptronRegressionNet;
+typedef FullyConnectedNet<LinearLayer, SigmoidActivation> PerceptronSubnet;
+typedef SeriesWrapper<InputWrapper<PerceptronSubnet>, LinearLayer<NullActivation>> PerceptronSeries;
+typedef InputChainWrapper<InputWrapper<PerceptronSubnet>, PerceptronSeries> PerceptronNet;
+
 }

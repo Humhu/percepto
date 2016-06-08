@@ -1,66 +1,53 @@
 #pragma once
 
-#include "percepto/compo/BackpropInfo.hpp"
+#include "percepto/PerceptoTypes.h"
 
 namespace percepto
 {
 
 /*! \brief Exponential regressor that takes a vector output and passes it
  * element-wise through an exponential. */
-template <typename Regressor>
+template <typename Base>
 class ExponentialWrapper
 {
 public:
 
-	typedef Regressor BaseType;
-	typedef typename BaseType::InputType InputType;
+	typedef Base BaseType;
 	typedef typename BaseType::OutputType OutputType;
 
 	/*! \brief Creates an exponential regressor around a base regressor. Stores
 	 * a reference to the regressor. */
 	ExponentialWrapper( BaseType& r )
-	: _regressor( r ) {}
+	: _base( r ) {}
 
-	unsigned int InputDim() const { return _regressor.InputDim(); }
-	unsigned int OutputDim() const { return _regressor.OutputDim(); }
-	unsigned int ParamDim() const { return _regressor.ParamDim(); }
+	unsigned int OutputDim() const { return _base.OutputDim(); }
 
-	void SetParamsVec( const VectorType& vec ) 
+	MatrixType Backprop( const MatrixType& nextDodx )
 	{
-		_regressor.SetParamsVec( vec );
-	}
+		if( nextDodx.cols() != OutputDim() )
+		{
+			throw std::runtime_error( "ExponentialWrapper: Backprop dim error." );
+		}
 
-	VectorType GetParamsVec() const
-	{
-		return _regressor.GetParamsVec();
-	}
-
-	// TODO Remove extraneous forward passes
-	BackpropInfo Backprop( const InputType& input, const BackpropInfo& nextInfo )
-	{
-		assert( nextInfo.ModuleInputDim() == OutputDim() );
-
-		BackpropInfo midInfo;
-		VectorType mid = _regressor.Evaluate( input );
+		VectorType mid = _base.Evaluate();
 
 		MatrixType dydx = MatrixType::Zero( OutputDim(), OutputDim() );
 		for( unsigned int i = 0; i < OutputDim(); i++ )
 		{
 			dydx(i,i) = std::exp( mid(i) );
 		}
-		midInfo.dodx = nextInfo.dodx * dydx;
-
-		return _regressor.Backprop( input, midInfo );
+		MatrixType thisDodx = nextDodx * dydx;
+		return _base.Backprop( thisDodx );
 	}
 
-	OutputType Evaluate( const InputType& input ) const
+	OutputType Evaluate() const
 	{
-		return _regressor.Evaluate( input ).array().exp().matrix();
+		return _base.Evaluate().array().exp().matrix();
 	}
 
 private:
 
-	BaseType& _regressor;
+	BaseType& _base;
 
 };
 

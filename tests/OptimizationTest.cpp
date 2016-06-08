@@ -26,36 +26,38 @@
 using namespace percepto;
 
 typedef ReLUNet BaseRegressor;
-typedef ExponentialWrapper<BaseRegressor> ExpReg;
-typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpReg> PSDReg;
-typedef RegressorOffsetWrapper<PSDReg> PDReg;
+typedef InputWrapper<BaseRegressor> BaseModule;
+typedef ExponentialWrapper<BaseModule> ExpModule;
+typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpModule> PSDModule;
+typedef OffsetWrapper<PSDModule> PDModule;
+typedef InputChainWrapper<BaseModule,PDModule> CovEstimator;
 
-typedef InputWrapper<PDReg> CovEst;
-typedef TransformWrapper<CovEst> TransCovEst;
-typedef AdditiveWrapper<CovEst,CovEst> SumCovEst;
-typedef GaussianLogLikelihoodCost<SumCovEst> GLL;
+typedef InputWrapper<CovEstimator> CovEstimate;
+typedef TransformWrapper<CovEstimate> TransCovEstimate;
+typedef AdditiveWrapper<CovEstimate,CovEstimate> SumCovEstimate;
+typedef GaussianLogLikelihoodCost<SumCovEstimate> GLL;
 
 typedef MeanPopulationCost<GLL> MeanGLL;
 typedef StochasticPopulationCost<GLL> StochasticGLL;
-typedef ParameterL2Cost<MeanGLL> PenalizedMeanGLL;
-typedef ParameterL2Cost<StochasticGLL> PenalizedStochasticGLL;
+typedef AdditiveWrapper<MeanGLL,ParameterL2Cost> PenalizedMeanGLL;
+typedef AdditiveWrapper<StochasticGLL,ParameterL2Cost> PenalizedStochasticGLL;
 
 typedef NLOptInterface NLOptimizer;
 
 template <class Optimizer, typename Cost>
 void TestOptimization( Optimizer& opt, Cost& cost,
+                       ParametricWrapper& para,
                        const VectorType& initParams,
                        const VectorType& trueParams )
 {
-	std::cout << "Beginning test of with " << cost.ParamDim() << " parameters... " << std::endl;
-	
+	std::cout << "Beginning test with " << para.ParamDim() << " parameters." << std::endl;
 	double initialObjective = cost.Evaluate();
 
 	// opt.SetVerbosity( false );
 	OptimizationResults results;
 	try
 	{
-		cost.SetParamsVec( initParams );
+		para.SetParamsVec( initParams );
 		results = opt.Optimize( cost );
 	}
 	catch( std::runtime_error e )
@@ -64,15 +66,15 @@ void TestOptimization( Optimizer& opt, Cost& cost,
 		return;
 	}
 
-	VectorType finalParams = cost.GetParamsVec();
+	VectorType finalParams = para.GetParamsVec();
 	VectorType delta = trueParams - finalParams;
 	double errorNorm = delta.norm() / delta.size();
 	double errorMax = std::max( -delta.minCoeff(), delta.maxCoeff() );
 
-	cost.SetParamsVec( trueParams );
+	para.SetParamsVec( trueParams );
 	double minCost = cost.Evaluate();
 
-	cost.SetParamsVec( finalParams );
+	para.SetParamsVec( finalParams );
 
 	std::cout << "True params: " << std::endl << trueParams.transpose() << std::endl;
 	std::cout << "Final params: " << std::endl << finalParams.transpose() << std::endl;
@@ -94,7 +96,6 @@ int main( void )
 {
 
 	unsigned int matDim = 6;
-	unsigned int lFeatDim = 1;
 	unsigned int dFeatDim = 5;
 	unsigned int lOutDim = TriangularMapping::num_positions( matDim - 1 );
 	unsigned int dOutDim = matDim;
@@ -102,8 +103,9 @@ int main( void )
 	unsigned int dNumHiddenLayers = 1;
 	unsigned int dLayerWidth = 10;
 
+	double l2Weight = 0;
+
 	std::cout << "Matrix dim: " << matDim << std::endl;
-	std::cout << "L feature dim: " << lFeatDim << std::endl;
 	std::cout << "D feature dim: " << dFeatDim << std::endl;
 	std::cout << "L output dim: " << lOutDim << std::endl;
 	std::cout << "D output dim: " << dOutDim << std::endl;
@@ -113,10 +115,10 @@ int main( void )
 
 	// True model
 	// A
-	ConstantRegressor trueLregA = ConstantRegressor( MatrixType( lOutDim, 1 ) );
-	VectorType params = trueLregA.GetParamsVec();
+	ConstantRegressor trueLRegA = ConstantRegressor( MatrixType( lOutDim, 1 ) );
+	VectorType params = trueLRegA.GetParamsVec();
 	randomize_vector( params );
-	trueLregA.SetParamsVec( params );
+	trueLRegA.SetParamsVec( params );
 
 	BaseRegressor trueDregA( dFeatDim, dOutDim, dNumHiddenLayers, 
 	                        dLayerWidth, relu );
@@ -124,16 +126,17 @@ int main( void )
 	randomize_vector( params );
 	trueDregA.SetParamsVec( params );
 
-	ExpReg trueExpRegA( trueDregA );
-	PSDReg truePsdRegA( trueLregA, trueExpRegA );
-	PDReg truePdRegA( truePsdRegA, pdOffset );
-	VectorType trueParamsA = truePdRegA.GetParamsVec();
+	BaseModule trueDregWrapperA( trueDregA );
+	ExpModule trueExpModuleA( trueDregWrapperA );
+	PSDModule truePsdRegA( trueLRegA, trueExpModuleA );
+	PDModule truePdRegA( truePsdRegA, pdOffset );
+	CovEstimator trueEstimatorA( trueDregWrapperA, truePdRegA );
 
 	// B
-	ConstantRegressor trueLregB = ConstantRegressor( MatrixType( lOutDim, 1 ) );
-	params = trueLregB.GetParamsVec();
+	ConstantRegressor trueLRegB = ConstantRegressor( MatrixType( lOutDim, 1 ) );
+	params = trueLRegB.GetParamsVec();
 	randomize_vector( params );
-	trueLregB.SetParamsVec( params );
+	trueLRegB.SetParamsVec( params );
 
 	BaseRegressor trueDregB( dFeatDim, dOutDim, dNumHiddenLayers, 
 	                         dLayerWidth, relu );
@@ -141,45 +144,67 @@ int main( void )
 	randomize_vector( params );
 	trueDregB.SetParamsVec( params );
 
-	ExpReg trueExpRegB( trueDregB );
-	PSDReg truePsdRegB( trueLregB, trueExpRegB );
-	PDReg truePdRegB( truePsdRegB, pdOffset );
-	VectorType trueParamsB = truePdRegB.GetParamsVec();
+	BaseModule trueDregWrapperB( trueDregB );
+	ExpModule trueExpModuleB( trueDregWrapperB );
+	PSDModule truePsdRegB( trueLRegB, trueExpModuleB );
+	PDModule truePdRegB( truePsdRegB, pdOffset );
+	CovEstimator trueEstimatorB( trueDregWrapperB, truePdRegB );
+
+	ParametricWrapper trueParametric;
+	trueParametric.AddParametric( &trueLRegA );
+	trueParametric.AddParametric( &trueDregA );
+	trueParametric.AddParametric( &trueLRegB );
+	trueParametric.AddParametric( &trueDregB );
 
 	// Initial model
 	// A
-	ConstantRegressor lregA( MatrixType::Zero( lOutDim, 1 ) );
+	ConstantRegressor lRegA( MatrixType::Zero( lOutDim, 1 ) );
 
-	BaseRegressor dregA( dFeatDim, dOutDim, dNumHiddenLayers, 
+	BaseRegressor dRegA( dFeatDim, dOutDim, dNumHiddenLayers, 
 	                    dLayerWidth, relu );
-	params = dregA.GetParamsVec();
+	params = dRegA.GetParamsVec();
 	randomize_vector( params );
-	dregA.SetParamsVec( params );
+	dRegA.SetParamsVec( params );
+	BaseModule dRegWrapperA( dRegA );
+	ExpModule expRegA( dRegWrapperA );
+	PSDModule psdRegA( lRegA, expRegA );
+	PDModule pdRegA( psdRegA, pdOffset );
+	CovEstimator estimatorA( dRegWrapperA, pdRegA );
 
-	ExpReg expRegA( dregA );
-	PSDReg psdRegA( lregA, dregA );
-	PDReg pdRegA( psdRegA, pdOffset );
+	ParametricWrapper parametricA;
+	parametricA.AddParametric( &lRegA );
+	parametricA.AddParametric( &dRegA );
 
 	// B
-	ConstantRegressor lregB( MatrixType::Zero( lOutDim, 1 ) );
+	ConstantRegressor lRegB( MatrixType::Zero( lOutDim, 1 ) );
 
-	BaseRegressor dregB( dFeatDim, dOutDim, dNumHiddenLayers, 
+	BaseRegressor dRegB( dFeatDim, dOutDim, dNumHiddenLayers, 
 	                    dLayerWidth, relu );
-	params = dregB.GetParamsVec();
+	params = dRegB.GetParamsVec();
 	randomize_vector( params );
-	dregB.SetParamsVec( params );
+	dRegB.SetParamsVec( params );
+	BaseModule dRegWrapperB( dRegB );
+	ExpModule expRegB( dRegWrapperB );
+	PSDModule psdRegB( lRegB, expRegB );
+	PDModule pdRegB( psdRegB, pdOffset );
+	CovEstimator estimatorB( dRegWrapperB, pdRegB );
 
-	ExpReg expRegB( dregB );
-	PSDReg psdRegB( lregB, dregB );
-	PDReg pdRegB( psdRegB, pdOffset );
+	ParametricWrapper parametricB;
+	parametricB.AddParametric( &lRegB );
+	parametricB.AddParametric( &dRegB );
+
+	ParametricWrapper jointParametric;
+	jointParametric.AddParametric( &parametricA );
+	jointParametric.AddParametric( &parametricB );
+	ParameterL2Cost l2Cost( jointParametric, l2Weight );
 
 	// Create test population
 	unsigned int popSize = 1000;
 	std::cout << "Sampling " << popSize << " datapoints..." << std::endl;
 	
-	std::vector<CovEst> estimatesA, estimatesB;
-	std::vector<TransCovEst> transEstsA, transEstsB;
-	std::vector<SumCovEst> sumEsts;
+	std::vector<CovEstimate> estimatesA, estimatesB;
+	std::vector<TransCovEstimate> transEstsA, transEstsB;
+	std::vector<SumCovEstimate> sumEsts;
 	std::vector<GLL> baseCosts;
 	estimatesA.reserve( popSize );
 	estimatesB.reserve( popSize );
@@ -193,27 +218,20 @@ int main( void )
 
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		PDReg::InputType pdInputA;
-		pdInputA.lInput = VectorType( lFeatDim );
-		pdInputA.dInput = VectorType( dFeatDim );
-		randomize_vector( pdInputA.lInput );
-		randomize_vector( pdInputA.dInput );
-
-		PDReg::InputType pdInputB;
-		pdInputB.lInput = VectorType( lFeatDim );
-		pdInputB.dInput = VectorType( dFeatDim );
-		randomize_vector( pdInputB.lInput );
-		randomize_vector( pdInputB.dInput );
+		VectorType dInputA( dFeatDim );
+		randomize_vector( dInputA );
+		VectorType dInputB( dFeatDim );
+		randomize_vector( dInputB );
 
 		MatrixType transform = MatrixType::Random( matDim, matDim );
-		MatrixType trueCovA = transform * truePdRegA.Evaluate( pdInputA ) * transform.transpose();
-		MatrixType trueCovB = transform * truePdRegB.Evaluate( pdInputB ) * transform.transpose();
+		MatrixType trueCovA = transform * trueEstimatorA.Evaluate( dInputA ) * transform.transpose();
+		MatrixType trueCovB = transform * trueEstimatorB.Evaluate( dInputB ) * transform.transpose();
 
 		mvg.SetCovariance( trueCovA + trueCovB );
 		VectorType sample = mvg.Sample(); 
 
-		estimatesA.emplace_back( pdRegA, pdInputA );
-		estimatesB.emplace_back( pdRegB, pdInputB );
+		estimatesA.emplace_back( estimatorA, dInputA );
+		estimatesB.emplace_back( estimatorB, dInputB );
 		transEstsA.emplace_back( estimatesA.back(), transform );
 		transEstsB.emplace_back( estimatesB.back(), transform );
 		sumEsts.emplace_back( estimatesA.back(), estimatesB.back() );
@@ -222,16 +240,14 @@ int main( void )
 	std::cout << "Sampling complete." << std::endl;
 
 	MeanGLL meanCost( baseCosts );
-	PenalizedMeanGLL penalizedMeanCosts( meanCost, 0 );
+	PenalizedMeanGLL penalizedMeanCosts( meanCost, l2Cost );
 
 	unsigned int minibatchSize = 30;
 	StochasticGLL stochasticCost( baseCosts, minibatchSize );
-	PenalizedStochasticGLL penalizedStochasticCosts( stochasticCost, 1E-6 );
+	PenalizedStochasticGLL penalizedStochasticCosts( stochasticCost, l2Cost );
 
-	VectorType initParams = sumEsts[0].GetParamsVec();
-	VectorType trueParams( trueParamsA.size() + trueParamsB.size() );
-	trueParams.head( trueParamsA.size() ) = trueParamsA;
-	trueParams.tail( trueParamsB.size() ) = trueParamsB;
+	VectorType initParams = jointParametric.GetParamsVec();
+	VectorType trueParams = trueParametric.GetParamsVec();
 
 	// NLOptParameters optParams;
 	// optParams.algorithm = nlopt::LD_LBFGS;
@@ -240,17 +256,18 @@ int main( void )
 
 	AdamStepper stepper;
 	SimpleConvergenceCriteria criteria;
-	criteria.maxRuntime = 60;
+	criteria.maxRuntime = 120;
 	criteria.minElementGradient = 1E-3;
 	criteria.minObjectiveDelta = 1E-3;
 	SimpleConvergence convergence( criteria );
 
-	AdamOptimizer modOpt( stepper, convergence );
-	TestOptimization( modOpt, penalizedStochasticCosts, initParams, trueParams );
+	AdamOptimizer modOpt( stepper, convergence, jointParametric );
+	TestOptimization( modOpt, penalizedStochasticCosts, jointParametric, 
+	                  initParams, trueParams );
 	double finalMeanObj = meanCost.Evaluate();
-	meanCost.SetParamsVec( initParams );
+	jointParametric.SetParamsVec( initParams );
 	double initialMeanObj = meanCost.Evaluate();
-	meanCost.SetParamsVec( trueParams );
+	jointParametric.SetParamsVec( trueParams );
 	double trueMeanObj = meanCost.Evaluate();
 	std::cout << "Initial mean objective: " << initialMeanObj << std::endl;
 	std::cout << "Final mean objective: " << finalMeanObj << std::endl;

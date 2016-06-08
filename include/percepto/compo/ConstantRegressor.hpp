@@ -1,6 +1,6 @@
 #pragma once
 
-#include "percepto/compo/BackpropInfo.hpp"
+#include "percepto/compo/Parametric.hpp"
 
 namespace percepto
 {
@@ -9,10 +9,10 @@ namespace percepto
  * \brief A regressor that returns a constant output.
  */
 class ConstantRegressor
+: public Parametric
 {
 public:
 
-	typedef MatrixType InputType; // Won't actually be used, but we need an input
 	typedef MatrixType ParamType;
 	typedef MatrixType OutputType;
 
@@ -22,9 +22,6 @@ public:
 
 	ConstantRegressor( const ParamType& params )
 	: _W( params ) {}
-
-	unsigned int InputDim() const { return 0; }
-	MatrixSize InputSize() const { return MatrixSize( 0, 0 ); }
 
 	unsigned int OutputDim() const { return _W.size(); }
 	MatrixSize OutputSize() const { return MatrixSize( _W.rows(), _W.cols() ); }
@@ -38,7 +35,7 @@ public:
 		_W = p;
 	}
 
-	void SetParamsVec( const VectorType& vec )
+	virtual void SetParamsVec( const VectorType& vec )
 	{
 		assert( vec.size() == _W.size() );
 		_W = Eigen::Map<const ParamType>( vec.data(), _W.rows(), _W.cols() );
@@ -49,23 +46,27 @@ public:
 		return _W;
 	}
 
-	VectorType GetParamsVec() const
+	virtual VectorType GetParamsVec() const
 	{
 		return Eigen::Map<const VectorType>( _W.data(), _W.size(), 1 );
 	}
 
-	BackpropInfo Backprop( const InputType& input, const BackpropInfo& nextInfo )
+	MatrixType Backprop( const MatrixType& nextDodx )
 	{
-		assert( nextInfo.ModuleInputDim() == OutputDim() );
+		if( nextDodx.cols() != OutputDim() )
+		{
+			throw std::runtime_error( "ConstantRegressor: Backprop dim error." );
+		}
+		// This module's dodw is just the next one's dodx since 
+		// its params are its outputs
+		// This module has no inputs, so no input derivative
+		Parametric::AccumulateWeightDerivs( nextDodx );
 
-		BackpropInfo thisInfo;
-		// thisInfo.dodx is empty since this regressor takes no inputs
-		thisInfo.dodx = MatrixType( nextInfo.SystemOutputDim(), 0 );
-		thisInfo.dodw = nextInfo.dodx;
-		return thisInfo;
+		// Pretend it has 1 input
+		return MatrixType::Zero( nextDodx.rows(), 1 );
 	}
 
-	OutputType Evaluate( const InputType& input ) const
+	OutputType Evaluate() const
 	{
 		return _W;
 	}
