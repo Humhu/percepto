@@ -6,6 +6,7 @@
 
 #include "percepto/compo/InputWrapper.hpp"
 #include "percepto/compo/TransformWrapper.hpp"
+#include "percepto/compo/InverseWrapper.hpp"
 
 #include "percepto/utils/LowerTriangular.hpp"
 #include "percepto/utils/Randomization.hpp"
@@ -28,7 +29,8 @@ typedef InputWrapper<BaseRegressor> BaseModule;
 typedef ExponentialWrapper<BaseModule> ExpModule;
 typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpModule> PSDModule;
 typedef OffsetWrapper<PSDModule> PDModule;
-typedef InputChainWrapper<BaseModule,PDModule> CovEstimate;
+typedef PSDInverseWrapper<PDModule> InvPDModule;
+typedef InputChainWrapper<BaseModule,InvPDModule> CovEstimate;
 
 typedef TransformWrapper<CovEstimate> TransCovEstimate;
 typedef GaussianLogLikelihoodCost<TransCovEstimate> GLL;
@@ -66,6 +68,7 @@ int main( void )
 	ExpModule expreg( baseIn );
 	PSDModule psdReg( lReg, expreg );
 	PDModule pdReg( psdReg, 1E-3 * MatrixType::Identity( matDim, matDim ) );
+	InvPDModule invPdReg( pdReg );
 	ParametricWrapper pdParameters;
 	
 	pdParameters.AddParametric( &lReg );
@@ -87,7 +90,7 @@ int main( void )
 		VectorType dInput( dFeatDim );
 		randomize_vector( dInput );
 
-		estimates.emplace_back( baseIn, pdReg, dInput );
+		estimates.emplace_back( baseIn, invPdReg, dInput );
 		transformedEsts.emplace_back( estimates.back(), MatrixType::Random( matDim - 1, matDim ) );
 		likelihoods.emplace_back( transformedEsts.back(), VectorType::Random( matDim - 1 ) );
 	}
@@ -107,7 +110,7 @@ int main( void )
 	}
 	std::cout << "Max error: " << maxSeen << std::endl;
 	std::cout << "Avg max error: " << acc / popSize << std::endl;
-
+	
 	// 5. Test transformed and damped cholesky gradients
 	std::cout << "Testing transformed gradients..." << std::endl;
 	maxSeen = -std::numeric_limits<double>::infinity();
@@ -151,7 +154,7 @@ int main( void )
 	}
 	std::cout << "Max error: " << maxSeen << std::endl;
 	std::cout << "Avg max error: " << acc / popSize << std::endl;
-
+	
 }	
 
 

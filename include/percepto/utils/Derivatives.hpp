@@ -14,18 +14,18 @@ std::vector<double> EvalMatDeriv( Regressor& r, Parametric& p )
 
 	typedef typename Regressor::OutputType OutType;
 
-	OutType output, trueOutput;
+	OutType startOutput, trueOutput;
 	VectorType paramsVec = p.GetParamsVec();
 	MatrixType sysDodx = MatrixType::Identity( r.OutputDim(), r.OutputDim() );
 	p.ResetAccumulators();
 	r.Backprop( sysDodx );
 	MatrixType dodw = p.GetAccWeightDerivs();
 
-	output = r.Evaluate();
+	startOutput = r.Evaluate();
 
 	for( unsigned int ind = 0; ind < p.ParamDim(); ind++ )
 	{
-		// Take a step and check the output
+		// Take a step and check the startOutput
 		VectorType testParamsVec = paramsVec;
 		testParamsVec[ind] += stepSize;
 		p.SetParamsVec( testParamsVec );
@@ -34,8 +34,12 @@ std::vector<double> EvalMatDeriv( Regressor& r, Parametric& p )
 		
 		VectorType gi = dodw.col(ind);
 		Eigen::Map<MatrixType> dS( gi.data(), r.OutputSize().rows, r.OutputSize().cols );
-		MatrixType predOut = output + dS*stepSize;
+		MatrixType predOut = startOutput + dS*stepSize;
 		double predErr = ( predOut - trueOutput ).norm();
+
+		// std::cout << "nominal: " << std::endl << startOutput << std::endl;
+		// std::cout << "true - nom: " << std::endl << trueOutput - startOutput << std::endl;
+		// std::cout << "pred - nom: " << std::endl << predOut - startOutput << std::endl;
 
 		errors[ind] = predErr;
 	}
@@ -51,31 +55,31 @@ std::vector<double> EvalCostDeriv( Cost& cost, Parametric& p )
 
 	typedef typename Cost::OutputType OutType;
 
-	OutType output, trueOutput;
+	OutType startOutput, trueOutput;
 	VectorType paramsVec = p.GetParamsVec();
 	MatrixType sysDodx = MatrixType::Identity(1,1);
 	p.ResetAccumulators();
 	MatrixType dodx = cost.Backprop( sysDodx );
 	MatrixType dodw = p.GetAccWeightDerivs();
 
-	output = cost.Evaluate();
+	startOutput = cost.Evaluate();
 
 	for( unsigned int ind = 0; ind < dodw.size(); ind++ )
 	{
-		// Take a step and check the output
+		// Take a step and check the startOutput
 		VectorType testParamsVec = paramsVec;
 		testParamsVec[ind] += stepSize;
 		p.SetParamsVec( testParamsVec );
 		trueOutput = cost.Evaluate();
 		p.SetParamsVec( paramsVec );
 
-		// double dOut = output - trueOutput;
+		// double dOut = startOutput - trueOutput;
 		// if( dOut == 0 ) { dOut = 1; }
-		double predOut = output + dodw(ind)*stepSize;
+		double predOut = startOutput + dodw(ind)*stepSize;
 		double predErr = std::abs( predOut - trueOutput );
 
-		// std::cout << "err: " << predErr << " true - nom: " << trueOutput - output
-		//           << " pred - nom: " << predOut - output << std::endl;
+		// std::cout << "err: " << predErr << " true - nom: " << trueOutput - startOutput
+		//           << " pred - nom: " << predOut - startOutput << std::endl;
 
 		// if( predErr > 0.5 ) 
 		// { 

@@ -79,7 +79,6 @@ public:
 	}
 
 	unsigned int InputDim() const { return _weights.cols() - 1; }
-
 	MatrixSize OutputSize() const { return MatrixSize( OutputDim(), 1 ); }
 	unsigned int OutputDim() const { return _weights.rows(); }
 	virtual unsigned int ParamDim() const { return _weights.size(); }
@@ -107,6 +106,8 @@ public:
 	{
 		return Eigen::Map<const VectorType>( _weights.data(), _weights.size(), 1 );
 	}
+
+	const ActivationType& GetActivation() const { return _activation; }
 
 private:
 

@@ -9,6 +9,8 @@
 namespace percepto
 {
 
+// TODO Have a nicer interface for pulling the entire network configuration,
+// not just the parameter vector
 template <template<typename> class Layer, typename Activation>
 class FullyConnectedNet
 : public ParametricWrapper
@@ -46,6 +48,8 @@ public:
 		ParametricWrapper::AddParametric( &_units.back() );
 	}
 
+	unsigned int NumHiddenLayers() const { return _units.size(); }
+	unsigned int InputDim() const { return _inputUnit.InputDim(); }
 	MatrixSize OutputSize() const { return MatrixSize( OutputDim(), 1 ); }
 	unsigned int OutputDim() const { return _units.back().OutputDim(); }
 
@@ -65,6 +69,8 @@ public:
 		_inputWrapper.SetInput( input );
 		return _net.Backprop( nextDodx );
 	}
+
+	const ActivationType& GetActivation() const { return _inputUnit.GetActivation(); }
 
 private:
 

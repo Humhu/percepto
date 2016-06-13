@@ -19,8 +19,10 @@ public:
 	typedef Base BaseType;
 	typedef MatrixType OutputType;
 
+	const MatrixType offset;
+
 	OffsetWrapper( BaseType& b, const MatrixType& offset )
-	: _base( b ), _offset( offset )
+	: offset( offset ), _base( b )
 	{
 		if( b.OutputSize().rows != offset.rows() ||
 		    b.OutputSize().cols != offset.cols() )
@@ -45,13 +47,12 @@ public:
 
 	OutputType Evaluate() const
 	{
-		return _base.Evaluate() + _offset;
+		return _base.Evaluate() + offset;
 	}
 
 private:
 
 	BaseType& _base;
-	MatrixType _offset;
 
 };
 

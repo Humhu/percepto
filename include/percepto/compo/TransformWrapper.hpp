@@ -51,7 +51,6 @@ public:
 		                                 _base.OutputSize().cols );
 		for( unsigned int i = 0; i < InputDim(); i++ )
 		{
-			// TODO Make more efficient with row/col product
 			d(i) = 1;
 			MatrixType temp = _transform * d * _transform.transpose();
 			dSdx.col(i) = Eigen::Map<VectorType>( temp.data(), temp.size(), 1 );
