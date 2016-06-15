@@ -67,6 +67,11 @@ protected:
 	// Using a deque so that growing does not invalidate pointers
 	std::deque<SinkType> _sinks;
 
+private:
+
+	// Disallow copying b/c sinks can't copy correctly
+	MeanCost( const MeanCost& other );
+
 };
 
 }

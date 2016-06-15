@@ -27,12 +27,16 @@ public:
 	OffsetWrapper() 
 	: _input( this ) {}
 
+	OffsetWrapper( const OffsetWrapper& other )
+	: _input( this ), _offset( other._offset ) {}
+
 	void SetSource( SourceType* b ) { b->RegisterConsumer( &_input ); }
 	void SetOffset( const DataType& offset ) { _offset = offset; }
 	DataType GetOffset() const { return _offset; }
 
 	virtual void Backprop( const MatrixType& nextDodx )
 	{
+		// std::cout << "OffsetWrapper backprop" << std::endl;
 		_input.Backprop( nextDodx );
 	}
 

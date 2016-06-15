@@ -1,5 +1,7 @@
 #pragma once
+
 #include "percepto/compo/Interfaces.h"
+#include <iostream>
 
 namespace percepto
 {
@@ -17,8 +19,10 @@ public:
 	typedef Sink<DataType> SinkType;
 
 	AdditiveWrapper() 
-	: _inputA( this ), _inputB( this )
-	{}
+	: _inputA( this ), _inputB( this ) {}
+
+	AdditiveWrapper( const AdditiveWrapper& other )
+	: _inputA( this ), _inputB( this ) {}
 
 	void SetSourceA( SourceType* a ) 
 	{ 
@@ -40,6 +44,7 @@ public:
 
 	virtual void Backprop( const MatrixType& nextDodx )
 	{
+		// std::cout << "Additive wrapper backprop" << std::endl;
 		_inputA.Backprop( nextDodx );
 		_inputB.Backprop( nextDodx );
 	}

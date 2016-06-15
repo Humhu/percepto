@@ -26,12 +26,16 @@ public:
 	ModifiedCholeskyWrapper() 
 	: _lInput( this ), _dInput( this ) {}
 
+	ModifiedCholeskyWrapper( const ModifiedCholeskyWrapper& other ) 
+	: _lInput( this ), _dInput( this ) {}
+
 	void SetLSource( InputSourceType* l ) { l->RegisterConsumer( &_lInput ); }
 	void SetDSource( InputSourceType* d ) { d->RegisterConsumer( &_dInput ); }
 
 	// Assuming that dodx is given w.r.t. matrix col-major ordering
 	virtual void Backprop( const MatrixType& nextDodx )
 	{
+		// std::cout << "ModifiedCholeskyWrapper backprop" << std::endl;
 		MatrixType dody = nextDodx;
 		if( nextDodx.size() == 0 )
 		{

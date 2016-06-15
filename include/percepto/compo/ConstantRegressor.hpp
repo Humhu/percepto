@@ -2,6 +2,7 @@
 
 #include "percepto/compo/Parametric.hpp"
 #include "percepto/compo/Interfaces.h"
+#include <iostream>
 
 namespace percepto
 {
@@ -37,6 +38,7 @@ public:
 
 	virtual void Backprop( const MatrixType& nextDodx )
 	{
+		// std::cout << "ConstantVectorRegressor backprop" << std::endl;
 		_params->AccumulateDerivs( nextDodx );
 	}
 

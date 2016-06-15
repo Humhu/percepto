@@ -22,6 +22,9 @@ public:
 	ExponentialWrapper() 
 	: _input( this ) {}
 
+	ExponentialWrapper( const ExponentialWrapper& other ) 
+	: _input( this ) {}
+
 	// TODO Make a reference?
 	void SetSource( SourceType* in ) { in->RegisterConsumer( &_input ); }
 
@@ -29,6 +32,8 @@ public:
 
 	virtual void Backprop( const MatrixType& nextDodx )
 	{
+		// std::cout << "ExponentialWrapper backprop" << std::endl;
+		
 		DataType mid = _input.GetInput();
 
 		MatrixType dydx = MatrixType::Zero( mid.size(), mid.size() );

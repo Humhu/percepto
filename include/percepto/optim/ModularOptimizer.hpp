@@ -10,11 +10,11 @@ namespace percepto
 {
 
 /** 
- * @brief Basic modular optimization framework class. Minimizes an cost
+ * @brief Basic modular optimization framework class. Minimizes an problem
  * with a gradient stepping policy while checking convergence. 
- * @tparam Cost The cost class.
+ * @tparam Cost The problem class.
  * @tparam Stepper The stepping policy class.
- * @tparam Convergence The cost convergence class. 
+ * @tparam Convergence The problem convergence class. 
  */
 template <typename Stepper, typename Convergence>
 class ModularOptimizer
@@ -25,7 +25,7 @@ public:
 	typedef Convergence ConvergenceType;
 
 	/** 
-	 * @brief Create an optimization object with references to an cost,
+	 * @brief Create an optimization object with references to an problem,
 	 * stepper, and convergence object. Keeps references only. */
 	ModularOptimizer( StepperType& stepper, ConvergenceType& convergence,
 	                  Parameters& parameters )
@@ -48,10 +48,10 @@ public:
 	}
 
 	/** 
-	 * @brief Begin optimization by stepping the cost's parameters until
+	 * @brief Begin optimization by stepping the problem's parameters until
 	 * convergence is reached. */
-	template <typename CostType>
-	OptimizationResults Optimize( CostType& cost )
+	template <typename Problem>
+	OptimizationResults Optimize( Problem& problem )
 	{
 		_convergence.Reset();
 		_profiler.StartOverall();
@@ -62,13 +62,13 @@ public:
 		do
 		{
 			_profiler.StartObjectiveCall();
-			cost.Invalidate();
-			cost.Foreprop();
-			value = cost.GetOutput();
+			problem.Invalidate();
+			problem.Foreprop();
+			value = problem.GetOutput();
 			_profiler.FinishObjectiveCall();
 
 			_profiler.StartGradientCall();
-			cost.Backprop();
+			problem.Backprop();
 			MatrixType dodw = _parametric.GetDerivs();
 			_parametric.ResetAccumulators();
 			if( dodw.rows() != 1 )

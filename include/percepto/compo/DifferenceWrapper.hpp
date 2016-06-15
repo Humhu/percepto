@@ -1,6 +1,7 @@
 #pragma once
 
 #include "percepto/compo/Interfaces.h"
+#include <iostream>
 
 namespace percepto
 {
@@ -19,8 +20,11 @@ public:
 	DifferenceWrapper() 
 	: _plus( this ), _minus( this ) {}
 
+	DifferenceWrapper( const DifferenceWrapper& other ) 
+	: _plus( this ), _minus( this ) {}
+
 	void SetPlusSource( SourceType* p ) { p->RegisterConsumer( &_plus ); }
-	void SetPlusSource( SourceType* m ) { m>RegisterConsumer( &_minus ); }
+	void SetMinusSource( SourceType* m ) { m->RegisterConsumer( &_minus ); }
 
 	// unsigned int OutputDim() const { return _plus->OutputDim(); }
 
@@ -35,8 +39,9 @@ public:
 
 	virtual void Backprop( const MatrixType& nextDodx )
 	{
-		_plus->Backprop( nextDodx );
-		_minus->Backprop( -nextDodx );
+		// std::cout << "DifferenceWrapper backprop" << std::endl;
+		_plus.Backprop( nextDodx );
+		_minus.Backprop( -nextDodx );
 	}
 
 private:

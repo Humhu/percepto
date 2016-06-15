@@ -10,6 +10,7 @@ namespace percepto
 {
 
 // Class of objects with parameters
+// TODO Make this an interface so ParameterWrapper isn't so awkward
 class Parameters
 {
 public:
@@ -73,14 +74,18 @@ class ParameterWrapper
 public:
 
 	typedef std::vector<Parameters::Ptr> ContainerType;
+	typedef std::shared_ptr<ParameterWrapper> Ptr;
 
+	ParameterWrapper() {}
+
+	// TODO Remove this interface
 	ParameterWrapper( const ContainerType& p ) 
 	: _items( p )
 	{
 		Initialize( ParamDim() );
 	}
 
-	bool AddParameters( Parameters::Ptr p )
+	bool AddParameters( const Parameters::Ptr& p )
 	{
 		if( !p ) { return false; }
 		BOOST_FOREACH( Parameters::Ptr& item, _items )
@@ -88,6 +93,7 @@ public:
 			if( item == p ) { return false; }
 		}
 		_items.push_back( p );
+		Initialize( ParamDim() );
 		return true;
 	}
 

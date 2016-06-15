@@ -26,17 +26,23 @@ public:
 	InverseWrapper() 
 	: _input( this ) {}
 
+	InverseWrapper( const InverseWrapper& other ) 
+	: _input( this ) {}
+
 	void SetSource( SourceType* src ) { src->RegisterConsumer( &_input ); }
 
 	virtual void Foreprop()
 	{
+		MatrixType in = _input.GetInput();
 		SolverType solver( _input.GetInput() );
-		SourceType::SetOutput( solver.inverse() );
+		SourceType::SetOutput( solver.solve( MatrixType::Identity( in.rows(), 
+		                                                           in.cols() ) ) );
 		SourceType::Foreprop();
 	}
 
 	virtual void Backprop( const MatrixType& nextDodx )
 	{
+		// std::cout << "InverseWrapper backprop" << std::endl;
 		MatrixType Sinv = SourceType::GetOutput(); // Current output
 		MatrixType dSdx( Sinv.size(), Sinv.size() );
 		MatrixType d = MatrixType::Zero( Sinv.rows(),

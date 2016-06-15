@@ -4,7 +4,7 @@
 #include "percepto/PerceptoTypes.h"
 #include <memory>
 #include <stdexcept>
-#include <iostream>
+
 namespace percepto
 {
 
@@ -24,6 +24,9 @@ public:
 	TransformWrapper() 
 	: _input( this ) {}
 
+	TransformWrapper( const TransformWrapper& other ) 
+	: _input( this ) {}
+
 	void SetSource( SourceType* b ) { b->RegisterConsumer( &_input ); }
 	void SetTransform( const MatrixType& transform ) { _transform = transform; }
 
@@ -37,6 +40,7 @@ public:
 	// TODO Check for empty nextDodx
 	virtual void Backprop( const MatrixType& nextDodx )
 	{
+		// std::cout << "TransformWrapper backprop" << std::endl;
 		const MatrixType& input = _input.GetInput();
 		unsigned int inDim = _transform.cols() * _transform.cols();
 		unsigned int outDim = _transform.rows() * _transform.rows();

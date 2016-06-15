@@ -18,8 +18,11 @@ public:
 	ProductWrapper() 
 	: _left( this ), _right( this ) {}
 
-	void SetLeftBase( SourceType* l ) { l->RegisterConsumer( &_left ); }
-	void SetRightBase( SourceType* r ) { r->RegisterConsumer( &_right ); }
+	ProductWrapper( const ProductWrapper& other ) 
+	: _left( this ), _right( this ) {}
+
+	void SetLeftSource( SourceType* l ) { l->RegisterConsumer( &_left ); }
+	void SetRightSource( SourceType* r ) { r->RegisterConsumer( &_right ); }
 
 	virtual void Foreprop()
 	{
@@ -32,6 +35,7 @@ public:
 
 	virtual void Backprop( const MatrixType& nextDodx )
 	{
+		// std::cout << "ProductWrapper backprop" << std::endl;
 		const MatrixType& left = _left.GetInput();
 		const MatrixType& right = _right.GetInput();
 		unsigned int outputDim = left.rows() * right.cols();

@@ -25,6 +25,9 @@ public:
 	SquaredLoss() 
 	: _input( this ), _scale( 1.0 ) {}
 
+	SquaredLoss( const SquaredLoss& other ) 
+	: _input( this ), _scale( other._scale ) {}
+
 	void SetSource( InputSourceType* r ) { r->RegisterConsumer( &_input ); }
 	void SetTarget( const TargetType& target ) { _target = target; }
 	void SetScale( double s ) { _scale = s; }

@@ -11,8 +11,8 @@ namespace percepto
 
 /*! \brief Calculate the log-likelihood of a sample under a zero-mean Gaussian 
  * distribution with specified covariance. */
-ScalarType GaussianLogLikelihood( const VectorType& x, 
-                                  const MatrixType& cov )
+inline ScalarType GaussianLogLikelihood( const VectorType& x, 
+                                         const MatrixType& cov )
 {
 	// TODO Does not check squareness or PD-ness of cov!
 	Eigen::LDLT<MatrixType> ldlt( cov );
@@ -42,6 +42,9 @@ public:
 	 * outputted by the regressor. */
 	GaussianLogLikelihoodCost() 
 	: _input( this ) {}
+
+	GaussianLogLikelihoodCost( const GaussianLogLikelihoodCost& other )
+	: _input( this ), _sample( other._sample ) {}
 
 	void SetSource( InputSourceType* s ) { s->RegisterConsumer( &_input ); }
 	void SetSample( const SampleType& sample ) { _sample = sample; }
