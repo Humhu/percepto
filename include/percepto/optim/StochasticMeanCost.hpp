@@ -7,7 +7,7 @@
 
 #include <iostream>
 
-#include "percepto/optim/MeanPopulationCost.hpp"
+#include "percepto/optim/MeanCost.hpp"
 #include "percepto/utils/SubsetSamplers.hpp"
 
 namespace percepto
@@ -23,38 +23,33 @@ namespace percepto
  * population. Make sure to call Evaluate() after alteration to set
  * the active indices.
  */
-template <typename CostType, template<typename,typename> class Container = std::vector>
-class StochasticPopulationCost
-: public MeanPopulationCost<CostType, Container>
+template <typename DataType>
+class StochasticMeanCost
+: public MeanCost<DataType>
 {
 public:
 
-	typedef ScalarType OutputType;
-	typedef MeanPopulationCost<CostType, Container> ParentCost;
-	typedef typename ParentCost::ContainerType ContainerType;
+	typedef DataType OutputType;
+	typedef MeanCost<DataType> ParentCost;
 
 	/*! \brief Creates a cost by averaging costs on a poulation of
 	 * inputs. */
-	StochasticPopulationCost( ContainerType& costs, unsigned int subsize )
-	: ParentCost( costs ), _subsetSize( subsize )
+	StochasticMeanCost()
+	: _hasResampled( false )
 	{
 		boost::random::random_device rng;
 		_generator.seed( rng );
 	}
 
-	unsigned int OutputDim() const { return 1; }
+	void SetBatchSize( unsigned int ss ) { _subsetSize = ss; }
 
-	MatrixType Backprop( const MatrixType& nextDodx )
+	virtual void Backprop( const MatrixType& nextDodx )
 	{
-		assert( nextDodx.cols() == OutputDim() );
-		
 		MatrixType thisDodx = nextDodx / _activeInds.size();
-		MatrixType indDodx = ParentCost::_costs[ _activeInds[0] ].Backprop( thisDodx );
 		for( unsigned int i = 1; i < _activeInds.size(); i++ )
 		{
-			indDodx += ParentCost::_costs[ _activeInds[i] ].Backprop( thisDodx );
+			ParentCost::_sinks[ _activeInds[i] ].Backprop( thisDodx );
 		}
-		return indDodx;
 	}
 
 	/*! \brief Calculate the objective function by averaging the 
@@ -62,40 +57,57 @@ public:
 	 * active population at the beginning of the call. When making sequential
 	 * calls to Evaluate() and Derivative(), make sure to call Evaluate()
 	 * first to get an equivalent Derivative(). */
-	OutputType Evaluate()
+	virtual void Foreprop()
 	{
-		RandomSample();
-
-		OutputType acc = 0;
-		for( unsigned int i = 0; i < _activeInds.size(); i++ )
-		{
-			acc += ParentCost::_costs[ _activeInds[i] ].Evaluate();
+		if( !_hasResampled ) 
+		{ 
+			RandomSample(); 
+			_hasResampled = true;
 		}
 
-		return acc / _activeInds.size();
+		for( unsigned int i = 0; i < _activeInds.size(); i++ )
+		{
+			if( !ParentCost::_sinks[ _activeInds[i] ].IsValid() ) { return; }
+		}
+
+		OutputType acc = ParentCost::_sinks[ _activeInds[0] ].GetInput();
+		for( unsigned int i = 1; i < _activeInds.size(); i++ )
+		{
+			acc += ParentCost::_sinks[ _activeInds[i] ].GetInput();
+		}
+
+		ParentCost::SourceType::SetOutput( acc / _activeInds.size() );
+		ParentCost::SourceType::Foreprop();
+	}
+
+	virtual void Invalidate()
+	{
+		_hasResampled = false;
+		ParentCost::SourceType::Invalidate();
 	}
 
 private:
 
 	// Used for random selection
-	boost::random::mt19937 _generator;
+	mutable boost::random::mt19937 _generator;
 
 	unsigned int _subsetSize;
-	std::vector<unsigned int> _activeInds;
+	mutable std::vector<unsigned int> _activeInds;
+	mutable bool _hasResampled;
 
-	void RandomSample()
+	void RandomSample() const
 	{
-		if( ParentCost::_costs.size() > _subsetSize )
+		if( ParentCost::_sinks.size() > _subsetSize )
 		{
-			BitmapSampling( ParentCost::_costs.size(), _subsetSize, 
+			BitmapSampling( ParentCost::_sinks.size(), _subsetSize, 
 			                   _activeInds, _generator );
 			return;
 		}
 
 		// If there isn't enough data, just use all of it
 		_activeInds.clear();
-		_activeInds.reserve( ParentCost::_costs.size() );
-		for( unsigned int i = 0; i < ParentCost::_costs.size(); ++i )
+		_activeInds.reserve( ParentCost::_sinks.size() );
+		for( unsigned int i = 0; i < ParentCost::_sinks.size(); ++i )
 		{
 			_activeInds.push_back( i );
 		}

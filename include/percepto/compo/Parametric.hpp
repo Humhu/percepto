@@ -5,21 +5,29 @@
 #include <memory>
 #include <boost/foreach.hpp>
 #include <iostream>
+
 namespace percepto
 {
 
 // Class of objects with parameters
-class Parametric
+class Parameters
 {
 public:
 
-	Parametric() {}
+	typedef std::shared_ptr<Parameters> Ptr;
 
-	virtual void AccumulateWeightDerivs( const MatrixType& delDodw )
+	Parameters() {}
+
+	void Initialize( unsigned int dim )
+	{
+		_params = VectorType( dim );
+	}
+
+	virtual void AccumulateDerivs( const MatrixType& delDodw )
 	{
 		if( delDodw.cols() != ParamDim() )
 		{
-			throw std::runtime_error( "Parametric: Accumulation dim error." );
+			throw std::runtime_error( "Parameters: Accumulation dim error." );
 		}
 
 		if( _dodw.size() == 0 ) { _dodw = delDodw; }
@@ -31,35 +39,51 @@ public:
 		_dodw = MatrixType();
 	}
 
-	virtual const MatrixType& GetAccWeightDerivs() const
+	virtual const MatrixType& GetDerivs() const
 	{
 		return _dodw;
 	}
 
-	virtual unsigned int ParamDim() const = 0;
-	virtual VectorType GetParamsVec() const = 0;
-	virtual void SetParamsVec( const VectorType& vec ) = 0;
+	virtual unsigned int ParamDim() const { return _params.size(); }
+	
+	virtual const VectorType& GetParamsVec() const { return _params; }
+	
+	virtual void SetParamsVec( const VectorType& vec )
+	{
+		if( vec.size() != _params.size() )
+		{
+			throw std::runtime_error( "Parameters: Cannot change size of parameters." );
+		}
+		_params = vec;
+	}
 
-// private:
+protected:
 
 	MatrixType _dodw;
-
+	VectorType _params;
 };
 
-class ParametricWrapper
-: public Parametric
+// Wraps a group of parameters
+// Should not be treated as parameter memory as the local params
+// copy is not updated
+class ParameterWrapper
+: public Parameters
 {
 
 public:
 
-	typedef std::vector<Parametric*> ContainerType;
+	typedef std::vector<Parameters::Ptr> ContainerType;
 
-	ParametricWrapper() {}
+	ParameterWrapper( const ContainerType& p ) 
+	: _items( p )
+	{
+		Initialize( ParamDim() );
+	}
 
-	bool AddParametric( Parametric* p )
+	bool AddParameters( Parameters::Ptr p )
 	{
 		if( !p ) { return false; }
-		BOOST_FOREACH( Parametric* item, _items )
+		BOOST_FOREACH( Parameters::Ptr& item, _items )
 		{
 			if( item == p ) { return false; }
 		}
@@ -67,20 +91,20 @@ public:
 		return true;
 	}
 
-	// This can get called by modules that operate directly  on weights,
+	// This can get called by modules that operate directly on weights,
 	// like ParameterL2Cost
-	virtual void AccumulateWeightDerivs( const MatrixType& dodw )
+	virtual void AccumulateDerivs( const MatrixType& dodw )
 	{
 		if( dodw.cols() != ParamDim() )
 		{
-			throw std::runtime_error( "ParametricWrapper: Accumulate dim error!" );
+			throw std::runtime_error( "ParametersWrapper: Accumulate dim error!" );
 		}
 
 		unsigned int ind = 0;
-		BOOST_FOREACH( Parametric* item, _items )
+		BOOST_FOREACH( Parameters::Ptr& item, _items )
 		{
 			unsigned int n = item->ParamDim();
-			item->AccumulateWeightDerivs( dodw.block( 0, ind, dodw.rows(), n ) );
+			item->AccumulateDerivs( dodw.block( 0, ind, dodw.rows(), n ) );
 			ind += n;
 		}
 	}
@@ -88,13 +112,13 @@ public:
 	virtual void ResetAccumulators() 
 	{
 		_accDodw = MatrixType();
-		BOOST_FOREACH( Parametric* item, _items )
+		BOOST_FOREACH( Parameters::Ptr& item, _items )
 		{
 			item->ResetAccumulators();
 		}
 	}
 
-	virtual const MatrixType& GetAccWeightDerivs() const
+	virtual const MatrixType& GetDerivs() const
 	{
 		_accDodw = MatrixType();
 		if( _items.empty() ) { return _accDodw; }
@@ -102,20 +126,20 @@ public:
 		// First determine the sys output dim by checking for the
 		// first item with a valid dodw
 		unsigned int sysOutDim = 0;
-		BOOST_FOREACH( const Parametric* item, _items )
+		BOOST_FOREACH( const Parameters::Ptr& item, _items )
 		{
-			if( item->GetAccWeightDerivs().size() == 0 ) { continue; }
-			sysOutDim = item->GetAccWeightDerivs().rows();
+			if( item->GetDerivs().size() == 0 ) { continue; }
+			sysOutDim = item->GetDerivs().rows();
 			break;
 		}
 		if( sysOutDim == 0 ) { return _accDodw; }
 
 		_accDodw = MatrixType( sysOutDim, ParamDim() );
 		unsigned int ind = 0;
-		BOOST_FOREACH( const Parametric* item, _items )
+		BOOST_FOREACH( const Parameters::Ptr& item, _items )
 		{
 			unsigned int n = item->ParamDim();
-			MatrixType itemDodw = item->GetAccWeightDerivs();
+			MatrixType itemDodw = item->GetDerivs();
 			if( itemDodw.size() == 0 )
 			{
 				itemDodw = MatrixType::Zero( sysOutDim, n );
@@ -129,45 +153,47 @@ public:
 	virtual unsigned int ParamDim() const
 	{
 		unsigned int acc = 0;
-		BOOST_FOREACH( const Parametric* item, _items )
+		BOOST_FOREACH( const Parameters::Ptr& item, _items )
 		{
 			acc += item->ParamDim();
 		}
 		return acc;
 	}
 
-	virtual VectorType GetParamsVec() const
+	virtual const VectorType& GetParamsVec() const
 	{
-		VectorType params( ParamDim() );
+		_accParams = VectorType( ParamDim() );
 		unsigned int ind = 0;
-		BOOST_FOREACH( const Parametric* item, _items )
+		BOOST_FOREACH( const Parameters::Ptr& item, _items )
 		{
 			unsigned int n = item->ParamDim();
-			params.segment( ind, n ) = item->GetParamsVec();
+			_accParams.segment( ind, n ) = item->GetParamsVec();
 			ind += n;
 		}
-		return params;
+		return _accParams;
 	}
 
 	virtual void SetParamsVec( const VectorType& vec )
 	{
 		if( vec.size() != ParamDim() )
 		{
-			throw std::runtime_error( "ParametricWrapper: Invalid params vec size in SetParamsVec()." );
+			throw std::runtime_error( "ParametersWrapper: Invalid params vec size in SetParamsVec()." );
 		}
 		unsigned int ind = 0;
-		BOOST_FOREACH( Parametric* item, _items )
+		BOOST_FOREACH( Parameters::Ptr& item, _items )
 		{
 			unsigned int n = item->ParamDim();
 			item->SetParamsVec( vec.segment( ind, n ) );
 			ind += n;
 		}
+		_accParams = vec;
 	}
 
 private:
 
+	mutable VectorType _accParams;
 	mutable MatrixType _accDodw;
-	std::vector<Parametric*> _items;
+	std::vector<Parameters::Ptr> _items;
 
 };
 

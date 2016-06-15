@@ -1,5 +1,6 @@
 #pragma once
 
+#include "percepto/compo/Interfaces.h"
 #include "percepto/compo/Parametric.hpp"
 #include <Eigen/Dense>
 
@@ -11,13 +12,17 @@ namespace percepto
  * The matrix and input are dynamically-sized. Assumes row-major ordering
  * for vectorizing the weights matrix. */
 class LinearRegressor
-: public Parametric
+: public Parametric, 
+public Producer<VectorType>
 {
 public:
 	
 	typedef Eigen::Matrix<double,-1,-1,Eigen::RowMajor> ParamType;
 	typedef VectorType InputType;
 	typedef VectorType OutputType;
+	typedef Producer<VectorType> InputModule;
+
+	LinearRegressor() {}
 
 	LinearRegressor( unsigned int inputDim, unsigned int outputDim )
 	: _W( ParamType::Zero( outputDim, inputDim ) ) {}
@@ -26,7 +31,10 @@ public:
 	LinearRegressor( const ParamType& weightMat )
 	: _W( weightMat ) {}
 	
-	unsigned int InputDim() const { return _W.cols(); }
+	LinearRegressor( InputModule* b, const ParamType& weightMat ) {}
+
+	void SetBase( InputModule* b ) { _base = b; }
+
 	unsigned int OutputDim() const { return _W.rows(); }
 
 	/*! \brief Retrieve the parameter vector by returning a vector view of the
@@ -54,10 +62,11 @@ public:
 		return Eigen::Map<const VectorType>( _W.data(), _W.size(), 1 );
 	}
 	
-	MatrixType Backprop( const InputType& input, const MatrixType& nextDodx )
+	MatrixType Backprop( const MatrixType& nextDodx )
 	{
 		assert( nextDodx.cols() == OutputDim() );
 
+		InputType input = _base.Evaluate();
 		MatrixType thisDodw = MatrixType( nextDodx.rows(), ParamDim() );
 		for( unsigned int i = 0; i < nextDodx.rows(); i++ )
 		{
@@ -75,10 +84,9 @@ public:
 	}
 	
 	/*! \brief Produce the output. */
-	OutputType Evaluate( const InputType& input ) const 
+	OutputType Evaluate() const 
 	{ 
-		assert( input.size() == InputDim() );
-		return _W * input;
+		return _W * _base.Evaluate();
 	}
 
 private:
@@ -86,6 +94,7 @@ private:
 	// NOTE Since the matrix is dynamic-sized we don't have to use the 
 	// eigen aligned new operator
 	MatrixType _W; // The weight vector
+	BaseModule* _base;
 	
 };
 

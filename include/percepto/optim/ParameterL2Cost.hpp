@@ -1,5 +1,6 @@
 #pragma once
 
+#include "percepto/compo/Interfaces.h"
 #include "percepto/compo/Parametric.hpp"
 #include <iostream>
 
@@ -9,42 +10,47 @@ namespace percepto
 /*! \brief A cost function that adds a weighted L2-norm to an
  * existing cost. For maximization tasks, the weight should be negative. */
 class ParameterL2Cost
+: public Source<double>
 {
 public:
 
+	typedef Source<double> SourceType;
 	typedef ScalarType OutputType;
 
-	ParameterL2Cost( Parametric& b, ScalarType w )
-	: _base( b ), _w( w )
-	{}
+	ParameterL2Cost()
+	: _params( nullptr ), _w( 1.0 ) {}
 
-	unsigned int OutputDim() const { return 1; }
+	void SetWeight( ScalarType w ) { _w = w; }
+	void SetParameters( Parameters* p ) { _params = p; }
 
-	MatrixType Backprop( const MatrixType& nextDodx )
+	virtual unsigned int OutputDim() const { return 1; }
+
+	virtual void Backprop( const MatrixType& nextDodx )
 	{
-		assert( nextDodx.cols() == OutputDim() );
-
 		// Add the L2 cost into the dodw
-		VectorType current = _base.GetParamsVec();
-		MatrixType thisDodw = _w * nextDodx * current.transpose();
-		// MatrixType thisDodw( nextDodx.rows(), current.size() );
-		// for( unsigned int i = 0; i < nextDodx.rows(); i++ )
-		// {
-		// 	thisDodw.row(i) = nextDodx(i,0) * ( _w * current.array() ).matrix().transpose();
-		// }
-		_base.AccumulateWeightDerivs( thisDodw );
-		return thisDodw;
+		VectorType current = _params->GetParamsVec();
+		MatrixType thisDodw;
+		if( nextDodx.size() == 0 )
+		{
+			thisDodw = _w * current.transpose();
+		}
+		else
+		{
+			thisDodw = _w * nextDodx * current.transpose();
+		}
+		_params->AccumulateDerivs( thisDodw );
 	}
 
-	OutputType Evaluate() const
+	virtual void Foreprop()
 	{
-		VectorType current = _base.GetParamsVec();
-		return 0.5 * _w * current.dot( current );
+		VectorType current = _params->GetParamsVec();
+		SourceType::SetOutput( 0.5 * _w * current.dot( current ) );
+		SourceType::Foreprop();
 	}
 
 private:
 
-	Parametric& _base;
+	Parameters* _params;
 	ScalarType _w;
 
 };

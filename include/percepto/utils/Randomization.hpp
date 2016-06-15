@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Eigen/Dense>
+
 #include <boost/random/uniform_real_distribution.hpp>
 #include <boost/random/random_device.hpp>
 #include <boost/random/mersenne_twister.hpp>

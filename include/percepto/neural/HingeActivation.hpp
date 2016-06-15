@@ -19,6 +19,9 @@ public:
 	HingeActivation( double actSlope = 1.0, double inactSlope = 0.0 )
 	: activeSlope( actSlope ), inactiveSlope( inactSlope ) {}
 
+	HingeActivation( const HingeActivation& other )
+	: activeSlope( other.activeSlope ), inactiveSlope( other.inactiveSlope ) {}
+
 	OutputType Evaluate( const InputType& input ) const
 	{
 		if( input > 0 ) { return input * activeSlope; }

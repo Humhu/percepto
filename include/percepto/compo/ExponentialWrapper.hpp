@@ -1,53 +1,54 @@
 #pragma once
 
-#include "percepto/PerceptoTypes.h"
+#include "percepto/compo/Interfaces.h"
 
 namespace percepto
 {
 
+// TODO Matrix version?
 /*! \brief Exponential regressor that takes a vector output and passes it
  * element-wise through an exponential. */
-template <typename Base>
+template <typename DataType>
 class ExponentialWrapper
+: public Source<VectorType>
 {
 public:
 
-	typedef Base BaseType;
-	typedef typename BaseType::OutputType OutputType;
+	typedef DataType InputType;
+	typedef DataType OutputType;
+	typedef Source<DataType> SourceType;
+	typedef Sink<DataType> SinkType;
 
-	/*! \brief Creates an exponential regressor around a base regressor. Stores
-	 * a reference to the regressor. */
-	ExponentialWrapper( BaseType& r )
-	: _base( r ) {}
+	ExponentialWrapper() 
+	: _input( this ) {}
 
-	unsigned int OutputDim() const { return _base.OutputDim(); }
+	// TODO Make a reference?
+	void SetSource( SourceType* in ) { in->RegisterConsumer( &_input ); }
 
-	MatrixType Backprop( const MatrixType& nextDodx )
+	//virtual unsigned int OutputDim() const { return _base->OutputDim(); }
+
+	virtual void Backprop( const MatrixType& nextDodx )
 	{
-		if( nextDodx.cols() != OutputDim() )
-		{
-			throw std::runtime_error( "ExponentialWrapper: Backprop dim error." );
-		}
+		DataType mid = _input.GetInput();
 
-		VectorType mid = _base.Evaluate();
-
-		MatrixType dydx = MatrixType::Zero( OutputDim(), OutputDim() );
-		for( unsigned int i = 0; i < OutputDim(); i++ )
+		MatrixType dydx = MatrixType::Zero( mid.size(), mid.size() );
+		for( unsigned int i = 0; i < mid.size(); i++ )
 		{
 			dydx(i,i) = std::exp( mid(i) );
 		}
 		MatrixType thisDodx = nextDodx * dydx;
-		return _base.Backprop( thisDodx );
+		_input.Backprop( thisDodx );
 	}
 
-	OutputType Evaluate() const
+	virtual void Foreprop()
 	{
-		return _base.Evaluate().array().exp().matrix();
+		SourceType::SetOutput( _input.GetInput().array().exp().matrix() );
+		SourceType::Foreprop();
 	}
 
 private:
 
-	BaseType& _base;
+	SinkType _input;
 
 };
 

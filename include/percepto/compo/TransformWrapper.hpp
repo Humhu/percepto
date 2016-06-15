@@ -1,8 +1,10 @@
 #pragma once
+
+#include "percepto/compo/Interfaces.h"
 #include "percepto/PerceptoTypes.h"
 #include <memory>
 #include <stdexcept>
-
+#include <iostream>
 namespace percepto
 {
 
@@ -10,46 +12,38 @@ namespace percepto
  * \brief A wrapper that transforms its input as:
  * out = transform * base_out * transform.transpose()
  */
-template <typename Base>
 class TransformWrapper
+: public Source<MatrixType>
 {
 public:
 
-	typedef Base BaseType;
+	typedef Source<MatrixType> SourceType;
+	typedef Sink<MatrixType> SinkType;
 	typedef MatrixType OutputType;
 
-	TransformWrapper( BaseType& b, const MatrixType& transform )
-	: _base( b ), _transform( transform )
+	TransformWrapper() 
+	: _input( this ) {}
+
+	void SetSource( SourceType* b ) { b->RegisterConsumer( &_input ); }
+	void SetTransform( const MatrixType& transform ) { _transform = transform; }
+
+	virtual void Foreprop()
 	{
-		if( transform.cols() != b.OutputSize().rows )
-		{
-			throw std::runtime_error( "TransformWrapper: Dimension mismatch." );
-		}
+		SourceType::SetOutput( _transform * _input.GetInput() *
+		                       _transform.transpose() );
+		SourceType::Foreprop();
 	}
 
-	unsigned int OutputDim() const { return _transform.rows() * _transform.rows(); }
-	MatrixSize OutputSize() const 
-	{ 
-		return MatrixSize( _transform.rows(), _transform.rows() ); 
-	}
-	
-	unsigned int InputDim() const { return _transform.cols() * _transform.cols(); }
-	MatrixSize InputSize() const
+	// TODO Check for empty nextDodx
+	virtual void Backprop( const MatrixType& nextDodx )
 	{
-		return MatrixSize( _transform.cols(), _transform.cols() );
-	}
-
-	MatrixType Backprop( const MatrixType& nextDodx )
-	{
-		if( nextDodx.cols() != OutputDim() )
-		{
-			throw std::runtime_error( "TransformWrapper: Backprop dim error." );
-		}
-
-		MatrixType dSdx( OutputDim(), InputDim() );
-		MatrixType d = MatrixType::Zero( _base.OutputSize().rows, 
-		                                 _base.OutputSize().cols );
-		for( unsigned int i = 0; i < InputDim(); i++ )
+		const MatrixType& input = _input.GetInput();
+		unsigned int inDim = _transform.cols() * _transform.cols();
+		unsigned int outDim = _transform.rows() * _transform.rows();
+		MatrixType dSdx( outDim, inDim );
+		MatrixType d = MatrixType::Zero( input.rows(), 
+		                                 input.cols() );
+		for( unsigned int i = 0; i < inDim; i++ )
 		{
 			d(i) = 1;
 			MatrixType temp = _transform * d * _transform.transpose();
@@ -57,20 +51,19 @@ public:
 			d(i) = 0;
 		}
 
-		MatrixType thisDodx = nextDodx * dSdx;
-		_base.Backprop( thisDodx );
-		return thisDodx;
-	}
-
-	OutputType Evaluate() const
-	{
-		return _transform * _base.Evaluate() *
-		       _transform.transpose();
+		if( nextDodx.size() == 0 )
+		{
+			_input.Backprop( dSdx );
+		}
+		else
+		{
+			_input.Backprop( nextDodx * dSdx );
+		}
 	}
 
 private:
 
-	BaseType& _base;
+	SinkType _input;
 	MatrixType _transform;
 
 };

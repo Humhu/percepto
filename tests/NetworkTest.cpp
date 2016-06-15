@@ -3,8 +3,6 @@
 #include "percepto/compo/AdditiveWrapper.hpp"
 #include "percepto/neural/LinearLayer.hpp"
 #include "percepto/neural/FullyConnectedNet.hpp"
-#include "percepto/compo/SeriesWrapper.hpp"
-#include "percepto/compo/InputWrapper.hpp"
 
 #include "percepto/neural/HingeActivation.hpp"
 #include "percepto/neural/SigmoidActivation.hpp"
@@ -12,7 +10,7 @@
 #include "percepto/neural/NetworkTypes.h"
 
 #include "percepto/optim/SquaredLoss.hpp"
-#include "percepto/optim/StochasticPopulationCost.hpp"
+#include "percepto/optim/StochasticMeanCost.hpp"
 #include "percepto/optim/ParameterL2Cost.hpp"
 
 #include "percepto/optim/OptimizerTypes.h"
@@ -32,6 +30,79 @@ using namespace percepto;
 // Comment the above and uncomment below to use Rectified Linear Units instead
 // typedef PerceptronNet TestNet;
 typedef ReLUNet TestNet;
+
+unsigned int inputDim = 1;
+unsigned int outputDim = 1;
+unsigned int numHiddenLayers = 3;
+unsigned int layerWidth = 50;
+unsigned int batchSize = 10;
+
+struct Regressor
+{
+	TerminalSource<VectorType> netInput;
+	TestNet net;
+	SquaredLoss<VectorType> loss;
+
+	Regressor()
+	: net( inputDim, outputDim, numHiddenLayers, layerWidth,
+	       HingeActivation( 1, 1E-1 ) )
+	{
+		net.SetSource( &netInput );
+		loss.SetSource( &net.GetOutputSource() );
+	}
+
+	void Foreprop()
+	{
+		netInput.Foreprop();
+	}
+
+	void Invalidate()
+	{
+		netInput.Invalidate();
+	}
+};
+
+struct OptimizationProblem
+{
+	std::deque<Regressor> regressors;
+	StochasticMeanCost<double> losses;
+	ParameterL2Cost regularizer;
+	AdditiveWrapper<double> objective;
+
+	OptimizationProblem() 
+	{
+		objective.SetSourceA( &losses );
+		objective.SetSourceB( &regularizer );
+	}
+
+	void Invalidate()
+	{
+		for( unsigned int i = 0; i < regressors.size(); i++ )
+		{
+			regressors[i].Invalidate();
+		}
+		regularizer.Invalidate();
+	}
+
+	void Foreprop()
+	{
+		for( unsigned int i = 0; i < regressors.size(); i++ )
+		{
+			regressors[i].Foreprop();
+		}
+		regularizer.Foreprop();
+	}
+
+	double GetOutput()
+	{
+		return objective.GetOutput();
+	}
+
+	void Backprop()
+	{
+		objective.Backprop( MatrixType() );
+	}
+};
 
 // The highly nonlinear function we will try to fit
 double f( double x )
@@ -69,23 +140,16 @@ int main( int argc, char** argv )
 {
 	unsigned int numTrain = 150;
 	unsigned int numTest = 200;
-	unsigned int batchSize = 10;
 	double l2Weight = 0;
 
 	std::vector<VectorType> xTest, yTest, xTrain, yTrain;
 	generate_data( xTest, yTest, numTest );
 	generate_data( xTrain, yTrain, numTrain );
 
-	unsigned int inputDim = 1;
-	unsigned int outputDim = 1;
-	unsigned int numHiddenLayers = 3;
-	unsigned int layerWidth = 50;
-
 	// Randomize the net parameters
 	std::cout << "Initializing net..." << std::endl;
 	std::cout << "Creating linear layers..." << std::endl;
 
-	ParametricWrapper netParametrics;
 
 	// Perceptron initialization
 	// SigmoidActivation act;
@@ -100,57 +164,53 @@ int main( int argc, char** argv )
 	// netParametrics.AddParametric( &outputLayer );
 
 	// // ReLU initialization
-	HingeActivation act( 1, 1E-1 );
-	TestNet testNet( inputDim, outputDim, numHiddenLayers,
-	                 layerWidth, act );
-	netParametrics.AddParametric( &testNet );
+	Regressor reg;
+	std::vector<Parameters::Ptr> netParams = reg.net.CreateParameters();
+	ParameterWrapper params( netParams );
 
 	// Randomize parameters
-	VectorType netParams = netParametrics.GetParamsVec();
-	randomize_vector( netParams );
-	netParametrics.SetParamsVec( netParams );
-	ParameterL2Cost l2Loss( netParametrics, l2Weight );
+	VectorType p = params.GetParamsVec();
+	randomize_vector( p );
+	params.SetParamsVec( p );
 
 	// Create the loss functions
-	typedef InputWrapper<TestNet> NetEst;
-	typedef SquaredLoss<NetEst> Loss;
-	typedef MeanPopulationCost<Loss> MeanLoss;
-	typedef StochasticPopulationCost<Loss> StochasticLoss;
-	typedef AdditiveWrapper <StochasticLoss,
-	                         ParameterL2Cost> RegularizedStochasticLoss;
 
 	std::cout << "Generating losses..." << std::endl;
-	std::vector<NetEst> trainEsts, testEsts;
-	std::vector<Loss> trainLosses, testLosses;
+	OptimizationProblem trainProblem;
+	OptimizationProblem testProblem;
+	trainProblem.regressors.resize( numTrain );
+	testProblem.regressors.resize( numTest );
 	
 	// NOTE If we don't reserve, the vector resizing and moving may
 	// invalidate the references. Alternatively we can use a deque
-	trainEsts.reserve( numTrain );
-	trainLosses.reserve( numTrain );
+	trainProblem.losses.SetBatchSize( batchSize );
+	trainProblem.regularizer.SetParameters( &params );
+	trainProblem.regularizer.SetWeight( l2Weight );
 	for( unsigned int i = 0; i < numTrain; i++ )
 	{
-		trainEsts.emplace_back( testNet, xTrain[i] );
-		trainLosses.emplace_back( trainEsts.back(), yTrain[i] );
+		trainProblem.regressors[i].netInput.SetOutput( xTrain[i] );
+		trainProblem.regressors[i].net.SetParameters( netParams );
+		trainProblem.regressors[i].loss.SetTarget( yTrain[i] );
+		trainProblem.losses.AddSource( &trainProblem.regressors[i].loss );
 	}
-	StochasticLoss trainLoss( trainLosses, batchSize );
-	RegularizedStochasticLoss trainObjective( trainLoss, l2Loss );
 
-	testEsts.reserve( numTest );
-	testLosses.reserve( numTest );
+	testProblem.losses.SetBatchSize( batchSize );
+	testProblem.regularizer.SetParameters( &params );
+	testProblem.regularizer.SetWeight( l2Weight );
 	for( unsigned int i = 0; i < numTest; i++ )
 	{
-		testEsts.emplace_back( testNet, xTest[i] );
-		testLosses.emplace_back( testEsts.back(), yTest[i] );
+		testProblem.regressors[i].netInput.SetOutput( xTest[i] );
+		testProblem.regressors[i].net.SetParameters( netParams );
+		testProblem.regressors[i].loss.SetTarget( yTest[i] );
+		testProblem.losses.AddSource( &testProblem.regressors[i].loss );
 	}
-	MeanLoss meanLossS( testLosses );
-	StochasticLoss testLoss( testLosses, batchSize );
 
 	AdamStepper stepper;
 	
 	SimpleConvergenceCriteria criteria;
-	criteria.maxRuntime = 600;
+	criteria.maxRuntime = 120;
 	criteria.minElementGradient = 1E-3;
-	criteria.minObjectiveDelta = 1E-3;
+	//criteria.minObjectiveDelta = 1E-3;
 	SimpleConvergence convergence( criteria );
 
 	// std::cout << "Evaluating derivatives..." << std::endl;
@@ -159,7 +219,7 @@ int main( int argc, char** argv )
 	// double maxSeen = -std::numeric_limits<double>::infinity();
 	// for( unsigned int i = 0; i < numTrain; i++ )
 	// {
-	// 	std::vector<double> errors = EvalCostDeriv( testLosses[i], netParametrics );
+	// 	std::vector<double> errors = EvalCostDeriv( testLosses[i], params );
 	// 	double trialMax = *std::max_element( errors.begin(), errors.end() );
 	// 	if( trialMax > maxSeen ) { maxSeen = trialMax; }
 	// 	acc += trialMax;
@@ -168,19 +228,31 @@ int main( int argc, char** argv )
 	// std::cout << "Mean max error: " << acc / num << std::endl;
 	// std::cout << "Max overall error: " << maxSeen << std::endl;
 
-	std::cout << "initial train avg loss: " << trainLoss.ParentCost::Evaluate() << std::endl;
-	std::cout << "initial train max loss: " << trainLoss.ParentCost::EvaluateMax() << std::endl;
-	std::cout << "initial test avg loss: " << testLoss.ParentCost::Evaluate() << std::endl;
-	std::cout << "initial test max loss: " << testLoss.ParentCost::EvaluateMax() << std::endl;
+	trainProblem.Invalidate();
+	testProblem.Invalidate();
+	trainProblem.Foreprop();
+	testProblem.Foreprop();
+	trainProblem.losses.ParentCost::Foreprop();
+	testProblem.losses.ParentCost::Foreprop();
+	std::cout << "initial train avg loss: " << trainProblem.losses.ParentCost::GetOutput() << std::endl;
+	std::cout << "initial train max loss: " << trainProblem.losses.ParentCost::ComputeMax() << std::endl;
+	std::cout << "initial test avg loss: " << testProblem.losses.ParentCost::GetOutput() << std::endl;
+	std::cout << "initial test max loss: " << testProblem.losses.ParentCost::ComputeMax() << std::endl;
 
 	std::cout << "Beginning optimization..." << std::endl;
-	AdamOptimizer optimizer( stepper, convergence, netParametrics );
-	optimizer.Optimize( trainObjective );
+	AdamOptimizer optimizer( stepper, convergence, params );
+	optimizer.Optimize( trainProblem );
 
-	std::cout << "train avg loss: " << trainLoss.ParentCost::Evaluate() << std::endl;
-	std::cout << "train max loss: " << trainLoss.ParentCost::EvaluateMax() << std::endl;
-	std::cout << "test avg loss: " << testLoss.ParentCost::Evaluate() << std::endl;
-	std::cout << "test max loss: " << testLoss.ParentCost::EvaluateMax() << std::endl;
+	trainProblem.Invalidate();
+	testProblem.Invalidate();
+	trainProblem.Foreprop();
+	testProblem.Foreprop();
+	trainProblem.losses.ParentCost::Foreprop();
+	testProblem.losses.ParentCost::Foreprop();
+	std::cout << "train avg loss: " << trainProblem.losses.ParentCost::GetOutput() << std::endl;
+	std::cout << "train max loss: " << trainProblem.losses.ParentCost::ComputeMax() << std::endl;
+	std::cout << "test avg loss: " << testProblem.losses.ParentCost::GetOutput() << std::endl;
+	std::cout << "test max loss: " << testProblem.losses.ParentCost::ComputeMax() << std::endl;
 
 	return 0;
 }

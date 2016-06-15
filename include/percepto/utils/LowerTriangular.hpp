@@ -38,10 +38,17 @@ public:
 
 	typedef std::pair<unsigned int, unsigned int> Index;
 
-	TriangularMapping( unsigned int dim )
+	TriangularMapping( unsigned int dim = 0 )
 	: _dim( dim )
 	{
+		SetDim( dim );
+	}
+
+	void SetDim( unsigned int dim ) 
+	{
+		_dim = dim;
 		unsigned int numPositions = (_dim * (_dim + 1)) / 2;
+		_inds.clear();
 		_inds.resize( numPositions );
 
 		unsigned int i = 0, j = 0;

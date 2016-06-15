@@ -1,5 +1,6 @@
 #pragma once
 
+#include "percepto/compo/Interfaces.h"
 #include "percepto/compo/Parametric.hpp"
 #include <iostream>
 
@@ -10,63 +11,97 @@ namespace percepto
  * activation object. */
 template <typename Activation>
 class LinearLayer
-: public Parametric
+: public Source<VectorType>
 {
 public:
 	
 	typedef Eigen::Matrix<double,-1,-1,Eigen::RowMajor> ParamType;
+	typedef Source<VectorType> SourceType;
 	typedef VectorType InputType;
 	typedef VectorType OutputType;
 	typedef Activation ActivationType;
 
+	static unsigned int compute_param_dim( unsigned int inputDim, 
+	                                       unsigned int outputDim )
+	{
+		return outputDim * (inputDim + 1);
+	}
+
 	/*! Creates a layer with the specified dimensionality and all zero parameters. */
 	LinearLayer( unsigned int inputDim, unsigned int outputDim,
 	             const ActivationType& activation )
-	: _weights( ParamType::Zero( outputDim, inputDim + 1 ) ),
+	: _inputDim( inputDim ), _outputDim( outputDim ), 
+	_inputPort( this ), _params( nullptr ), _weights( nullptr, 0, 0 ),
 	_activation( activation ) {}
 
-	/*! Creates a layer with specified weight matrix and activation object.
-	 * params - An output_dim x input_dim matrix
-	 * activation - An activation object to copy and use for all outputs. */
-	LinearLayer( const ParamType& params, const ActivationType& activation )
-	: _weights( params ), _activation( activation ) {}
+	LinearLayer( const LinearLayer& other )
+	: _inputDim( other._inputDim ), _outputDim( other._outputDim ),
+	_inputPort( this ), _params( other._params ),
+	_weights( other._weights ), _activation( other._activation ) {}
 
-	OutputType Evaluate( const InputType& input ) const
+	Parameters::Ptr CreateParameters()
 	{
-		if( input.size() != InputDim() )
+		unsigned int dim = compute_param_dim( _inputDim, _outputDim );
+		Parameters::Ptr params = std::make_shared<Parameters>();
+		params->Initialize( dim );
+		SetParameters( params );
+		return params;
+	}
+
+	void SetParameters( Parameters::Ptr params )
+	{
+		if( params->ParamDim() != compute_param_dim( _inputDim, _outputDim ) )
 		{
-			std::cout << "input size: " << input.size() << " dim: " << InputDim() << std::endl;
-			throw std::runtime_error( "LinearLayer: Input dim mismatch." );
+			throw std::runtime_error( "LinearLayer: Invalid parameter dimension." );
 		}
+		_params = params;
+		new (&_weights) Eigen::Map<const MatrixType>( params->GetParamsVec().data(),
+		                                              _outputDim, _inputDim + 1 );
+	}
+
+	void SetSource( SourceType* b ) 
+	{ 
+		b->RegisterConsumer( &_inputPort );
+	}
+
+	virtual void Foreprop()
+	{
+		const InputType& input = _inputPort.GetInput();
 
 		OutputType out = _weights * input.homogeneous();
 		for( unsigned int i = 0; i < OutputDim(); i++ )
 		{
 			out(i) = _activation.Evaluate( out(i) );
 		}
-		return out;
+		SourceType::SetOutput( out );
+		SourceType::Foreprop();
 	}
 
 	// TODO Clean this up!
-	MatrixType Backprop( const InputType& input,
-	                     const MatrixType& nextDodx )
+	virtual void Backprop( const MatrixType& nextDodx )
 	{
-		if( nextDodx.cols() != OutputDim() )
+		const InputType& input = _inputPort.GetInput();
+		
+		MatrixType dody;
+		if( nextDodx.size() == 0 )
 		{
-			throw std::runtime_error( "LinearLayer: Backprop dim error." );
+			const OutputType& output = SourceType::GetOutput();
+			dody = MatrixType::Identity( output.size(), output.size() );
 		}
-
-		MatrixType dody = nextDodx;
+		else
+		{
+			dody = nextDodx;
+		}
 
 		// TODO Implement Forward/Backward semantics to avoid double evaluation
 		OutputType preAct = _weights * input.homogeneous();
 
-		MatrixType thisDodw = MatrixType::Zero( nextDodx.rows(), ParamDim() );
-		MatrixType thisDodx = MatrixType::Zero( nextDodx.rows(), InputDim() );
+		MatrixType thisDodw = MatrixType::Zero( dody.rows(), ParamDim() );
+		MatrixType thisDodx = MatrixType::Zero( dody.rows(), InputDim() );
 		for( unsigned int j = 0; j < OutputDim(); j++ )
 		{
 			double actDeriv = _activation.Derivative( preAct(j) );
-			for( unsigned int i = 0; i < nextDodx.rows(); i++ )
+			for( unsigned int i = 0; i < dody.rows(); i++ )
 			{
 				thisDodw.block(i, j*(InputDim()+1), 1, InputDim()+1 )
 				    = dody(i,j) * input.homogeneous().transpose() * actDeriv;
@@ -74,8 +109,8 @@ public:
 			}
 		}
 
-		Parametric::AccumulateWeightDerivs( thisDodw );
-		return thisDodx;
+		_params->AccumulateDerivs( thisDodw );
+		_inputPort.Backprop( thisDodx );
 	}
 
 	unsigned int InputDim() const { return _weights.cols() - 1; }
@@ -83,35 +118,15 @@ public:
 	unsigned int OutputDim() const { return _weights.rows(); }
 	virtual unsigned int ParamDim() const { return _weights.size(); }
 
-	void SetParams( const ParamType& params )
-	{
-		assert( params.cols() == _weights.cols() &&
-		        params.rows() == _weights.rows() );
-		_weights = params;
-	}
-
-	virtual void SetParamsVec( const VectorType& params )
-	{
-		assert( params.size() == _weights.size() );
-		Eigen::Map<const ParamType> w( params.data(), _weights.rows(), _weights.cols() );
-		_weights = w;
-	}
-
-	ParamType GetParams() const
-	{
-		return _weights;
-	}
-
-	virtual VectorType GetParamsVec() const
-	{
-		return Eigen::Map<const VectorType>( _weights.data(), _weights.size(), 1 );
-	}
-
 	const ActivationType& GetActivation() const { return _activation; }
 
 private:
 
-	ParamType _weights;
+	unsigned int _inputDim;
+	unsigned int _outputDim;
+	Sink<VectorType> _inputPort;
+	Parameters::Ptr _params;
+	Eigen::Map<const MatrixType> _weights;
 	ActivationType _activation;
 
 };

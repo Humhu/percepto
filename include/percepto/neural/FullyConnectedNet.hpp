@@ -1,11 +1,10 @@
 #pragma once
 
-#include "percepto/compo/SeriesWrapper.hpp"
+#include "percepto/compo/Interfaces.h"
 #include "percepto/compo/Parametric.hpp"
-#include "percepto/compo/InputWrapper.hpp"
 
 #include <sstream>
-
+#include <iostream>
 namespace percepto
 {
 
@@ -13,71 +12,101 @@ namespace percepto
 // not just the parameter vector
 template <template<typename> class Layer, typename Activation>
 class FullyConnectedNet
-: public ParametricWrapper
 {
 public:
 
 	typedef Layer<Activation> LayerType;
 	typedef Activation ActivationType;
-	
-	typedef SequenceWrapper<InputWrapper<LayerType>, LayerType> HiddenType;
-	typedef typename HiddenType::ContainerType HiddenContainerType;
-
 	typedef typename LayerType::InputType InputType;
 	typedef typename LayerType::OutputType OutputType;
+	typedef Source<InputType> SourceType;
 
 	FullyConnectedNet( unsigned int inputDim, unsigned int outputDim,
 	                   unsigned int numHiddenLayers, unsigned int layerWidth,
 	                   const ActivationType& activation )
-	: _inputUnit( inputDim, layerWidth, activation ), _inputWrapper( _inputUnit ),
-	_net( _inputWrapper, _units )
 	{
-		if( numHiddenLayers < 1 ) 
+		if( numHiddenLayers == 0 )
 		{
-			throw std::runtime_error( "FullyConnectedNet: Need at least 1 hidden layer." );
+			throw std::runtime_error( "Need at least one hidden layer." );
 		}
 
-		ParametricWrapper::AddParametric( &_inputUnit );
+		_layers.reserve( numHiddenLayers + 1 );
 
-		for( int i = 0; i < numHiddenLayers - 1; i++ )
+		// Create first layer
+		_layers.emplace_back( inputDim, layerWidth, activation );
+
+		// Create middle layers
+		for( unsigned int i = 1; i < numHiddenLayers; i++ )
 		{
-			_units.emplace_back( layerWidth, layerWidth, activation );
-			ParametricWrapper::AddParametric( &_units.back() );
-		}
-		_units.emplace_back( layerWidth, outputDim, activation );
-		ParametricWrapper::AddParametric( &_units.back() );
-	}
-
-	unsigned int NumHiddenLayers() const { return _units.size(); }
-	unsigned int InputDim() const { return _inputUnit.InputDim(); }
-	MatrixSize OutputSize() const { return MatrixSize( OutputDim(), 1 ); }
-	unsigned int OutputDim() const { return _units.back().OutputDim(); }
-
-	OutputType Evaluate( const InputType& input )
-	{
-		_inputWrapper.SetInput( input );
-		return _net.Evaluate();
-	}
-
-	MatrixType Backprop( const InputType& input, const MatrixType& nextDodx )
-	{
-		if( nextDodx.cols() != OutputDim() )
-		{
-			throw std::runtime_error( "FullyConnectedNet: Backprop dim error." );
+			_layers.emplace_back( layerWidth, layerWidth, activation );
 		}
 
-		_inputWrapper.SetInput( input );
-		return _net.Backprop( nextDodx );
+		// Create last layer
+		_layers.emplace_back( layerWidth, outputDim, activation );
+
+		// Connect all layers
+		for( unsigned int i = 1; i < _layers.size(); i++ )
+		{
+			_layers[i].SetSource( &_layers[i-1] );
+		}
 	}
 
-	const ActivationType& GetActivation() const { return _inputUnit.GetActivation(); }
+	FullyConnectedNet( const FullyConnectedNet& other )
+	{
+		_layers.reserve( other._layers.size() );
+		for( unsigned int i = 0; i < other._layers.size(); i++ )
+		{
+			_layers.emplace_back( other._layers[i] );
+		}
+		for( unsigned int i = 1; i < _layers.size(); i++ )
+		{
+			_layers[i].SetSource( &_layers[i-1] );
+		}
+	}
+
+	std::vector<Parameters::Ptr> CreateParameters()
+	{
+		std::vector<Parameters::Ptr> params;
+		params.reserve( _layers.size() );
+		for( unsigned int i = 0; i < _layers.size(); i++ )
+		{
+			params.push_back( _layers[i].CreateParameters() );
+		}
+		return params;
+	}
+
+	void SetParameters( const std::vector<Parameters::Ptr>& params )
+	{
+		if( params.size() != _layers.size() )
+		{
+			throw std::runtime_error( "FullyConnectedNet: Invalid number of param objects." );
+		}
+		for( unsigned int i = 0; i < _layers.size(); i++ )
+		{
+			_layers[i].SetParameters( params[i] );
+		}
+	}
+
+	void SetSource( SourceType* _base ) 
+	{ 
+		_layers.front().SetSource( _base ); 
+	}
+
+	Source<VectorType>& GetOutputSource()
+	{
+		return _layers.back();
+	}
+
+	OutputType GetOutput() const { return _layers.back().GetOutput(); }
+
+	unsigned int NumHiddenLayers() const { return _layers.size(); }
+	unsigned int OutputDim() const { return _layers.back().OutputDim(); }
+	unsigned int InputDim() const { return _layers.front().InputDim(); }
+	const ActivationType& GetActivation() const { return _layers.front().GetActivation(); }
 
 private:
 
-	LayerType _inputUnit;
-	InputWrapper<LayerType> _inputWrapper;
-	HiddenContainerType _units;
-	HiddenType _net;
+	std::vector<LayerType> _layers;
 
 };
 

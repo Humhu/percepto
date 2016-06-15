@@ -1,5 +1,6 @@
 #pragma once
 
+#include "percepto/compo/Interfaces.h"
 #include "percepto/PerceptoTypes.h"
 #include "percepto/utils/LowerTriangular.hpp"
 #include "percepto/utils/MatrixUtils.hpp"
@@ -7,122 +8,104 @@
 namespace percepto
 {
 
+// TODO Deprecate TriangularMapping
 /*! \brief Positive-definite matrix regressor that regresses the L and D matrices
  * of a modified Cholesky decomposition and reforms them into a matrix. Uses
  * a different regressor for the L and D terms, but the same features. Orders
  * concatenated parameters with L parameters first, then D. */
-template <typename LBase, typename DBase>
 class ModifiedCholeskyWrapper
+: public Source<MatrixType>
 {
 public:
 
-	typedef LBase LBaseType;
-	typedef DBase DBaseType;
+	typedef Source<VectorType> InputSourceType;
+	typedef Source<MatrixType> OutputSourceType;
+	typedef Sink<VectorType> SinkType;
 	typedef MatrixType OutputType;
 
-	/*! \brief Instantiate an estimator by giving it regressors for 
-	 * the modified Cholesky predictors. Makes copies of the regressors. */
-	ModifiedCholeskyWrapper( LBaseType& l, DBaseType& d )
-	: _lBase( l ), _dBase( d ), _tmap( _dBase.OutputDim() - 1 )
-	{
-		InitCheckDimensions();
-	}
+	ModifiedCholeskyWrapper() 
+	: _lInput( this ), _dInput( this ) {}
 
-	MatrixSize OutputSize() const
-	{
-		return MatrixSize( _dBase.OutputDim(), _dBase.OutputDim() );
-	}
-	unsigned int OutputDim() const 
-	{ 
-		return _dBase.OutputDim() * _dBase.OutputDim(); 
-	}
+	void SetLSource( InputSourceType* l ) { l->RegisterConsumer( &_lInput ); }
+	void SetDSource( InputSourceType* d ) { d->RegisterConsumer( &_dInput ); }
 
 	// Assuming that dodx is given w.r.t. matrix col-major ordering
-	MatrixType Backprop( const MatrixType& nextDodx )
+	virtual void Backprop( const MatrixType& nextDodx )
 	{
-		if( nextDodx.cols() != OutputDim() )
+		MatrixType dody = nextDodx;
+		if( nextDodx.size() == 0 )
 		{
-			throw std::runtime_error( "ModifiedCholeskyWrapper: Backprop dim error." );
+			dody = MatrixType::Identity( _D.size(), _D.size() );
 		}
 
-		MatrixType D = EvaluateD();
-		MatrixType L = EvaluateL();
-
 		// Calculate output matrix deriv wrt L inputs
-		MatrixType d = MatrixType::Zero( OutputSize().rows, OutputSize().cols );
-		MatrixType dSdl = MatrixType( OutputDim(), _tmap.NumPositions() );
+		MatrixType d = MatrixType::Zero( _D.rows(), _D.cols() );
+		MatrixType dSdl = MatrixType( _D.size(), _tmap.NumPositions() );
 		for( unsigned int i = 0; i < _tmap.NumPositions(); i++ )
 		{
 			const TriangularMapping::Index& ind = _tmap.PosToIndex( i );
 			// Have to add one to get the offset from the diagonal
 			d( ind.first + 1, ind.second ) = 1;
-			MatrixType dSdi = d * D * L.transpose() + L * D * d.transpose();
+			MatrixType dSdi = d * _D * _L.transpose() + _L * _D * d.transpose();
 			Eigen::Map<VectorType> dSdiVec( dSdi.data(), dSdi.size(), 1 );
 			dSdl.col(i) = dSdiVec;
 			d( ind.first + 1, ind.second ) = 0;
 		}
-		MatrixType midLInfoDodx = nextDodx * dSdl;
-		_lBase.Backprop( midLInfoDodx );
+		MatrixType midLInfoDodx = dody * dSdl;
+		_lInput.Backprop( midLInfoDodx );
 
 		// Perform D backprop
-		MatrixType dSdd = MatrixType( OutputDim(), OutputSize().rows );
-		for( unsigned int i = 0; i < OutputSize().rows; i++ )
+		MatrixType dSdd = MatrixType( _D.size(), _D.rows() );
+		for( unsigned int i = 0; i < _D.rows(); i++ )
 		{
 			// TODO Make more efficient with row product
 			d( i, i ) = 1;
-			MatrixType dSdi = L * d * L.transpose();
+			MatrixType dSdi = _L * d * _L.transpose();
 			Eigen::Map<VectorType> dSdiVec( dSdi.data(), dSdi.size(), 1 );
 			dSdd.col(i) = dSdiVec;
 			d( i, i ) = 0;
 		}
-		MatrixType midDInfoDodx = nextDodx * dSdd;
-		_dBase.Backprop( midDInfoDodx );
-
-		return ConcatenateHor( midLInfoDodx, midDInfoDodx );
+		MatrixType midDInfoDodx = dody * dSdd;
+		_dInput.Backprop( midDInfoDodx );
 	}
 
-	OutputType Evaluate() const
+	virtual void Foreprop()
 	{
-		MatrixType& L = EvaluateL();
-		DiagonalType& D = EvaluateD();
-		return L * D * L.transpose();
+		if( _lInput.IsValid() && _dInput.IsValid() )
+		{
+			const VectorType& lVec = _lInput.GetInput();
+			const VectorType& dVec = _dInput.GetInput();
+			unsigned int N = dVec.size();
+
+			// Initialize workspace
+			if( lVec.size() != _tmap.NumPositions() )
+			{
+				_tmap.SetDim( N - 1 );
+				_L = MatrixType::Identity( N, N );
+				_D = DiagonalType( N );
+				_D.setZero();
+			}
+
+			_tmap.VecToLowerTriangular( lVec, _L );
+			_D.diagonal() = dVec;
+			OutputSourceType::SetOutput( _L * _D * _L.transpose() );
+			OutputSourceType::Foreprop();
+		}
 	}
 	
 private:
 	
-	LBaseType& _lBase;
-	DBaseType& _dBase;
+	SinkType _lInput;
+	SinkType _dInput;
 	TriangularMapping _tmap;
 
-	typedef Eigen::DiagonalMatrix <ScalarType, 
-	                               Eigen::Dynamic, 
+	typedef Eigen::DiagonalMatrix <ScalarType,
+	                               Eigen::Dynamic,
 	                               Eigen::Dynamic> DiagonalType;
 
-	MatrixType& EvaluateL() const
-	{
-		_tmap.VecToLowerTriangular( _lBase.Evaluate(), _L );
-		return _L;
-	}
-
-	DiagonalType& EvaluateD() const
-	{
-		_D.diagonal() = _dBase.Evaluate();
-		return _D;
-	}
-
-	void InitCheckDimensions()
-	{
-		assert( _lBase.OutputDim() == _tmap.NumPositions() );
-
-		_L =  MatrixType::Identity( OutputSize().rows, OutputSize().cols );
-		_D = DiagonalType( _dBase.OutputDim() );
-		_D.setZero();
-	}
-
 	// Workspace
-	mutable MatrixType _L;
-	mutable DiagonalType _D;
-
+	MatrixType _L;
+	DiagonalType _D;
 };
 
 }

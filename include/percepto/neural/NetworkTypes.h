@@ -2,7 +2,7 @@
 
 #include "percepto/neural/LinearLayer.hpp"
 #include "percepto/neural/FullyConnectedNet.hpp"
-#include "percepto/compo/SeriesWrapper.hpp"
+//#include "percepto/compo/SeriesWrapper.hpp"
 
 #include "percepto/neural/HingeActivation.hpp"
 #include "percepto/neural/SigmoidActivation.hpp"
@@ -20,8 +20,8 @@ typedef FullyConnectedNet<LinearLayer, HingeActivation> ReLUNet;
  * @brief A fully connected unit with sigmoid activations followed by a final
  * linear output layer.
  */
-typedef FullyConnectedNet<LinearLayer, SigmoidActivation> PerceptronSubnet;
-typedef SeriesWrapper<InputWrapper<PerceptronSubnet>, LinearLayer<NullActivation>> PerceptronSeries;
-typedef InputChainWrapper<InputWrapper<PerceptronSubnet>, PerceptronSeries> PerceptronNet;
+// typedef FullyConnectedNet<LinearLayer, SigmoidActivation> PerceptronSubnet;
+// typedef SeriesWrapper<VectorType, VectorType> PerceptronSeries;
+// typedef InputWrapper<VectorType, VectorType> PerceptronNet;
 
 }

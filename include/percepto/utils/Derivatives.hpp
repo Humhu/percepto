@@ -5,35 +5,39 @@
 namespace percepto
 {
 
-template <typename Regressor>
-std::vector<double> EvalMatDeriv( Regressor& r, Parametric& p )
+template <typename Regressor, typename Module>
+std::vector<double> EvalMatDeriv( Regressor& r, Module& m, Parameters& p )
 {
 	static double stepSize = 1E-3;
 
 	std::vector<double> errors( p.ParamDim() );
 
-	typedef typename Regressor::OutputType OutType;
+	typedef typename Module::OutputType OutType;
 
 	OutType startOutput, trueOutput;
-	VectorType paramsVec = p.GetParamsVec();
-	MatrixType sysDodx = MatrixType::Identity( r.OutputDim(), r.OutputDim() );
+	VectorType initParams = p.GetParamsVec();
+	r.Invalidate();
+	r.Foreprop();
+	startOutput = m.GetOutput();
 	p.ResetAccumulators();
-	r.Backprop( sysDodx );
-	MatrixType dodw = p.GetAccWeightDerivs();
-
-	startOutput = r.Evaluate();
+	m.Backprop( MatrixType() );
+	MatrixType dodw = p.GetDerivs();
 
 	for( unsigned int ind = 0; ind < p.ParamDim(); ind++ )
 	{
 		// Take a step and check the startOutput
-		VectorType testParamsVec = paramsVec;
+		VectorType testParamsVec = initParams;
 		testParamsVec[ind] += stepSize;
 		p.SetParamsVec( testParamsVec );
-		trueOutput = r.Evaluate();
-		p.SetParamsVec( paramsVec );
+
+		r.Invalidate();
+		r.Foreprop();
+		trueOutput = m.GetOutput();
+		
+		p.SetParamsVec( initParams );
 		
 		VectorType gi = dodw.col(ind);
-		Eigen::Map<MatrixType> dS( gi.data(), r.OutputSize().rows, r.OutputSize().cols );
+		Eigen::Map<MatrixType> dS( gi.data(), trueOutput.rows(), trueOutput.cols() );
 		MatrixType predOut = startOutput + dS*stepSize;
 		double predErr = ( predOut - trueOutput ).norm();
 
@@ -46,45 +50,41 @@ std::vector<double> EvalMatDeriv( Regressor& r, Parametric& p )
 	return errors;
 }
 
-template <typename Cost>
-std::vector<double> EvalCostDeriv( Cost& cost, Parametric& p )
+template <typename Regressor, typename Module>
+std::vector<double> EvalCostDeriv( Regressor& r, Module& m, Parameters& p )
 {
 	static double stepSize = 1E-3;
 
 	std::vector<double> errors( p.ParamDim() );
 
-	typedef typename Cost::OutputType OutType;
 
-	OutType startOutput, trueOutput;
-	VectorType paramsVec = p.GetParamsVec();
-	MatrixType sysDodx = MatrixType::Identity(1,1);
+	double startOutput, trueOutput;
+	VectorType initParams = p.GetParamsVec();
+	r.Invalidate();
+	r.Foreprop();
+	startOutput = m.GetOutput();	
 	p.ResetAccumulators();
-	MatrixType dodx = cost.Backprop( sysDodx );
-	MatrixType dodw = p.GetAccWeightDerivs();
-
-	startOutput = cost.Evaluate();
+	m.Backprop( MatrixType() );
+	MatrixType dodw = p.GetDerivs();
 
 	for( unsigned int ind = 0; ind < dodw.size(); ind++ )
 	{
 		// Take a step and check the startOutput
-		VectorType testParamsVec = paramsVec;
+		VectorType testParamsVec = initParams;
 		testParamsVec[ind] += stepSize;
 		p.SetParamsVec( testParamsVec );
-		trueOutput = cost.Evaluate();
-		p.SetParamsVec( paramsVec );
 
-		// double dOut = startOutput - trueOutput;
-		// if( dOut == 0 ) { dOut = 1; }
+		r.Invalidate();
+		r.Foreprop();
+		trueOutput = m.GetOutput();
+		
+		p.SetParamsVec( initParams );
+
 		double predOut = startOutput + dodw(ind)*stepSize;
 		double predErr = std::abs( predOut - trueOutput );
 
 		// std::cout << "err: " << predErr << " true - nom: " << trueOutput - startOutput
 		//           << " pred - nom: " << predOut - startOutput << std::endl;
-
-		// if( predErr > 0.5 ) 
-		// { 
-		// 	std::cerr << "Too much error!" << std::endl;
-		// }
 
 		errors[ind] = predErr;
 	}

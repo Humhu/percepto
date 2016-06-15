@@ -1,5 +1,6 @@
 #pragma once
 
+#include "percepto/compo/Interfaces.h"
 #include "percepto/compo/BackpropInfo.hpp"
 #include <memory>
 #include <stdexcept>
@@ -11,49 +12,40 @@ namespace percepto
  * \brief A wrapper that transforms its input as:
  * out = base_out + offset;
  */
-template <typename Base>
+template <typename DataType>
 class OffsetWrapper
+: public Source<DataType>
 {
 public:
 
-	typedef Base BaseType;
-	typedef MatrixType OutputType;
+	EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-	const MatrixType offset;
+	typedef Source<DataType> SourceType;
+	typedef Sink<DataType> SinkType;
+	typedef DataType OutputType;
 
-	OffsetWrapper( BaseType& b, const MatrixType& offset )
-	: offset( offset ), _base( b )
+	OffsetWrapper() 
+	: _input( this ) {}
+
+	void SetSource( SourceType* b ) { b->RegisterConsumer( &_input ); }
+	void SetOffset( const DataType& offset ) { _offset = offset; }
+	DataType GetOffset() const { return _offset; }
+
+	virtual void Backprop( const MatrixType& nextDodx )
 	{
-		if( b.OutputSize().rows != offset.rows() ||
-		    b.OutputSize().cols != offset.cols() )
-		{
-			throw std::runtime_error( "OffsetWrapper: Dimension mismatch." );
-		}
+		_input.Backprop( nextDodx );
 	}
 
-	unsigned int OutputDim() const { return _base.OutputDim(); }
-	MatrixSize OutputSize() const { return _base.OutputSize(); }
-	
-	MatrixType Backprop( const MatrixType& nextDodx )
+	virtual void Foreprop()
 	{
-		if( nextDodx.cols() != OutputDim() )
-		{
-			throw std::runtime_error( "OffsetWrapper: Backprop dim error." );
-		}
-		
-		_base.Backprop( nextDodx );
-		return nextDodx;
-	}
-
-	OutputType Evaluate() const
-	{
-		return _base.Evaluate() + offset;
+		SourceType::SetOutput( _input.GetInput() + _offset );
+		SourceType::Foreprop();
 	}
 
 private:
 
-	BaseType& _base;
-
+	SinkType _input;
+	OutputType _offset;
 };
 
 }

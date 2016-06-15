@@ -28,8 +28,8 @@ public:
 	 * @brief Create an optimization object with references to an cost,
 	 * stepper, and convergence object. Keeps references only. */
 	ModularOptimizer( StepperType& stepper, ConvergenceType& convergence,
-	                  Parametric& parametrics )
-	: _stepper( stepper ), _convergence( convergence ), _parametric( parametrics )
+	                  Parameters& parameters )
+	: _stepper( stepper ), _convergence( convergence ), _parametric( parameters )
 	{
 		Initialize();
 	}
@@ -39,38 +39,6 @@ public:
 		_profiler.StartOverall();
 		_stepper.Reset();
 		_convergence.Reset();
-	}
-
-	template <typename CostType>
-	bool StepOnce( CostType& cost )
-	{
-		
-		_profiler.StartObjectiveCall();
-		double value = cost.Evaluate();
-		_profiler.FinishObjectiveCall();
-
-		_profiler.StartGradientCall();
-		MatrixType sysDodx = MatrixType::Identity(1,1);
-		cost.Backprop( sysDodx );
-		MatrixType dodw = _parametric.GetAccWeightDerivs();
-		if( dodw.rows() != 1 )
-		{
-			throw std::runtime_error( "Cost derivative dimension error." );
-		}
-		VectorType gradient( dodw.transpose() );
-
-		_parametric.ResetAccumulators();
-		_profiler.FinishGradientCall();
-
-		VectorType step = _stepper.GetStep( -gradient );
-		VectorType params = _parametric.GetParamsVec();
-		if( params.size() != step.size() )
-		{
-			throw std::runtime_error( "Parameter step the wrong size!" );
-		}
-		_parametric.SetParamsVec( params + step );
-
-		return _convergence.Converged( value, params, gradient );
 	}
 
 	OptimizationResults GetResults()
@@ -94,13 +62,14 @@ public:
 		do
 		{
 			_profiler.StartObjectiveCall();
-			value = cost.Evaluate();
+			cost.Invalidate();
+			cost.Foreprop();
+			value = cost.GetOutput();
 			_profiler.FinishObjectiveCall();
 
 			_profiler.StartGradientCall();
-			//gradient = BackpropGradient( cost );
-			cost.Backprop( sysDodx );
-			MatrixType dodw = _parametric.GetAccWeightDerivs();
+			cost.Backprop();
+			MatrixType dodw = _parametric.GetDerivs();
 			_parametric.ResetAccumulators();
 			if( dodw.rows() != 1 )
 			{
@@ -130,7 +99,7 @@ private:
 	OptimizationProfiler _profiler;
 	StepperType& _stepper; /**< A reference to this optimizer's stepper. */
 	ConvergenceType& _convergence; /**< A reference to this optimizer's convergence object. */
-	Parametric& _parametric;
+	Parameters& _parametric;
 
 };
 

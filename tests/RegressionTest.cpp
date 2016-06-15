@@ -2,8 +2,6 @@
 #include "percepto/compo/ExponentialWrapper.hpp"
 #include "percepto/compo/OffsetWrapper.hpp"
 #include "percepto/compo/ModifiedCholeskyWrapper.hpp"
-
-#include "percepto/compo/InputWrapper.hpp"
 #include "percepto/compo/TransformWrapper.hpp"
 
 #include "percepto/utils/LowerTriangular.hpp"
@@ -19,110 +17,136 @@
 
 using namespace percepto;
 
-typedef InputWrapper<ReLUNet> BaseModule;
-typedef ExponentialWrapper<BaseModule> ExpModule;
-typedef ModifiedCholeskyWrapper<ConstantRegressor, ExpModule> PSDModule;
-typedef OffsetWrapper<PSDModule> PDModule;
-typedef InputChainWrapper<BaseModule,PDModule> CovEstimator;
+typedef ExponentialWrapper<VectorType> ExpModule;
+typedef ModifiedCholeskyWrapper PSDModule;
+typedef OffsetWrapper<MatrixType> OffsetModule;
 
-typedef InputWrapper<CovEstimator> CovEstimate;
-typedef TransformWrapper<CovEstimate> TransEst;
-typedef GaussianLogLikelihoodCost<CovEstimate> GLL;
+typedef TransformWrapper TransEst;
+typedef GaussianLogLikelihoodCost GLL;
 
 double ClocksToMicrosecs( clock_t c )
 {
 	return c * 1E6 / CLOCKS_PER_SEC;
 }
 
+unsigned int matDim = 6;
+unsigned int dFeatDim = 5;
+
+unsigned int lOutDim = matDim*(matDim-1)/2;
+unsigned int dOutDim = matDim;
+
+unsigned int numHiddenLayers = 1;
+unsigned int layerWidth = 10;
+
+struct Regressor
+{
+	TerminalSource<VectorType> dInput;
+	ConstantVectorRegressor lReg;
+	ReLUNet dReg;
+	ExpModule expReg;
+	PSDModule psdReg;
+	OffsetModule pdReg;
+	TransEst transReg;
+	GLL gll;
+
+	Regressor()
+	: lReg( lOutDim ), 
+	dReg( dFeatDim, dOutDim, numHiddenLayers, layerWidth,
+	      HingeActivation( 1.0, 1E-3 ) )
+	{
+		dReg.SetSource( &dInput );
+		expReg.SetSource( &dReg.GetOutputSource() );
+		psdReg.SetLSource( &lReg );
+		psdReg.SetDSource( &expReg );
+		pdReg.SetSource( &psdReg );
+		pdReg.SetOffset( 1E-9 * MatrixType::Identity( matDim, matDim ) );
+		transReg.SetSource( &pdReg );
+		gll.SetSource( &transReg );
+	}
+
+	void Foreprop()
+	{
+		lReg.Foreprop();
+		dInput.Foreprop();
+	}
+
+	void Backprop()
+	{
+		gll.Backprop( MatrixType() );
+	}
+
+};
+
 int main( void )
 {
-
-	unsigned int matDim = 6;
-
-	TriangularMapping triMap( matDim - 1 );
-
-	unsigned int dFeatDim = 5;
-	unsigned int lOutDim = triMap.NumPositions();
-	unsigned int dOutDim = matDim;
 
 	std::cout << "Matrix dim: " << matDim << std::endl;
 	std::cout << "D Feature dim: " << dFeatDim << std::endl;
 	std::cout << "L Output dim: " << lOutDim << std::endl;
 	std::cout << "D Output dim: " << dOutDim << std::endl;
+	
+	Regressor reg;
+	Parameters::Ptr lParams = reg.lReg.CreateParameters();
+	VectorType temp = lParams->GetParamsVec();
+	randomize_vector( temp );
+	lParams->SetParamsVec( temp );
 
-	ConstantRegressor lReg( lOutDim, 1 );
-
-	HingeActivation relu( 1.0, 1E-3 );
-	ReLUNet dReg( dFeatDim, dOutDim, 1, 10, relu );
-	BaseModule dRegWrapper( dReg );
-	ExpModule expReg( dRegWrapper );
-	PSDModule psdReg( lReg, expReg );
-	PDModule pdReg( psdReg, 1E-3 * MatrixType::Identity( matDim, matDim ) );
-	CovEstimator pdEst( dRegWrapper, pdReg );
-
-	ParametricWrapper parametrics;
-	parametrics.AddParametric( &lReg );
-	parametrics.AddParametric( &dReg );
+	std::vector<Parameters::Ptr> dParams = reg.dReg.CreateParameters();
+	for( unsigned int i = 0; i < dParams.size(); i++ )
+	{
+		temp = dParams[i]->GetParamsVec();
+		randomize_vector( temp );
+		dParams[i]->SetParamsVec( temp );
+	}
 
 	// Test speed of various functions here
 	unsigned int popSize = 1000;
 
-	// 1. Generate test set
-	std::vector<CovEstimate> estimates;
-	std::vector<TransEst> transforms;
-	std::vector<GLL> testCosts;
-
-	estimates.reserve( popSize );
-	transforms.reserve( popSize );
-	testCosts.reserve( popSize );
+	// // 1. Generate test set
+	std::vector<Regressor> regressors( popSize );
+	std::vector<VectorType> inputVals( popSize );
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
 		VectorType dInput = VectorType::Random( dFeatDim );
-
 		MatrixType transform = MatrixType::Random( matDim, matDim );
 		VectorType sample = VectorType::Random( matDim );
+		
+		regressors[i].lReg.SetParameters( lParams );
+		regressors[i].dReg.SetParameters( dParams );
+		regressors[i].transReg.SetTransform( transform );
+		regressors[i].gll.SetSample( sample );
 
-		estimates.emplace_back( pdEst, dInput );
-		transforms.emplace_back( estimates.back(), transform );
-		testCosts.emplace_back( estimates.back(), sample );
+		inputVals[i] = dInput;
 	}
 
-	// 2. Test speed of matrix regression
-	std::cout << "Testing LDL regression speed..." << std::endl;
-	MatrixType regOutput;
+	// 2. Test speed of forward pass
+	std::cout << "Testing pipeline forward pass speed..." << std::endl;
+	double regOutput, lastOutput;
 	clock_t start = clock();
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		regOutput = estimates[i].Evaluate();
+		regressors[i].dInput.SetOutput( inputVals[i] );
+		regressors[i].Foreprop();
+		regOutput = regressors[i].gll.GetOutput();
+		if( i > 1 && regOutput == lastOutput )
+		{
+			std::cout << "last: " << lastOutput << std::endl;
+			std::cout << "new: " << regOutput << std::endl;
+			exit( -1 );
+		}
+		lastOutput = regOutput;
 	}
 	clock_t finish = clock();
 	double totalTime = ClocksToMicrosecs( finish - start );
-	std::cout << "Took " << totalTime << " us to regress "
+	std::cout << "Took " << totalTime << " us to forward-pass "
 	          << popSize << " outputs at " << totalTime / popSize << " us per regression."
 	          << std::endl;
 
-	// 3. Test speed of Gaussian cost calculation
-	std::cout << "Testing Gaussian LL cost speed..." << std::endl;
-	GLL::OutputType llOutput;
-	start = clock();
-	for( unsigned int i = 0; i < popSize; i++ )
-	{
-		llOutput = testCosts[i].Evaluate();
-	}
-	finish = clock();
-	totalTime = ClocksToMicrosecs( finish - start );
-	std::cout << "Took " << totalTime << " us to evaluate "
-	          << popSize << " outputs at " << totalTime / popSize << " us per sample."
-	          << std::endl;
-
 	// 4. Test gradient calculation speed
-	MatrixType dodx = MatrixType::Identity(1,1);
-	std::cout << "Testing Gaussian LL gradient calculation speed with "
-	          << parametrics.ParamDim() << " parameters. " << std::endl;
+	std::cout << "Testing Gaussian LL gradient calculation speed..." << std::endl;
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
-		//llOutput = testCosts[i].Derivative( ind );
-		testCosts[i].Backprop( dodx );
+		regressors[i].Backprop();
 	}
 	finish = clock();
 	totalTime = ClocksToMicrosecs( finish - start );

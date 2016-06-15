@@ -1,47 +1,47 @@
 #pragma once
 
+#include "percepto/compo/Interfaces.h"
 #include "percepto/PerceptoTypes.h"
 #include <Eigen/Cholesky>
 #include <Eigen/QR>
-
+#include <iostream>
 namespace percepto
 {
 
-template <typename Base, 
-          template <typename> class Solver = Eigen::ColPivHouseholderQR>
+// NOTE This only works for PSD matrices!
+template <typename Mat>
+using EigLDL = Eigen::LDLT<Mat, Eigen::Lower>;
+
+template <template <typename> class Solver = Eigen::ColPivHouseholderQR>
 class InverseWrapper
+: public Source<MatrixType>
 {
 public:
 
-	typedef Base BaseType;
+	typedef Source<MatrixType> SourceType;
+	typedef Sink<MatrixType> SinkType;
 	typedef Solver<MatrixType> SolverType;
-	typedef typename BaseType::OutputType OutputType;
+	typedef MatrixType OutputType;
 
-	InverseWrapper( BaseType& base )
-	: _base( base ) {}
+	InverseWrapper() 
+	: _input( this ) {}
 
-	unsigned int InputDim() const { return _base.OutputDim(); }
-	unsigned int OutputDim() const { return _base.OutputDim(); }
-	MatrixSize OutputSize() const { return _base.OutputSize(); }
+	void SetSource( SourceType* src ) { src->RegisterConsumer( &_input ); }
 
-	MatrixType Evaluate()
+	virtual void Foreprop()
 	{
-		SolverType solver( _base.Evaluate() );
-		return solver.inverse();
+		SolverType solver( _input.GetInput() );
+		SourceType::SetOutput( solver.inverse() );
+		SourceType::Foreprop();
 	}
 
-	MatrixType Backprop( const MatrixType& nextDodx )
+	virtual void Backprop( const MatrixType& nextDodx )
 	{
-		if( nextDodx.cols() != OutputDim() )
-		{
-			throw std::runtime_error( "InverseWrapper: Backprop dim error." );
-		}
-		SolverType solver( _base.Evaluate() );
-		MatrixType Sinv = solver.inverse();
-		MatrixType dSdx( OutputDim(), OutputDim() ); // OutDim == InDim
-		MatrixType d = MatrixType::Zero( _base.OutputSize().rows,
-		                                 _base.OutputSize().cols );
-		for( unsigned int i = 0; i < InputDim(); i++ )
+		MatrixType Sinv = SourceType::GetOutput(); // Current output
+		MatrixType dSdx( Sinv.size(), Sinv.size() );
+		MatrixType d = MatrixType::Zero( Sinv.rows(),
+		                                 Sinv.cols() );
+		for( unsigned int i = 0; i < Sinv.size(); i++ )
 		{
 			d(i) = 1;
 			MatrixType temp = Sinv * d * Sinv.transpose();
@@ -49,66 +49,12 @@ public:
 			d(i) = 0;
 		}
 		MatrixType thisDodx = nextDodx * dSdx;
-		_base.Backprop( thisDodx );
-		return thisDodx;
+		_input.Backprop( thisDodx );
 	}
 
 private:
 
-	BaseType& _base;
-};
-
-template <typename Base, 
-          template <typename,int> class Solver = Eigen::LDLT>
-class PSDInverseWrapper
-{
-public:
-
-	typedef Base BaseType;
-	typedef Solver<MatrixType, Eigen::Lower> SolverType;
-	typedef typename BaseType::OutputType OutputType;
-
-	PSDInverseWrapper( BaseType& base )
-	: _base( base ) {}
-
-	unsigned int InputDim() const { return _base.OutputDim(); }
-	unsigned int OutputDim() const { return _base.OutputDim(); }
-	MatrixSize OutputSize() const { return _base.OutputSize(); }
-
-	MatrixType Evaluate()
-	{
-		SolverType solver( _base.Evaluate() );
-		return solver.solve( MatrixType::Identity( _base.OutputSize().rows,
-		                                           _base.OutputSize().cols ) );
-	}
-
-	MatrixType Backprop( const MatrixType& nextDodx )
-	{
-		if( nextDodx.cols() != OutputDim() )
-		{
-			throw std::runtime_error( "PSDInverseWrapper: Backprop dim error." );
-		}
-		SolverType solver( _base.Evaluate() );
-		MatrixType Sinv = solver.solve( MatrixType::Identity( _base.OutputSize().rows,
-		                                _base.OutputSize().cols ) );
-		MatrixType dSdx( OutputDim(), OutputDim() ); // OutDim == InDim
-		MatrixType d = MatrixType::Zero( _base.OutputSize().rows,
-		                                 _base.OutputSize().cols );
-		for( unsigned int i = 0; i < InputDim(); i++ )
-		{
-			d(i) = 1;
-			MatrixType temp = Sinv * d * Sinv.transpose();
-			dSdx.col(i) = -Eigen::Map<VectorType>( temp.data(), temp.size(), 1 );
-			d(i) = 0;
-		}
-		MatrixType thisDodx = nextDodx * dSdx;
-		_base.Backprop( thisDodx );
-		return thisDodx;
-	}
-
-private:
-
-	BaseType& _base;
+	SinkType _input;
 };
 
 }
