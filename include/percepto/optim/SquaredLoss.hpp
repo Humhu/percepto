@@ -41,7 +41,7 @@ public:
 		OutputSourceType::Foreprop();
 	}
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		VectorType err = _input.GetInput() - _target;
 		if( nextDodx.size() == 0 )

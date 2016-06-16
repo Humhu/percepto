@@ -28,6 +28,8 @@ public:
 	{
 		if( delDodw.cols() != ParamDim() )
 		{
+			std::cout << "delDodw size: " << delDodw.size() << std::endl;
+			std::cout << "ParamDim: " << ParamDim() << std::endl;
 			throw std::runtime_error( "Parameters: Accumulation dim error." );
 		}
 

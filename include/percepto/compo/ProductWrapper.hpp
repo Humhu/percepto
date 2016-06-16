@@ -33,7 +33,7 @@ public:
 		}
 	}
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		// std::cout << "ProductWrapper backprop" << std::endl;
 		const MatrixType& left = _left.GetInput();
@@ -50,6 +50,7 @@ public:
 			d(i) = 0;
 		}
 		MatrixType midLInfoDodx = nextDodx * dSdL;
+		// std::cout << "Product: midL: " << midLInfoDodx << std::endl;
 		_left.Backprop( midLInfoDodx );
 
 		MatrixType dSdR( outputDim, right.size() );
@@ -62,6 +63,7 @@ public:
 			d(i) = 0;
 		}
 		MatrixType midRInfoDodx = nextDodx * dSdR;
+		// std::cout << "Product: midR: " << midRInfoDodx << std::endl;
 		_right.Backprop( midRInfoDodx );
 	}
 

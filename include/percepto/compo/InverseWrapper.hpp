@@ -40,7 +40,7 @@ public:
 		SourceType::Foreprop();
 	}
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		// std::cout << "InverseWrapper backprop" << std::endl;
 		MatrixType Sinv = SourceType::GetOutput(); // Current output
@@ -54,8 +54,17 @@ public:
 			dSdx.col(i) = -Eigen::Map<VectorType>( temp.data(), temp.size(), 1 );
 			d(i) = 0;
 		}
-		MatrixType thisDodx = nextDodx * dSdx;
-		_input.Backprop( thisDodx );
+
+		if( nextDodx.size() == 0 )
+		{
+			// std::cout << "Inverse dSdx: " << dSdx << std::endl;
+			_input.Backprop( dSdx );
+		}
+		else
+		{
+			// std::cout << "Inverse nextDodx * dSdx: " << nextDodx * dSdx << std::endl;
+			_input.Backprop( nextDodx * dSdx );
+		}
 	}
 
 private:

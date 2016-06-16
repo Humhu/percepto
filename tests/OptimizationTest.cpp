@@ -265,7 +265,8 @@ int main( void )
 	std::cout << "Sampling " << popSize << " datapoints..." << std::endl;
 	
 	OptimizationProblem problem;
-	problem.likelihoods.resize( popSize );
+	//problem.likelihoods.resize( popSize );
+	problem.likelihoods = std::vector<Likelihood>( popSize );
 
 	MultivariateGaussian<> mvg( MultivariateGaussian<>::VectorType::Zero( matDim ),
 	                            MultivariateGaussian<>::MatrixType::Identity( matDim, matDim ) );

@@ -38,7 +38,7 @@ public:
 	}
 
 	// TODO Check for empty nextDodx
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		// std::cout << "TransformWrapper backprop" << std::endl;
 		const MatrixType& input = _input.GetInput();

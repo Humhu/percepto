@@ -1,5 +1,7 @@
 #pragma once
+
 #include "percepto/PerceptoTypes.h"
+#include <iostream>
 
 namespace percepto
 {
@@ -66,13 +68,16 @@ public:
 
 private:
 
+	Sink( const Sink& other );
+	Sink& operator=( const Sink& other );
+
 	bool _valid;
 	InputType _input; // TODO Make this a pointer instead to avoid copies
 	ModuleBase* _owner;
 	ModuleBase* _source;
 };
 
-// Needs Foreprop, Backprop to be defined
+// Needs Backprop to be overridden
 template <typename Output>
 class Source
 : public ModuleBase
@@ -84,19 +89,21 @@ public:
 	typedef Output OutputType;
 	typedef Sink<OutputType> SinkType;
 
-	Source() : _valid( false ) {}
+	// std::string name;
+
+	Source() : _valid( false ), _backpropsReceived( 0 ) {}
 	virtual ~Source() {}
 
 	// Register a consumer of this source's output
 	void RegisterConsumer( Sink<Output>* c ) 
-	{ 
+	{
 		_consumers.push_back( c ); 
 		c->SetSource( this );
 	}
 
 	// Set this source's latched output
 	virtual void SetOutput( const OutputType& o ) 
-	{ 
+	{
 		_output = o;
 		_valid = true;
 	}
@@ -107,10 +114,42 @@ public:
 		if( !_valid )
 		{
 			throw std::runtime_error( "Tried to get invalid source output. "
-			                          + std::string("Did you forget to call Foreprop()?") );
+			                          + std::string( "Did you forget to call Foreprop()?" ) );
 		}
 		return _output; 
 	}
+
+	virtual void Backprop( const MatrixType& nextDodx ) final
+	{
+		if( _dodxAcc.size() == 0 )
+		{
+			_dodxAcc = nextDodx;
+		}
+		else
+		{
+			_dodxAcc += nextDodx;
+		}
+		_backpropsReceived++;
+
+		// std::cout << name << " has " << std::to_string( _backpropsReceived )
+		          // << " out of " << _consumers.size() << std::endl;
+		
+		// If we are the terminal source (get an empty nextDodx), then 
+		// we will have 0 consumers. We need to then propagate immediately
+		// so this check looks for >= than # consumers
+		if( _backpropsReceived >= _consumers.size() )
+		{
+			// if( !name.empty() )
+			// {
+			// 	std::cout << "Backpropping: " << name << std::endl;
+			// }
+			BackpropImplementation( _dodxAcc );
+		}
+	}
+
+	// Should be implemented by derived class to be called when all backprops
+	// are accumualted and ready to be further backpropped
+	virtual void BackpropImplementation( const MatrixType& nextDodx ) = 0;
 
 	virtual void Foreprop()
 	{
@@ -120,7 +159,8 @@ public:
 		}
 	}
 
-	// Invalidate all consumers of this source's output
+	// Invalidate all consumers of this source's output and reset
+	// all backprop accumulators
 	virtual void Invalidate()
 	{
 		for( unsigned int i = 0; i < _consumers.size(); i++ )
@@ -128,13 +168,21 @@ public:
 			_consumers[i]->UnsetInput();
 		}
 		_valid = false;
+		_backpropsReceived = 0;
+		_dodxAcc = MatrixType();
 	}
 
 private:
 
+	Source( const Source& other );
+	Source& operator=( const Source& other );
+
 	std::vector<SinkType*> _consumers;
 	bool _valid;
 	OutputType _output;
+
+	unsigned int _backpropsReceived;
+	MatrixType _dodxAcc;
 };
 
 template <typename Output>
@@ -145,8 +193,12 @@ public:
 
 	typedef Output OutputType;
 	typedef Source<Output> SourceType;
+	std::string name;
 
-	TerminalSource() {}
+	TerminalSource() : name("") {}
+
+	TerminalSource( const std::string& n ) : name( n ) {}
+
 	virtual ~TerminalSource() {}
 
 	virtual void SetOutput( const OutputType& o )
@@ -161,7 +213,10 @@ public:
 		SourceType::Foreprop();
 	}
 
-	virtual void Backprop( const MatrixType& nextDodx ) {}
+	virtual void BackpropImplementation( const MatrixType& nextDodx ) 
+	{
+		// std::cout << "Terminal source backprop: " << name << std::endl;
+	}
 
 private:
 

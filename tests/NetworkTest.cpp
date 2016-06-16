@@ -22,6 +22,7 @@
 #include "percepto/utils/Derivatives.hpp"
 #include "percepto/utils/Randomization.hpp"
 
+#include <deque>
 #include <cstdlib>
 #include <iostream>
 

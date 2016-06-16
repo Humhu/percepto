@@ -21,6 +21,9 @@ public:
 	ConstantVectorRegressor( unsigned int dim ) 
 	: _dim( dim ), _params( nullptr ), _W( nullptr, 0 ) {}
 
+	ConstantVectorRegressor( const ConstantVectorRegressor& other )
+	: _dim( other._dim ), _params( other._params ), _W( other._W ) {}
+
 	Parameters::Ptr CreateParameters()
 	{
 		Parameters::Ptr params = std::make_shared<Parameters>();
@@ -36,10 +39,13 @@ public:
 		                                        params->ParamDim() );
 	}
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
-		// std::cout << "ConstantVectorRegressor backprop" << std::endl;
-		_params->AccumulateDerivs( nextDodx );
+		if( nextDodx.size() > 0 )
+		{
+			// std::cout << "Constant: nextDodx: " << nextDodx << std::endl;
+			_params->AccumulateDerivs( nextDodx );
+		}
 	}
 
 	virtual void Foreprop()

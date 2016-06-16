@@ -59,7 +59,7 @@ public:
 		OutputSourceType::Foreprop();
 	}
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		MatrixType cov = _input.GetInput();
 		Eigen::LDLT<MatrixType> ldlt( cov );
@@ -70,10 +70,12 @@ public:
 
 		if( nextDodx.size() == 0 )
 		{
+			// std::cout << "GLL: dydSVec: " << dydSVec << std::endl;
 			_input.Backprop( dydSVec );
 		}
 		else
 		{
+			// std::cout << "GLL: nextDodx * dydSVec: " << nextDodx * dydSVec << std::endl;
 			_input.Backprop( nextDodx * dydSVec );
 		}
 	}

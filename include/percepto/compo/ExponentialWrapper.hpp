@@ -30,7 +30,7 @@ public:
 
 	//virtual unsigned int OutputDim() const { return _base->OutputDim(); }
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		// std::cout << "ExponentialWrapper backprop" << std::endl;
 		

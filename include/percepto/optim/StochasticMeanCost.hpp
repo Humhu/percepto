@@ -43,13 +43,24 @@ public:
 
 	void SetBatchSize( unsigned int ss ) { _subsetSize = ss; }
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		MatrixType thisDodx = nextDodx / _activeInds.size();
-		for( unsigned int i = 1; i < _activeInds.size(); i++ )
+		for( unsigned int i = 0; i < _activeInds.size(); i++ )
 		{
 			ParentCost::_sinks[ _activeInds[i] ].Backprop( thisDodx );
 		}
+	}
+
+	void Resample()
+	{
+		RandomSample();
+		_hasResampled = true;
+	}
+
+	const std::vector<unsigned int>& GetActiveInds() const
+	{
+		return _activeInds;
 	}
 
 	/*! \brief Calculate the objective function by averaging the 
@@ -60,7 +71,7 @@ public:
 	virtual void Foreprop()
 	{
 		if( !_hasResampled ) 
-		{ 
+		{
 			RandomSample(); 
 			_hasResampled = true;
 		}

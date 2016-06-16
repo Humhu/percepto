@@ -25,6 +25,13 @@ public:
 		s->RegisterConsumer( &_sinks.back() );
 	}
 
+	// TODO Come up with a better way to do this
+	// Using a list allows remove, but makes random sampling hard
+	void RemoveOldestSource()
+	{
+		_sinks.pop_front();
+	}
+
 	virtual void Foreprop()
 	{
 		BOOST_FOREACH( const SinkType& input, _sinks )
@@ -41,7 +48,7 @@ public:
 		SourceType::Foreprop();
 	}
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		MatrixType thisDodx = nextDodx / _sinks.size();
 		BOOST_FOREACH( SinkType& input, _sinks )
@@ -64,7 +71,8 @@ public:
 
 protected:
 
-	// Using a deque so that growing does not invalidate pointers
+	// Using a deque so that growing does not invalidate pointers and
+	// we can efficiently remove items
 	std::deque<SinkType> _sinks;
 
 private:

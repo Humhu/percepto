@@ -25,7 +25,7 @@ public:
 
 	virtual unsigned int OutputDim() const { return 1; }
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		// Add the L2 cost into the dodw
 		VectorType current = _params->GetParamsVec();

@@ -34,9 +34,9 @@ public:
 	void SetOffset( const DataType& offset ) { _offset = offset; }
 	DataType GetOffset() const { return _offset; }
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
-		// std::cout << "OffsetWrapper backprop" << std::endl;
+		// std::cout << "OffsetWrapper: nextDodx: " << nextDodx << std::endl;
 		_input.Backprop( nextDodx );
 	}
 

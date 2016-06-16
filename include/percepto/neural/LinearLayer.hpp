@@ -78,7 +78,7 @@ public:
 	}
 
 	// TODO Clean this up!
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		const InputType& input = _inputPort.GetInput();
 		

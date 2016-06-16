@@ -42,9 +42,10 @@ public:
 		}
 	}
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	// TODO Handle empty nextDodx
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
-		// std::cout << "Additive wrapper backprop" << std::endl;
+		// std::cout << "Additive: nextDodx: " << nextDodx << std::endl;
 		_inputA.Backprop( nextDodx );
 		_inputB.Backprop( nextDodx );
 	}
