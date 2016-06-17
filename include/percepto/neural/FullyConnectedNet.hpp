@@ -1,5 +1,6 @@
 #pragma once
 
+#include "percepto/neural/NullActivation.hpp"
 #include "percepto/compo/Interfaces.h"
 #include "percepto/compo/Parametric.hpp"
 
@@ -15,15 +16,28 @@ class FullyConnectedNet
 {
 public:
 
-	typedef Layer<Activation> LayerType;
-	typedef Activation ActivationType;
-	typedef typename LayerType::InputType InputType;
-	typedef typename LayerType::OutputType OutputType;
-	typedef Source<InputType> SourceType;
+	enum OutputLayerMode
+	{
+		OUTPUT_UNRECTIFIED = 0,
+		OUTPUT_RECTIFIED
+	};
 
-	FullyConnectedNet( unsigned int inputDim, unsigned int outputDim,
-	                   unsigned int numHiddenLayers, unsigned int layerWidth,
-	                   const ActivationType& activation )
+	typedef Activation ActivationType;
+	typedef Layer<ActivationType> RectifiedLayerType;
+	typedef typename RectifiedLayerType::InputType InputType;
+	typedef typename RectifiedLayerType::OutputType OutputType;
+	typedef Layer<NullActivation> UnrectifiedLayerType;
+	typedef Source<InputType> InputSourceType;
+	typedef Source<VectorType> OutputSourceType;
+
+	FullyConnectedNet( unsigned int inputDim, 
+	                   unsigned int outputDim,
+	                   unsigned int numHiddenLayers, 
+	                   unsigned int layerWidth,
+	                   const ActivationType& activation, 
+	                   OutputLayerMode outputMode = OUTPUT_UNRECTIFIED )
+	: _outputMode( outputMode ),
+	  _unrectifiedLayer( layerWidth, outputDim, NullActivation() )
 	{
 		if( numHiddenLayers == 0 )
 		{
@@ -41,8 +55,21 @@ public:
 			_layers.emplace_back( layerWidth, layerWidth, activation );
 		}
 
-		// Create last layer
-		_layers.emplace_back( layerWidth, outputDim, activation );
+		// Unrectified layer is created automatically
+		if( _outputMode == OUTPUT_UNRECTIFIED )
+		{
+			std::cout << "Connecting unrectified layer." << std::endl;
+			_unrectifiedLayer.SetSource( &_layers.back() );
+		}
+		else if( _outputMode == OUTPUT_RECTIFIED )
+		{
+			std::cout << "Constructing rectified output layer." << std::endl;
+			_layers.emplace_back( layerWidth, outputDim, activation );
+		}
+		else
+		{
+			throw std::runtime_error( "Unknown output mode received." );
+		}
 
 		// Connect all layers
 		for( unsigned int i = 1; i < _layers.size(); i++ )
@@ -52,52 +79,110 @@ public:
 	}
 
 	FullyConnectedNet( const FullyConnectedNet& other )
+	: _outputMode( other._outputMode ),
+	  // _layers( other._layers ),
+	  _unrectifiedLayer( other._unrectifiedLayer ),
+	  _paramSets( other._paramSets ),
+	  _params( other._params )
 	{
-		_layers.reserve( other._layers.size() );
-		for( unsigned int i = 0; i < other._layers.size(); i++ )
+		for( unsigned int i = 0; i < other._layers.size(); ++i )
 		{
 			_layers.emplace_back( other._layers[i] );
 		}
-		for( unsigned int i = 1; i < _layers.size(); i++ )
+		for( unsigned int i = 1; i < _layers.size(); ++i )
 		{
 			_layers[i].SetSource( &_layers[i-1] );
 		}
+		if( _outputMode == OUTPUT_UNRECTIFIED )
+		{
+			_unrectifiedLayer.SetSource( &_layers.back() );
+		}
 	}
 
-	std::vector<Parameters::Ptr> CreateParameters()
+	Parameters::Ptr CreateParameters()
 	{
-		std::vector<Parameters::Ptr> params;
-		params.reserve( _layers.size() );
+		_paramSets.clear();
+		_params = ParameterWrapper();
+		_paramSets.reserve( NumLayers() );
 		for( unsigned int i = 0; i < _layers.size(); i++ )
 		{
-			params.push_back( _layers[i].CreateParameters() );
+			_paramSets.push_back( _layers[i].CreateParameters() );
+			_params.AddParameters( _paramSets.back() );
 		}
-		return params;
+		if( _outputMode == OUTPUT_UNRECTIFIED )
+		{
+			_paramSets.push_back( _unrectifiedLayer.CreateParameters() );
+			_params.AddParameters( _paramSets.back() );
+		}
+		return std::make_shared<ParameterWrapper>( _params );
 	}
 
-	void SetParameters( const std::vector<Parameters::Ptr>& params )
+	const std::vector<Parameters::Ptr>& GetParameterSets() const
 	{
-		if( params.size() != _layers.size() )
+		return _paramSets;
+	}
+
+	void SetParameterSets( const std::vector<Parameters::Ptr>& params )
+	{
+		if( params.size() != NumLayers() )
 		{
-			throw std::runtime_error( "FullyConnectedNet: Invalid number of param objects." );
+			std::stringstream ss;
+			ss << "FullyConnectedNet: Received " << params.size() << 
+			      " param sets but expected " << NumLayers();
+			throw std::runtime_error( ss.str() );
 		}
+
 		for( unsigned int i = 0; i < _layers.size(); i++ )
 		{
 			_layers[i].SetParameters( params[i] );
 		}
+		if( _outputMode == OUTPUT_UNRECTIFIED )
+		{
+			_unrectifiedLayer.SetParameters( params.back() );
+		}
 	}
 
-	void SetSource( SourceType* _base ) 
+	void SetSource( InputSourceType* _base ) 
 	{ 
 		_layers.front().SetSource( _base ); 
 	}
 
-	Source<VectorType>& GetOutputSource()
+	unsigned int NumLayers() const
 	{
-		return _layers.back();
+		if( _outputMode == OUTPUT_UNRECTIFIED )
+		{
+			return _layers.size() + 1;
+		}
+		else //( _outputMode == OUTPUT_RECTIFIED )
+		{
+			return _layers.size();
+		}
 	}
 
-	OutputType GetOutput() const { return _layers.back().GetOutput(); }
+	Source<VectorType>& GetOutputSource()
+	{
+		if( _outputMode == OUTPUT_UNRECTIFIED )
+		{
+			return _unrectifiedLayer;
+		}
+		// Constructor guarantees that this is true
+		else //( _outputMode == OUTPUT_RECTIFIED )
+		{
+			return _layers.back();
+		}
+	}
+
+	OutputType GetOutput() const 
+	{
+		if( _outputMode == OUTPUT_UNRECTIFIED )
+		{
+			return _unrectifiedLayer.GetOutput();
+		}
+		else
+		{
+			return _layers.back().GetOutput(); 
+		}
+	}
 
 	unsigned int NumHiddenLayers() const { return _layers.size(); }
 	unsigned int OutputDim() const { return _layers.back().OutputDim(); }
@@ -106,7 +191,12 @@ public:
 
 private:
 
-	std::vector<LayerType> _layers;
+	OutputLayerMode _outputMode;
+	std::vector<RectifiedLayerType> _layers;
+	UnrectifiedLayerType _unrectifiedLayer; // May be needed for unrectified out
+
+	std::vector<Parameters::Ptr> _paramSets;
+	ParameterWrapper _params;
 
 };
 

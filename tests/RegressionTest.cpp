@@ -11,7 +11,7 @@
 
 #include "percepto/neural/NetworkTypes.h"
 
-
+#include <deque>
 #include <ctime>
 #include <iostream>
 
@@ -64,6 +64,18 @@ struct Regressor
 		gll.SetSource( &transReg );
 	}
 
+	Regressor( const Regressor& other )
+	: lReg( other.lReg ), dReg( other.dReg ), pdReg( other.pdReg )
+	{
+		dReg.SetSource( &dInput );
+		expReg.SetSource( &dReg.GetOutputSource() );
+		psdReg.SetLSource( &lReg );
+		psdReg.SetDSource( &expReg );
+		pdReg.SetSource( &psdReg );
+		transReg.SetSource( &pdReg );
+		gll.SetSource( &transReg );
+	}
+
 	void Foreprop()
 	{
 		lReg.Foreprop();
@@ -87,32 +99,29 @@ int main( void )
 	
 	Regressor reg;
 	Parameters::Ptr lParams = reg.lReg.CreateParameters();
-	VectorType temp = lParams->GetParamsVec();
+	VectorType temp( lParams->ParamDim() );
 	randomize_vector( temp );
 	lParams->SetParamsVec( temp );
 
-	std::vector<Parameters::Ptr> dParams = reg.dReg.CreateParameters();
-	for( unsigned int i = 0; i < dParams.size(); i++ )
-	{
-		temp = dParams[i]->GetParamsVec();
-		randomize_vector( temp );
-		dParams[i]->SetParamsVec( temp );
-	}
+	Parameters::Ptr dParams = reg.dReg.CreateParameters();
+	temp = VectorType( dParams->ParamDim() );
+	randomize_vector( temp );
+	dParams->SetParamsVec( temp );
 
 	// Test speed of various functions here
 	unsigned int popSize = 1000;
 
 	// // 1. Generate test set
-	std::vector<Regressor> regressors( popSize );
+	std::deque<Regressor> regressors;
 	std::vector<VectorType> inputVals( popSize );
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
+		regressors.emplace_back( reg );
+
 		VectorType dInput = VectorType::Random( dFeatDim );
 		MatrixType transform = MatrixType::Random( matDim, matDim );
 		VectorType sample = VectorType::Random( matDim );
 		
-		regressors[i].lReg.SetParameters( lParams );
-		regressors[i].dReg.SetParameters( dParams );
 		regressors[i].transReg.SetTransform( transform );
 		regressors[i].gll.SetSample( sample );
 

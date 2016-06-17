@@ -37,10 +37,9 @@ unsigned int layerWidth = 10;
 
 struct Regressor
 {
-	// TerminalSource<VectorType> dInput;
+	TerminalSource<VectorType> dInput;
 	ConstantVectorRegressor lReg;
-	ConstantVectorRegressor dReg;
-	// ReLUNet dReg;
+	ReLUNet dReg;
 	ExponentialWrapper<VectorType> expReg;
 	ModifiedCholeskyWrapper psdReg;
 	OffsetWrapper<MatrixType> pdReg;
@@ -50,13 +49,11 @@ struct Regressor
 
 	Regressor()
 	: lReg( lOutDim ), 
-	// dReg( dFeatDim, dOutDim, numHiddenLayers, layerWidth,
-	      // HingeActivation( 1.0, 1E-3 ) )
-	  dReg( matDim )
+	dReg( dFeatDim, dOutDim, numHiddenLayers, layerWidth,
+	      HingeActivation( 1.0, 1E-3 ) )
 	{
-		// dReg.SetSource( &dInput );
-		// expReg.SetSource( &dReg.GetOutputSource() );
-		expReg.SetSource( &dReg );
+		dReg.SetSource( &dInput );
+		expReg.SetSource( &dReg.GetOutputSource() ); // TODO Streamline
 		psdReg.SetLSource( &lReg );
 		psdReg.SetDSource( &expReg );
 		pdReg.SetSource( &psdReg );
@@ -67,13 +64,13 @@ struct Regressor
 	}
 
 	Regressor( const Regressor& other )
-	: lReg( other.lReg ), dReg( other.dReg )
+	: lReg( other.lReg ), dReg( other.dReg ), pdReg( other.pdReg )
 	{
-		expReg.SetSource( &dReg );
+		dReg.SetSource( &dInput );
+		expReg.SetSource( &dReg.GetOutputSource() );
 		psdReg.SetLSource( &lReg );
 		psdReg.SetDSource( &expReg );
 		pdReg.SetSource( &psdReg );
-		pdReg.SetOffset( 1E-9 * MatrixType::Identity( matDim, matDim ) );
 		transReg.SetSource( &pdReg );
 		invReg.SetSource( &transReg );
 		gll.SetSource( &invReg );
@@ -82,15 +79,13 @@ struct Regressor
 	void Invalidate()
 	{
 		lReg.Invalidate();
-		dReg.Invalidate();
-		// dInput.Invalidate();
+		dInput.Invalidate();
 	}
 
 	void Foreprop()
 	{
 		lReg.Foreprop();
-		// dInput.Foreprop();
-		dReg.Foreprop();
+		dInput.Foreprop();
 	}
 
 	void Backprop()
@@ -110,25 +105,20 @@ int main( void )
 
 	Regressor reg;
 	Parameters::Ptr lParams = reg.lReg.CreateParameters();
-	// VectorType temp = lParams->GetParamsVec();
-	// randomize_vector( temp );
-	// lParams->SetParamsVec( temp );
-	lParams->SetParamsVec( VectorType::Zero( lParams->ParamDim() ) );
+	VectorType temp( lParams->ParamDim() );
+	randomize_vector( temp );
+	lParams->SetParamsVec( temp );
+	// lParams->SetParamsVec( VectorType::Zero( lParams->ParamDim() ) );
 
 	Parameters::Ptr dParams = reg.dReg.CreateParameters();
-	dParams->SetParamsVec( VectorType::Zero( dParams->ParamDim() ) );
-	// std::vector<Parameters::Ptr> dParams = reg.dReg.CreateParameters();
-	// for( unsigned int i = 0; i < dParams.size(); i++ )
-	// {
-	// 	temp = dParams[i]->GetParamsVec();
-	// 	randomize_vector( temp );
-	// 	dParams[i]->SetParamsVec( temp );
-	// }
+	temp = VectorType( dParams->ParamDim() );
+	randomize_vector( temp );
+	dParams->SetParamsVec( temp );
+	// dParams->SetParamsVec( VectorType::Zero( dParams->ParamDim() ) );
 
 	ParameterWrapper paramWrapper;
 	paramWrapper.AddParameters( lParams );
 	paramWrapper.AddParameters( dParams );
-	// allParams.insert( allParams.end(), dParams.begin(), dParams.end() );
 
 	// Test derivatives of various functions here
 	unsigned int popSize = 100;
@@ -144,12 +134,10 @@ int main( void )
 		
 		regressors.emplace_back( reg );
 		inputVals.emplace_back( dInput );
-		// regressors[i].lReg.SetParameters( lParams );
-		// regressors[i].dReg.SetParameters( dParams );
 		regressors[i].transReg.SetTransform( transform );
 		regressors[i].gll.SetSample( sample );
-		// regressors[i].dInput.SetOutput( dInput );
-		// inputVals[i] = dInput;
+		regressors[i].dInput.SetOutput( dInput );
+		inputVals[i] = dInput;
 	}
 
 	std::vector<double>::iterator iter;
@@ -157,21 +145,20 @@ int main( void )
 	double maxSeen, acc;
 
 	// 3. Test ANN gradients
-	// std::cout << "Testing ANN gradients..." << std::endl;
-	// maxSeen = -std::numeric_limits<double>::infinity();
-	// acc = 0;
-	// for( unsigned int i = 0; i < popSize; i++ )
-	// {
-	// 	std::vector<double> errors = EvalMatDeriv( regressors[i], 
-	// 	                                           // regressors[i].dReg.GetOutputSource(),
-	// 	                                           regressors[i].dReg,
-	// 	                                           paramWrapper );
-	// 	iter = std::max_element( errors.begin(), errors.end() );
-	// 	acc += *iter;
-	// 	if( *iter > maxSeen ) { maxSeen = *iter; }
-	// }
-	// std::cout << "Max error: " << maxSeen << std::endl;
-	// std::cout << "Avg max error: " << acc / popSize << std::endl;
+	std::cout << "Testing ANN gradients..." << std::endl;
+	maxSeen = -std::numeric_limits<double>::infinity();
+	acc = 0;
+	for( unsigned int i = 0; i < popSize; i++ )
+	{
+		std::vector<double> errors = EvalMatDeriv( regressors[i], 
+		                                           regressors[i].dReg.GetOutputSource(),
+		                                           paramWrapper );
+		iter = std::max_element( errors.begin(), errors.end() );
+		acc += *iter;
+		if( *iter > maxSeen ) { maxSeen = *iter; }
+	}
+	std::cout << "Max error: " << maxSeen << std::endl;
+	std::cout << "Avg max error: " << acc / popSize << std::endl;
 
 	// 4. Test cholesky gradients
 	std::cout << "Testing Modified Cholesky gradients..." << std::endl;

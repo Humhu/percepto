@@ -17,6 +17,7 @@
 
 #include "percepto/neural/NetworkTypes.h"
 
+#include <deque>
 #include <ctime>
 #include <iostream>
 
@@ -52,6 +53,17 @@ struct Regressor
 	: lReg( lOutDim ), 
 	dReg( dFeatDim, dOutDim, numHiddenLayers, layerWidth,
 	      HingeActivation( 1.0, 1E-3 ) )
+	{
+		dReg.SetSource( &dInput );
+		expReg.SetSource( &dReg.GetOutputSource() );
+		psdReg.SetLSource( &lReg );
+		psdReg.SetDSource( &expReg );
+		pdReg.SetSource( &psdReg );
+		pdReg.SetOffset( 1E-9 * MatrixType::Identity( matDim, matDim ) );
+	}
+
+	Regressor( const Regressor& other )
+	: lReg( other.lReg ), dReg( other.dReg )
 	{
 		dReg.SetSource( &dInput );
 		expReg.SetSource( &dReg.GetOutputSource() );
@@ -98,6 +110,16 @@ struct Likelihood
 		gll.SetSource( &sumReg );
 	}
 
+	Likelihood( const Regressor& a, const Regressor& b )
+	: regA( a ), regB( b )
+	{
+		transRegA.SetSource( &regA.pdReg );
+		transRegB.SetSource( &regB.pdReg );
+		sumReg.SetSourceA( &transRegA );
+		sumReg.SetSourceB( &transRegB );
+		gll.SetSource( &sumReg );
+	}
+
 	void Invalidate() 
 	{
 		regA.Invalidate(); 
@@ -115,7 +137,7 @@ struct Likelihood
 
 struct OptimizationProblem
 {
-	std::vector<Likelihood> likelihoods;
+	std::deque<Likelihood> likelihoods;
 	StochasticMeanCost<double> loss;
 	ParameterL2Cost regularizer;
 	AdditiveWrapper<double> objective;
@@ -163,7 +185,7 @@ void TestOptimization( Optimizer& opt, Problem& problem,
 	problem.Foreprop();
 	double initialObjective = problem.GetOutput();
 
-	// opt.SetVerbosity( false );
+	// opt.SetVerbosity( false ); // TODO
 	OptimizationResults results;
 	try
 	{
@@ -217,41 +239,38 @@ int main( void )
 
 	Regressor trueRegA, trueRegB, regA, regB;
 	VectorType p;
-	std::vector<Parameters::Ptr> temp;
+	Parameters::Ptr temp;
 
 	// True A
-	temp.clear();
-
 	Parameters::Ptr trueLParamsA = trueRegA.lReg.CreateParameters();
-	std::vector<Parameters::Ptr> trueDParamsA = trueRegA.dReg.CreateParameters();
-	temp.push_back( trueLParamsA );
-	temp.insert( temp.end(), trueDParamsA.begin(), trueDParamsA.end() );
-
+	Parameters::Ptr trueDParamsA = trueRegA.dReg.CreateParameters();
 	// True B
 	Parameters::Ptr trueLParamsB = trueRegB.lReg.CreateParameters();
-	std::vector<Parameters::Ptr> trueDParamsB = trueRegB.dReg.CreateParameters();
-	temp.push_back( trueLParamsB );
-	temp.insert( temp.end(), trueDParamsB.begin(), trueDParamsB.end() );
+	Parameters::Ptr trueDParamsB = trueRegB.dReg.CreateParameters();
 
-	ParameterWrapper trueParams( temp );
+	ParameterWrapper trueParams;
+	trueParams.AddParameters( trueLParamsA );
+	trueParams.AddParameters( trueDParamsA );
+	trueParams.AddParameters( trueLParamsB );
+	trueParams.AddParameters( trueDParamsB );
+	
 	p = VectorType( trueParams.ParamDim() );
 	randomize_vector( p );
 	trueParams.SetParamsVec( p );
 
 	// Init
-	temp.clear();
-
 	Parameters::Ptr lParamsA = regA.lReg.CreateParameters();
-	std::vector<Parameters::Ptr> dParamsA = regA.dReg.CreateParameters();
-	temp.push_back( lParamsA );
-	temp.insert( temp.end(), dParamsA.begin(), dParamsA.end() );
-
+	Parameters::Ptr dParamsA = regA.dReg.CreateParameters();
+	
 	Parameters::Ptr lParamsB = regB.lReg.CreateParameters();
-	std::vector<Parameters::Ptr> dParamsB = regB.dReg.CreateParameters();
-	temp.push_back( lParamsB );
-	temp.insert( temp.end(), dParamsB.begin(), dParamsB.end() );
+	Parameters::Ptr dParamsB = regB.dReg.CreateParameters();
 
-	ParameterWrapper params( temp );
+	ParameterWrapper params;
+	params.AddParameters( lParamsA );
+	params.AddParameters( dParamsA );
+	params.AddParameters( lParamsB );
+	params.AddParameters( dParamsB );
+
 	p = VectorType( params.ParamDim() );
 	randomize_vector( p );
 	params.SetParamsVec( p );
@@ -265,8 +284,6 @@ int main( void )
 	std::cout << "Sampling " << popSize << " datapoints..." << std::endl;
 	
 	OptimizationProblem problem;
-	//problem.likelihoods.resize( popSize );
-	problem.likelihoods = std::vector<Likelihood>( popSize );
 
 	MultivariateGaussian<> mvg( MultivariateGaussian<>::VectorType::Zero( matDim ),
 	                            MultivariateGaussian<>::MatrixType::Identity( matDim, matDim ) );
@@ -297,12 +314,9 @@ int main( void )
 		mvg.SetCovariance( trueCovA + trueCovB );
 		VectorType sample = mvg.Sample(); 
 
+		problem.likelihoods.emplace_back( regA, regB );
 		problem.likelihoods[i].regA.dInput.SetOutput( dInputA );
-		problem.likelihoods[i].regA.lReg.SetParameters( lParamsA );
-		problem.likelihoods[i].regA.dReg.SetParameters( dParamsA );
 		problem.likelihoods[i].regB.dInput.SetOutput( dInputB );
-		problem.likelihoods[i].regB.lReg.SetParameters( lParamsB );
-		problem.likelihoods[i].regB.dReg.SetParameters( dParamsB );
 		problem.likelihoods[i].transRegA.SetTransform( transformA );
 		problem.likelihoods[i].transRegB.SetTransform( transformB );
 		problem.likelihoods[i].gll.SetSample( sample );

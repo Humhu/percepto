@@ -46,7 +46,14 @@ struct Regressor
 
 	Regressor()
 	: net( inputDim, outputDim, numHiddenLayers, layerWidth,
-	       HingeActivation( 1, 1E-1 ) )
+	       HingeActivation( 1, 1E-3 ), ReLUNet::OUTPUT_UNRECTIFIED )
+	{
+		net.SetSource( &netInput );
+		loss.SetSource( &net.GetOutputSource() );
+	}
+
+	Regressor( const Regressor& other )
+	: net( other.net )
 	{
 		net.SetSource( &netInput );
 		loss.SetSource( &net.GetOutputSource() );
@@ -55,6 +62,11 @@ struct Regressor
 	void Foreprop()
 	{
 		netInput.Foreprop();
+	}
+
+	double GetOutput()
+	{
+		return net.GetOutput()(0);
 	}
 
 	void Invalidate()
@@ -141,16 +153,14 @@ int main( int argc, char** argv )
 {
 	unsigned int numTrain = 150;
 	unsigned int numTest = 200;
-	double l2Weight = 0;
+	double l2Weight = 1E-3;
 
 	std::vector<VectorType> xTest, yTest, xTrain, yTrain;
 	generate_data( xTest, yTest, numTest );
 	generate_data( xTrain, yTrain, numTrain );
 
-	// Randomize the net parameters
 	std::cout << "Initializing net..." << std::endl;
 	std::cout << "Creating linear layers..." << std::endl;
-
 
 	// Perceptron initialization
 	// SigmoidActivation act;
@@ -166,42 +176,38 @@ int main( int argc, char** argv )
 
 	// // ReLU initialization
 	Regressor reg;
-	std::vector<Parameters::Ptr> netParams = reg.net.CreateParameters();
-	ParameterWrapper params( netParams );
+	Parameters::Ptr params = reg.net.CreateParameters();
 
 	// Randomize parameters
-	VectorType p = params.GetParamsVec();
+	VectorType p( params->ParamDim() );
 	randomize_vector( p );
-	params.SetParamsVec( p );
+	params->SetParamsVec( p );
 
 	// Create the loss functions
-
 	std::cout << "Generating losses..." << std::endl;
 	OptimizationProblem trainProblem;
 	OptimizationProblem testProblem;
-	trainProblem.regressors.resize( numTrain );
-	testProblem.regressors.resize( numTest );
 	
 	// NOTE If we don't reserve, the vector resizing and moving may
 	// invalidate the references. Alternatively we can use a deque
 	trainProblem.losses.SetBatchSize( batchSize );
-	trainProblem.regularizer.SetParameters( &params );
+	trainProblem.regularizer.SetParameters( params.get() );
 	trainProblem.regularizer.SetWeight( l2Weight );
 	for( unsigned int i = 0; i < numTrain; i++ )
 	{
+		trainProblem.regressors.emplace_back( reg );
 		trainProblem.regressors[i].netInput.SetOutput( xTrain[i] );
-		trainProblem.regressors[i].net.SetParameters( netParams );
 		trainProblem.regressors[i].loss.SetTarget( yTrain[i] );
 		trainProblem.losses.AddSource( &trainProblem.regressors[i].loss );
 	}
 
 	testProblem.losses.SetBatchSize( batchSize );
-	testProblem.regularizer.SetParameters( &params );
+	testProblem.regularizer.SetParameters( params.get() );
 	testProblem.regularizer.SetWeight( l2Weight );
 	for( unsigned int i = 0; i < numTest; i++ )
 	{
+		testProblem.regressors.emplace_back( reg );
 		testProblem.regressors[i].netInput.SetOutput( xTest[i] );
-		testProblem.regressors[i].net.SetParameters( netParams );
 		testProblem.regressors[i].loss.SetTarget( yTest[i] );
 		testProblem.losses.AddSource( &testProblem.regressors[i].loss );
 	}
@@ -209,7 +215,7 @@ int main( int argc, char** argv )
 	AdamStepper stepper;
 	
 	SimpleConvergenceCriteria criteria;
-	criteria.maxRuntime = 120;
+	criteria.maxRuntime = 20;
 	criteria.minElementGradient = 1E-3;
 	//criteria.minObjectiveDelta = 1E-3;
 	SimpleConvergence convergence( criteria );
@@ -241,7 +247,7 @@ int main( int argc, char** argv )
 	std::cout << "initial test max loss: " << testProblem.losses.ParentCost::ComputeMax() << std::endl;
 
 	std::cout << "Beginning optimization..." << std::endl;
-	AdamOptimizer optimizer( stepper, convergence, params );
+	AdamOptimizer optimizer( stepper, convergence, *params );
 	optimizer.Optimize( trainProblem );
 
 	trainProblem.Invalidate();
@@ -254,6 +260,12 @@ int main( int argc, char** argv )
 	std::cout << "train max loss: " << trainProblem.losses.ParentCost::ComputeMax() << std::endl;
 	std::cout << "test avg loss: " << testProblem.losses.ParentCost::GetOutput() << std::endl;
 	std::cout << "test max loss: " << testProblem.losses.ParentCost::ComputeMax() << std::endl;
+
+	for( unsigned int i = 0; i < numTest; i++ )
+	{
+		std::cout << "xtest: " << xTest[i] << " ytest: " << yTest[i]
+		          << " regout: " << testProblem.regressors[i].GetOutput() << std::endl;
+	}
 
 	return 0;
 }
