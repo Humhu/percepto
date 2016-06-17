@@ -45,6 +45,7 @@ public:
 
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
+		if( _activeInds.size() == 0 ) { return; }
 		MatrixType thisDodx = nextDodx / _activeInds.size();
 		for( unsigned int i = 0; i < _activeInds.size(); i++ )
 		{
@@ -76,6 +77,7 @@ public:
 			_hasResampled = true;
 		}
 
+		if( _activeInds.size() == 0 ) { return; }
 		for( unsigned int i = 0; i < _activeInds.size(); i++ )
 		{
 			if( !ParentCost::_sinks[ _activeInds[i] ].IsValid() ) { return; }

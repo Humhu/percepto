@@ -29,11 +29,13 @@ public:
 	// Using a list allows remove, but makes random sampling hard
 	void RemoveOldestSource()
 	{
+		if( _sinks.size() == 0 ) { return; }
 		_sinks.pop_front();
 	}
 
 	virtual void Foreprop()
 	{
+		if( _sinks.size() == 0 ) { return; }
 		BOOST_FOREACH( const SinkType& input, _sinks )
 		{
 			if( !input.IsValid() ) { return; }
@@ -50,6 +52,7 @@ public:
 
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
+		if( _sinks.size() == 0 ) { return; }
 		MatrixType thisDodx = nextDodx / _sinks.size();
 		BOOST_FOREACH( SinkType& input, _sinks )
 		{
