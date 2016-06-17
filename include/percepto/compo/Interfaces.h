@@ -89,7 +89,7 @@ public:
 	typedef Output OutputType;
 	typedef Sink<OutputType> SinkType;
 
-	// std::string name;
+	std::string name;
 
 	Source() : _valid( false ), _backpropsReceived( 0 ) {}
 	virtual ~Source() {}
@@ -100,6 +100,8 @@ public:
 		_consumers.push_back( c ); 
 		c->SetSource( this );
 	}
+
+	bool IsValid() const { return _valid; }
 
 	// Set this source's latched output
 	virtual void SetOutput( const OutputType& o ) 
@@ -131,8 +133,11 @@ public:
 		}
 		_backpropsReceived++;
 
-		// std::cout << name << " has " << std::to_string( _backpropsReceived )
-		          // << " out of " << _consumers.size() << std::endl;
+		// if( !name.empty() )
+		// {
+		// 	std::cout << name << " has " << std::to_string( _backpropsReceived )
+		// 	          << " out of " << _consumers.size() << std::endl;
+		// }
 		
 		// If we are the terminal source (get an empty nextDodx), then 
 		// we will have 0 consumers. We need to then propagate immediately
@@ -163,13 +168,13 @@ public:
 	// all backprop accumulators
 	virtual void Invalidate()
 	{
+		_valid = false;
+		_backpropsReceived = 0;
+		_dodxAcc = MatrixType();
 		for( unsigned int i = 0; i < _consumers.size(); i++ )
 		{
 			_consumers[i]->UnsetInput();
 		}
-		_valid = false;
-		_backpropsReceived = 0;
-		_dodxAcc = MatrixType();
 	}
 
 private:
