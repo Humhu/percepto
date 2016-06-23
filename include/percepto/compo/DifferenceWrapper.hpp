@@ -37,6 +37,7 @@ public:
 		}
 	}
 
+	// TODO Handle empty nextDodx
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		// std::cout << "DifferenceWrapper backprop" << std::endl;

@@ -63,6 +63,10 @@ public:
 
 	virtual void Backprop( const MatrixType& nextDodx )
 	{
+		// if( !nextDodx.allFinite() )
+		// {
+		// 	throw std::runtime_error( "Non-finite backprop" );
+		// }
 		_source->Backprop( nextDodx );
 	}
 

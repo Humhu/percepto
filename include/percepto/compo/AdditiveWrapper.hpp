@@ -1,7 +1,6 @@
 #pragma once
 
 #include "percepto/compo/Interfaces.h"
-#include <iostream>
 
 namespace percepto
 {

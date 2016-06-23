@@ -2,6 +2,7 @@
 
 #include "percepto/compo/Interfaces.h"
 
+#include <iostream>
 namespace percepto
 {
 
@@ -18,7 +19,7 @@ public:
 	: _input( this ) {}
 
 	ScaleWrapper( const ScaleWrapper& other )
-	: _input( this ) {}
+	: _input( this ), _scale( other.scale ) {}
 
 	void SetSource( SourceType* s )
 	{

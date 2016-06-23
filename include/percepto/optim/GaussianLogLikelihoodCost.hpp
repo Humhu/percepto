@@ -68,6 +68,13 @@ public:
 		MatrixType dydS = 0.5 * ldlt.solve( I - _sample * errSol.transpose() );
 		Eigen::Map<MatrixType> dydSVec( dydS.data(), 1, dydS.size() );
 
+		// if( !dydSVec.allFinite() )
+		// {
+		// 	std::cout << "cov: " << std::endl << cov << std::endl;
+		// 	std::cout << "err: " << _sample.transpose() << std::endl;
+		// 	throw std::runtime_error( "GLL: Non-finite backprop." );
+		// }
+
 		if( nextDodx.size() == 0 )
 		{
 			// std::cout << "GLL: dydSVec: " << dydSVec << std::endl;

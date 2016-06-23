@@ -59,6 +59,8 @@ public:
 		double value;
 		VectorType gradient, step, params;
 		MatrixType sysDodx = MatrixType::Identity(1,1);
+		bool converged = false;
+		bool failed = false;
 		do
 		{
 			_profiler.StartObjectiveCall();
@@ -84,13 +86,25 @@ public:
 			{
 				throw std::runtime_error( "Parameter step the wrong size!" );
 			}
+			// if( !step.allFinite() )
+			// {
+			// 	std::cout << "cost: " << value << std::endl;
+			// 	std::cout << "params: " << params.transpose() << std::endl;
+			// 	std::cout << step.transpose() << std::endl;
+			// 	throw std::runtime_error( "Non-finite step!" );
+			// }
+
 			_parametric.SetParamsVec( params + step );
+
+			converged = _convergence.Converged( value, params, gradient );
+			failed = _convergence.Failed();
 		}
-		while( !_convergence.Converged( value, params, gradient ) );
+		while( !converged && !failed );
 
 		_profiler.StopOverall();
 		OptimizationResults results = _profiler.GetResults();
 		results.finalObjective = value;
+		results.converged = converged;
 		return results;
 	}
 

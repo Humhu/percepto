@@ -9,6 +9,8 @@ namespace percepto
 //template <typename ParameterType>
 struct OptimizationResults
 {
+	bool converged; // Whether it converged or bailed
+
 	// Fields relating to optimization results
 	//ParameterType initialParameters;
 	//ParameterType finalParameters;
