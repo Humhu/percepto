@@ -47,6 +47,41 @@ public:
 		return _profiler.GetResults();
 	}
 
+	template <typename Problem>
+	bool StepOnce( Problem& problem )
+	{
+		_profiler.StartObjectiveCall();
+		problem.Invalidate();
+		problem.Foreprop();
+		double value = problem.GetOutput();
+		_profiler.FinishObjectiveCall();
+
+		_profiler.StartGradientCall();
+		problem.Backprop();
+		MatrixType dodw = _parametric.GetDerivs();
+		_parametric.ResetAccumulators();
+		if( dodw.rows() != 1 )
+		{
+			throw std::runtime_error( "Cost derivative dimension error." );
+		}
+		VectorType gradient = VectorType( dodw.transpose() );
+		_profiler.FinishGradientCall();
+
+		VectorType step = _stepper.GetStep( -gradient );
+		VectorType params = _parametric.GetParamsVec();
+		if( params.size() != step.size() )
+		{
+			throw std::runtime_error( "Parameter step the wrong size!" );
+		}
+
+		_parametric.SetParamsVec( params + step );
+
+		bool converged = _convergence.Converged( value, params, step );
+		bool failed = _convergence.Failed();
+
+		return converged || failed;
+	}
+
 	/** 
 	 * @brief Begin optimization by stepping the problem's parameters until
 	 * convergence is reached. */
@@ -96,7 +131,7 @@ public:
 
 			_parametric.SetParamsVec( params + step );
 
-			converged = _convergence.Converged( value, params, gradient );
+			converged = _convergence.Converged( value, params, step );
 			failed = _convergence.Failed();
 		}
 		while( !converged && !failed );

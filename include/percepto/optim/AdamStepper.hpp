@@ -17,9 +17,12 @@ struct AdamParameters
 	double beta2;
 	// The second moment norm offset (1E-7)
 	double epsilon;
+	// Whether or not to shrink the step size
+	bool enableDecay;
 
 	AdamParameters()
-	: alpha( 1E-3 ), beta1( 0.9 ), beta2( 0.999 ), epsilon( 1E-7 ) {}
+	: alpha( 1E-3 ), beta1( 0.9 ), beta2( 0.999 ), epsilon( 1E-7 ),
+	  enableDecay( false ) {}
 };
 
 // Based on work by Kingma and Ba. See (Kingma, Ba 2015)
@@ -46,6 +49,8 @@ public:
 	void Reset()
 	{ 
 		_t = 0; 
+		_beta1Acc = _params.beta1;
+		_beta2Acc = _params.beta2;
 		_m = VectorType();
 		// Don't need to reset _v since _m is checked
 	}
@@ -71,10 +76,19 @@ public:
 		VectorType gradientSq = ( gradient.array() * gradient.array() ).matrix();
 		_v = _params.beta2 * _v + (1.0 - _params.beta2 ) * gradientSq;
 
-		VectorType mhat = _m / ( 1.0 - std::pow(_params.beta1, _t) );
-		VectorType vhat = _v / ( 1.0 - std::pow(_params.beta2, _t) );
+		// VectorType mhat = _m / ( 1.0 - std::pow(_params.beta1, _t) );
+		// VectorType vhat = _v / ( 1.0 - std::pow(_params.beta2, _t) );
+		VectorType mhat = _m / ( 1.0 - _beta1Acc );
+		VectorType vhat = _v / ( 1.0 - _beta2Acc );
+		_beta1Acc *= _params.beta1;
+		_beta2Acc *= _params.beta2;
 
-		VectorType ret = ( _params.alpha * mhat.array() / 
+		double step = _params.alpha;
+		if( _params.enableDecay )
+		{
+			step = _params.alpha / std::sqrt( _t );
+		}
+		VectorType ret = ( step * mhat.array() / 
 		         ( vhat.array().sqrt() + _params.epsilon ) ).matrix();
 		return ret;
 	}
@@ -82,6 +96,9 @@ public:
 private:
 
 	AdamParameters _params;
+
+	double _beta1Acc;
+	double _beta2Acc;
 
 	VectorType _m;
 	VectorType _v;
