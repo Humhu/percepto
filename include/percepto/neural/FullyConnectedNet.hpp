@@ -5,7 +5,7 @@
 #include "percepto/compo/Parametric.hpp"
 
 #include <sstream>
-#include <iostream>
+
 namespace percepto
 {
 
@@ -58,12 +58,10 @@ public:
 		// Unrectified layer is created automatically
 		if( _outputMode == OUTPUT_UNRECTIFIED )
 		{
-			std::cout << "Connecting unrectified layer." << std::endl;
 			_unrectifiedLayer.SetSource( &_layers.back() );
 		}
 		else if( _outputMode == OUTPUT_RECTIFIED )
 		{
-			std::cout << "Constructing rectified output layer." << std::endl;
 			_layers.emplace_back( layerWidth, outputDim, activation );
 		}
 		else
@@ -171,6 +169,20 @@ public:
 			return _layers.back();
 		}
 	}
+
+	const Source<VectorType>& GetOutputSource() const
+	{
+		if( _outputMode == OUTPUT_UNRECTIFIED )
+		{
+			return _unrectifiedLayer;
+		}
+		// Constructor guarantees that this is true
+		else //( _outputMode == OUTPUT_RECTIFIED )
+		{
+			return _layers.back();
+		}
+	}
+
 
 	OutputType GetOutput() const 
 	{

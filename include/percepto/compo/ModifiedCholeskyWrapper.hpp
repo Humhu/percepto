@@ -35,11 +35,17 @@ public:
 	// Assuming that dodx is given w.r.t. matrix col-major ordering
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
-		// std::cout << "ModifiedCholeskyWrapper backprop" << std::endl;
+		if( nextDodx.cols() != _D.rows() * _D.cols() )
+		{
+			std::cout << "nextDodx cols: " << nextDodx.cols() << std::endl;
+			std::cout << "D size: " << _D.size() << std::endl;
+			throw std::runtime_error( "ModifiedCholeskyWrapper: Backprop dim error." );
+		}
+
 		MatrixType dody = nextDodx;
 		if( nextDodx.size() == 0 )
 		{
-			dody = MatrixType::Identity( _D.size(), _D.size() );
+			dody = MatrixType::Identity( _D.rows(), _D.cols() );
 		}
 
 		// Calculate output matrix deriv wrt L inputs

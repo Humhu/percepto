@@ -93,7 +93,7 @@ public:
 	typedef Output OutputType;
 	typedef Sink<OutputType> SinkType;
 
-	std::string name;
+	std::string modName;
 
 	Source() : _valid( false ), _backpropsReceived( 0 ) {}
 	virtual ~Source() {}
@@ -129,17 +129,29 @@ public:
 	{
 		if( _dodxAcc.size() == 0 )
 		{
+			// if( !modName.empty() )
+			// {
+			// 	std::cout << modName << " got first dodx: " << std::endl << nextDodx << std::endl;
+			// }
 			_dodxAcc = nextDodx;
 		}
 		else
 		{
+			// if( nextDodx.rows() != _dodxAcc.rows() || 
+			// 	nextDodx.cols() != _dodxAcc.cols() )
+			// {
+			// 	std::cout << modName << std::endl;
+			// 	std::cout << "Next: " << std::endl << nextDodx << std::endl;
+			// 	std::cout << "current: " << std::endl << _dodxAcc << std::endl;
+			// 	throw std::runtime_error( "NextDodx wrong size!" );
+			// }
 			_dodxAcc += nextDodx;
 		}
 		_backpropsReceived++;
 
-		// if( !name.empty() )
+		// if( !modName.empty() )
 		// {
-		// 	std::cout << name << " has " << std::to_string( _backpropsReceived )
+		// 	std::cout << modName << " has " << std::to_string( _backpropsReceived )
 		// 	          << " out of " << _consumers.size() << std::endl;
 		// }
 		
@@ -155,6 +167,8 @@ public:
 			BackpropImplementation( _dodxAcc );
 		}
 	}
+
+	MatrixType GetDodxAcc() const { return _dodxAcc; }
 
 	// Should be implemented by derived class to be called when all backprops
 	// are accumualted and ready to be further backpropped

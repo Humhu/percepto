@@ -2,6 +2,7 @@
 
 #include "percepto/PerceptoTypes.h"
 #include <ctime>
+#include <iostream>
 
 namespace percepto
 {
@@ -77,8 +78,6 @@ public:
 			_lastObjective = objective;
 			_lastGradient = gradient;
 			_lastParams = params;
-			_startTicks = clock();
-			_iteration = 0;
 			_initialized = true;
 			return false;
 		}
@@ -93,6 +92,7 @@ public:
 		double maxGradient = gradAbs.maxCoeff();
 		if( maxGradient < _criteria.minElementGradient ) { return true; }
 		double avgGradient = gradAbs.sum() / gradAbs.size();
+		std::cout << "avg gradient: " << avgGradient << std::endl;
 		if( avgGradient < _criteria.minAverageGradient ) { return true; }
 
 		double deltaObj = std::abs( objective - _lastObjective );

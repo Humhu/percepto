@@ -42,8 +42,11 @@ public:
 
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
-		// std::cout << "InverseWrapper backprop" << std::endl;
 		MatrixType Sinv = SourceType::GetOutput(); // Current output
+		if( nextDodx.cols() != Sinv.size() )
+		{
+			throw std::runtime_error( "InverseWrapper: Backprop dim error." );
+		}
 		MatrixType dSdx( Sinv.size(), Sinv.size() );
 		MatrixType d = MatrixType::Zero( Sinv.rows(),
 		                                 Sinv.cols() );

@@ -8,6 +8,46 @@
 namespace percepto
 {
 
+class VectorTransformWrapper
+: public Source<VectorType>
+{
+public:
+
+	typedef Source<VectorType> SourceType;
+	typedef Sink<VectorType> SinkType;
+	typedef VectorType OutputType;
+
+	VectorTransformWrapper()
+	: _input( this ) {}
+
+	VectorTransformWrapper( const VectorTransformWrapper& other )
+	: _input( this ) {}
+
+	void SetSource( SourceType* b ) { b->RegisterConsumer( &_input ); }
+	void SetTransform( const MatrixType& m ) { _transform = m; }
+
+	virtual void Foreprop()
+	{
+		SourceType::SetOutput( _transform * _input.GetInput() );
+		SourceType::Foreprop();
+	}
+
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
+	{
+		if( nextDodx.cols() != _transform.rows() )
+		{
+			std::cout << "nextDodx: " << nextDodx << std::endl;
+			std::cout << "_transform.rows(): " << _transform.rows() << std::endl;
+			throw std::runtime_error( "VectorTransformWrapper: Backprop dim error." );
+		}
+		_input.Backprop( nextDodx * _transform );
+	}
+private:
+
+	SinkType _input;
+	MatrixType _transform;
+};
+
 /** 
  * \brief A wrapper that transforms its input as:
  * out = transform * base_out * transform.transpose()
@@ -40,7 +80,10 @@ public:
 	// TODO Check for empty nextDodx
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
-		// std::cout << "TransformWrapper backprop" << std::endl;
+		if( nextDodx.cols() != _transform.rows() * _transform.rows() )
+		{
+			throw std::runtime_error( "TransformWrapper: Backprop dim error!" );
+		}
 		const MatrixType& input = _input.GetInput();
 		unsigned int inDim = _transform.cols() * _transform.cols();
 		unsigned int outDim = _transform.rows() * _transform.rows();
