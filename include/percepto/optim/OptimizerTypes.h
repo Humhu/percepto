@@ -7,10 +7,12 @@
 
 // Steppers
 #include "percepto/optim/AdamStepper.hpp"
+#include "percepto/optim/DirectStepper.hpp"
 
 namespace percepto
 {
 
 typedef ModularOptimizer<AdamStepper, SimpleConvergence> AdamOptimizer;
+typedef ModularOptimizer<DirectStepper, SimpleConvergence> DirectOptimizer;
 
 }
