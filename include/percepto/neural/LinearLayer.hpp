@@ -48,6 +48,18 @@ public:
 		return params;
 	}
 
+	void SetOffsets( const VectorType& off )
+	{
+		MatrixType p( _weights );
+		p.col( p.cols() - 1 ) = off;
+		Eigen::Map<VectorType> v( p.data(), p.size(), 1 );
+		_params->SetParamsVec( v );
+		new (&_weights) Eigen::Map<const MatrixType>( _params->GetParamsVec().data(),
+		                                              _outputDim, _inputDim + 1 );
+		std::cout << "outputDim: " << _outputDim << std::endl;
+		std::cout << "weights: " << _weights << std::endl;
+	}
+
 	void SetParameters( Parameters::Ptr params )
 	{
 		if( params->ParamDim() != compute_param_dim( _inputDim, _outputDim ) )

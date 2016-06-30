@@ -97,6 +97,18 @@ public:
 		}
 	}
 
+	void SetOutputOffsets( const VectorType& off )
+	{
+		if( _outputMode == OUTPUT_UNRECTIFIED )
+		{
+			_unrectifiedLayer.SetOffsets( off );
+		}
+		else
+		{
+			_layers.back().SetOffsets( off );
+		}
+	}
+
 	Parameters::Ptr CreateParameters()
 	{
 		_paramSets.clear();
