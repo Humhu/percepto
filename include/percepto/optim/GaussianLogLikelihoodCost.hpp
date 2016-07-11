@@ -12,15 +12,15 @@ namespace percepto
 /*! \brief Calculate the log-likelihood of a sample under a zero-mean Gaussian 
  * distribution with specified covariance. */
 inline ScalarType GaussianLogLikelihood( const VectorType& x, 
-                                         const MatrixType& cov )
+                                         const MatrixType& info )
 {
 	// TODO Does not check squareness or PD-ness of cov!
-	Eigen::LDLT<MatrixType> ldlt( cov );
+	Eigen::LDLT<MatrixType> ldlt( info );
 	
 	ScalarType det = ldlt.vectorD().prod();
-	ScalarType invProd = x.dot( ldlt.solve( x ) );
-	unsigned int n = cov.rows();
-	return -0.5*( std::log( det ) + invProd + n*std::log( 2*M_PI ) );
+	// ScalarType invProd = x.dot( ldlt.solve( x ) );
+	unsigned int n = info.rows();
+	return 0.5*( std::log( det ) - x.transpose() * info * x - n*std::log( 2*M_PI ) );
 }
 
 /*! \brief Represents a cost function calculated as the log likelihood of a
@@ -41,10 +41,10 @@ public:
 	/*! \brief Create a cost representing the log likelihood under the matrix
 	 * outputted by the regressor. */
 	GaussianLogLikelihoodCost() 
-	: _input( this ) {}
+	: _input( this ), _initialized( false ) {}
 
 	GaussianLogLikelihoodCost( const GaussianLogLikelihoodCost& other )
-	: _input( this ), _sample( other._sample ) {}
+	: _input( this ), _sample( other._sample ), _initialized( false ) {}
 
 	void SetSource( InputSourceType* s ) { s->RegisterConsumer( &_input ); }
 	void SetSample( const SampleType& sample ) { _sample = sample; }
@@ -55,17 +55,23 @@ public:
 	virtual void Foreprop()
 	{
 		double out = -GaussianLogLikelihood( _sample, _input.GetInput() );
+		_initialized = false;
 		OutputSourceType::SetOutput( out );
 		OutputSourceType::Foreprop();
 	}
 
+// TODO Fix to use info
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		MatrixType cov = _input.GetInput();
-		Eigen::LDLT<MatrixType> ldlt( cov );
-		VectorType errSol = ldlt.solve( _sample );
+		if( !_initialized )
+		{
+			_ldlt = Eigen::LDLT<MatrixType>( cov );
+			_initialized = true;
+		}
+		VectorType errSol = _ldlt.solve( _sample );
 		MatrixType I = MatrixType::Identity( cov.rows(), cov.cols() );
-		MatrixType dydS = 0.5 * ldlt.solve( I - _sample * errSol.transpose() );
+		MatrixType dydS = 0.5 * ( _ldlt.solve( I ) -  errSol * errSol.transpose() );
 		Eigen::Map<MatrixType> dydSVec( dydS.data(), 1, dydS.size() );
 
 		if( nextDodx.size() == 0 )
@@ -82,6 +88,9 @@ private:
 	
 	SinkType _input;
 	SampleType _sample;
+	Eigen::LDLT<MatrixType> _ldlt;
+	bool _initialized;
+
 	
 };
 
@@ -100,21 +109,22 @@ public:
 	/*! \brief Create a cost representing the log likelihood under the matrix
 	 * outputted by the regressor. */
 	DynamicGaussianLogLikelihoodCost() 
-	: _cov( this ), _sample( this ) {}
+	: _info( this ), _sample( this ), _initialized( false ) {}
 
 	DynamicGaussianLogLikelihoodCost( const DynamicGaussianLogLikelihoodCost& other )
-	: _cov( this ), _sample( this ) {}
+	: _info( this ), _sample( this ), _initialized( false ) {}
 
-	void SetCovSource( MatrixSourceType* s ) { s->RegisterConsumer( &_cov ); }
+	void SetInfoSource( MatrixSourceType* s ) { s->RegisterConsumer( &_info ); }
 	void SetSampleSource( VectorSourceType* s ) { s->RegisterConsumer( &_sample ); }
 
 	/*! \brief Computes the log-likelihood of the input sample using the
 	 * covariance generated from the input features. */
 	virtual void Foreprop()
 	{
-		if( _cov.IsValid() && _sample.IsValid() )
+		if( _info.IsValid() && _sample.IsValid() )
 		{
-			double out = -GaussianLogLikelihood( _sample.GetInput(), _cov.GetInput() );
+			double out = -GaussianLogLikelihood( _sample.GetInput(), _info.GetInput() );
+			_initialized = false;
 			OutputSourceType::SetOutput( out );
 			OutputSourceType::Foreprop();
 		}
@@ -122,38 +132,57 @@ public:
 
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
-		MatrixType cov = _cov.GetInput();
+		// clock_t start = clock();
+
+		MatrixType info = _info.GetInput();
 		VectorType sample = _sample.GetInput();
 
-		Eigen::LDLT<MatrixType> ldlt( cov );
-		VectorType errSol = ldlt.solve( sample );
+		if( !_initialized )
+		{
+			Eigen::LDLT<MatrixType> ldlt = Eigen::LDLT<MatrixType>( info );
+			// VectorType errSol = ldlt.solve( sample );
+			// VectorType errSol = info * sample;
 
-		// w.r.t. inno
-		VectorType dydx = 2*errSol.transpose();
+			// w.r.t. inno
+			_dydx = (info * sample).transpose();
+			// _dydx = VectorType::Zero( errSol.size() ).transpose();
 
-		// w.r.t. cov
-		MatrixType I = MatrixType::Identity( cov.rows(), cov.cols() );
-		MatrixType dydS = 0.5 * ldlt.solve( I - sample * errSol.transpose() );
-		Eigen::Map<MatrixType> dydSVec( dydS.data(), 1, dydS.size() );
+			// w.r.t. cov
+			MatrixType I = MatrixType::Identity( info.rows(), info.cols() );
+			_dydS = -0.5 * ldlt.solve( I ) + 0.5 * sample * sample.transpose();
+
+			_initialized = true;
+		}
+		
+		Eigen::Map<MatrixType> dydSVec( _dydS.data(), 1, _dydS.size() );
+
+		// std::cout << "GLL backprop: " << ((double) clock() - start)/CLOCKS_PER_SEC << std::endl;;
 
 		if( nextDodx.size() == 0 )
 		{
-			_cov.Backprop( dydSVec );
-			_sample.Backprop( dydx );
+			_info.Backprop( dydSVec );
+			_sample.Backprop( _dydx );
 		}
 		else
 		{
-			_cov.Backprop( nextDodx * dydSVec );
-			MatrixType temp( 1, dydx.size() ); // Not sure why, matrix vector conversion behaves weirdly
-			temp.row(0) = dydx;
+			_info.Backprop( nextDodx * dydSVec );
+			MatrixType temp( 1, _dydx.size() ); // Not sure why, matrix vector conversion behaves weirdly
+			temp.row(0) = _dydx;
 			_sample.Backprop( nextDodx * temp ); // TODO There is a weird broadcasting bug here
 		}
+
+		// std::cout << "GLL return: " << ((double) clock() - start)/CLOCKS_PER_SEC << std::endl;;
+
 	}
 
 private:
 	
-	Sink<MatrixType> _cov;
+	Sink<MatrixType> _info;
 	Sink<VectorType> _sample;
+
+	bool _initialized;
+	MatrixType _dydS;
+	VectorType _dydx;
 	
 };
 

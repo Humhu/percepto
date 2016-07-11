@@ -45,12 +45,16 @@ public:
 
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
+		// clock_t start = clock();
 		if( _activeInds.size() == 0 ) { return; }
 		MatrixType thisDodx = nextDodx / _activeInds.size();
 		for( unsigned int i = 0; i < _activeInds.size(); i++ )
 		{
+			// clock_t starti = clock();
 			ParentCost::_sinks[ _activeInds[i] ].Backprop( thisDodx );
+			// std::cout << "SMC " << i << ": " << ((double) clock() - starti) / CLOCKS_PER_SEC;
 		}
+		// std::cout << "SMC total: " << ((double) clock() - start ) / CLOCKS_PER_SEC;
 	}
 
 	void Resample()

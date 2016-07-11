@@ -41,8 +41,18 @@ public:
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 		// std::cout << "DifferenceWrapper backprop" << std::endl;
+		// clock_t start = clock();
 		_plus.Backprop( nextDodx );
+		// if( !SourceType::modName.empty() )
+		// {
+		// 	std::cout << SourceType::modName << " backprop plus: " << ((double) clock() - start )/CLOCKS_PER_SEC << std::endl;
+		// }
+		// start = clock();
 		_minus.Backprop( -nextDodx );
+		// if( !SourceType::modName.empty() )
+		// {
+		// 	std::cout << SourceType::modName << " backprop minus: " << ((double) clock() - start )/CLOCKS_PER_SEC << std::endl;
+		// }
 	}
 
 private:

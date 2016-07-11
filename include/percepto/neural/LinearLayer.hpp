@@ -15,7 +15,6 @@ class LinearLayer
 {
 public:
 	
-	typedef Eigen::Matrix<double,-1,-1,Eigen::RowMajor> ParamType;
 	typedef Source<VectorType> SourceType;
 	typedef VectorType InputType;
 	typedef VectorType OutputType;
@@ -56,8 +55,6 @@ public:
 		_params->SetParamsVec( v );
 		new (&_weights) Eigen::Map<const MatrixType>( _params->GetParamsVec().data(),
 		                                              _outputDim, _inputDim + 1 );
-		std::cout << "outputDim: " << _outputDim << std::endl;
-		std::cout << "weights: " << _weights << std::endl;
 	}
 
 	void SetParameters( Parameters::Ptr params )
@@ -105,6 +102,7 @@ public:
 			dody = nextDodx;
 		}
 
+		// clock_t start = clock();
 		// TODO Implement Forward/Backward semantics to avoid double evaluation
 		OutputType preAct = _weights * input.homogeneous();
 
@@ -120,6 +118,7 @@ public:
 				thisDodx.row(i) += dody(i,j) * _weights.block(j, 0, 1, InputDim() ) * actDeriv;
 			}
 		}
+		// std::cout << "Linear backprop: " << ((double) clock() - start )/CLOCKS_PER_SEC;
 
 		_params->AccumulateDerivs( thisDodw );
 		_inputPort.Backprop( thisDodx );
@@ -141,6 +140,16 @@ private:
 	Eigen::Map<const MatrixType> _weights;
 	ActivationType _activation;
 
+	template <typename A>
+	friend std::ostream& operator<<( std::ostream& os, const LinearLayer<A>& l );
+
 };
+
+template <typename Activation>
+std::ostream& operator<<( std::ostream& os, const LinearLayer<Activation>& l )
+{
+	os << l._weights;
+	return os;
+}
 
 }

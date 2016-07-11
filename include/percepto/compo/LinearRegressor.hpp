@@ -12,91 +12,105 @@ namespace percepto
  * The matrix and input are dynamically-sized. Assumes row-major ordering
  * for vectorizing the weights matrix. */
 class LinearRegressor
-: public Parametric, 
-public Producer<VectorType>
+: public Source<VectorType>
 {
 public:
 	
-	typedef Eigen::Matrix<double,-1,-1,Eigen::RowMajor> ParamType;
 	typedef VectorType InputType;
 	typedef VectorType OutputType;
-	typedef Producer<VectorType> InputModule;
-
-	LinearRegressor() {}
+	typedef Source<VectorType> SourceType;
 
 	LinearRegressor( unsigned int inputDim, unsigned int outputDim )
-	: _W( ParamType::Zero( outputDim, inputDim ) ) {}
+	: _inputDim( inputDim ), _outputDim( outputDim ), _W( nullptr, 0, 0 ),
+	_inputPort( this ) {}
 
-	/*! \brief Create a linear regressor with specified weights. */
-	LinearRegressor( const ParamType& weightMat )
-	: _W( weightMat ) {}
+	LinearRegressor( const LinearRegressor& other )
+	: _inputDim( other._inputDim ), _outputDim( other._outputDim ),
+	_params( other._params ), _W( other._W ), _inputPort( this ) {}
+
+	void SetSource( SourceType* b ) { b->RegisterConsumer( &_inputPort ); }
+
+	unsigned int InputDim() const { return _inputDim; }
+	unsigned int OutputDim() const { return _outputDim; }
+
+	Parameters::Ptr CreateParameters()
+	{
+		Parameters::Ptr params = std::make_shared<Parameters>();
+		params->Initialize( (_inputDim + 1) * _outputDim );
+		SetParameters( params );
+		return params;
+	}
+
+	void SetParameters( Parameters::Ptr params )
+	{
+		if( params->ParamDim() != (_inputDim+1) * _outputDim )
+		{
+			throw std::runtime_error( "LinearRegressor: Invalid parameter dimension." );
+		}
+		_params = params;
+		new (&_W) Eigen::Map<const MatrixType>( params->GetParamsVec().data(),
+		                                        _outputDim, _inputDim + 1 );
+	}
+
+	void SetOffsets( const VectorType& off )
+	{
+		MatrixType p( _W );
+		p.col( p.cols() - 1 ) = off;
+		Eigen::Map<VectorType> v( p.data(), p.size(), 1 );
+		_params->SetParamsVec( v );
+		new (&_W) Eigen::Map<const MatrixType>( _params->GetParamsVec().data(),
+		                                              _outputDim, _inputDim + 1 );
+	}
+
+	virtual void Foreprop()
+	{
+		VectorType out = _W * _inputPort.GetInput().homogeneous();
+		SourceType::SetOutput( out );
+		SourceType::Foreprop();
+	}
 	
-	LinearRegressor( InputModule* b, const ParamType& weightMat ) {}
-
-	void SetBase( InputModule* b ) { _base = b; }
-
-	unsigned int OutputDim() const { return _W.rows(); }
-
-	/*! \brief Retrieve the parameter vector by returning a vector view of the
-	 * matrix. */
-	void SetParams( const ParamType& p ) 
-	{ 
-		assert( p.rows() == _W.rows() &&
-		        p.cols() == _W.cols() );
-		_W = p;
-	}
-
-	virtual void SetParamsVec( const VectorType& vec ) 
+	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
-		assert( vec.size() == _W.size() );
-		_W = Eigen::Map<const ParamType>( vec.data(), OutputDim(), InputDim() );
-	}
+		if( nextDodx.cols() != OutputDim() )
+		{
+			throw std::runtime_error( "LinearRegressor: Backprop dim error!" );
+		}
 
-	ParamType GetParams() const 
-	{ 
-		return _W;
-	}
-
-	virtual VectorType GetParamsVec() const
-	{
-		return Eigen::Map<const VectorType>( _W.data(), _W.size(), 1 );
-	}
-	
-	MatrixType Backprop( const MatrixType& nextDodx )
-	{
-		assert( nextDodx.cols() == OutputDim() );
-
-		InputType input = _base.Evaluate();
+		const VectorType& input = _inputPort.GetInput();
 		MatrixType thisDodw = MatrixType( nextDodx.rows(), ParamDim() );
 		for( unsigned int i = 0; i < nextDodx.rows(); i++ )
 		{
 			for( unsigned int j = 0; j < OutputDim(); j++ )
 			{
-				thisDodw.block(i, j*InputDim(), 1, InputDim()) =
-					nextDodx(i,j) * input.transpose();
+				thisDodw.block(i, j*(InputDim()+1), 1, InputDim()+1) =
+					nextDodx(i,j) * input.homogeneous().transpose();
 			}
 		}
-		MatrixType thisDodx = nextInfo.dodx * _W;
-		Parametric::AccumulateWeightDerivs( thisDodw );
-		// Parametric::AccumulateInputDerivs( thisDodx );
+		MatrixType thisDodx = nextDodx * _W;
 
-		return thisDodx;
+		_params->AccumulateDerivs( thisDodw );
+		_inputPort.Backprop( thisDodx );
 	}
-	
-	/*! \brief Produce the output. */
-	OutputType Evaluate() const 
-	{ 
-		return _W * _base.Evaluate();
-	}
+
+	virtual unsigned int ParamDim() const { return _W.size(); }
 
 private:
+
+	friend std::ostream& operator<<( std::ostream& os, const LinearRegressor& lreg );
 	
-	// NOTE Since the matrix is dynamic-sized we don't have to use the 
-	// eigen aligned new operator
-	MatrixType _W; // The weight vector
-	BaseModule* _base;
+	unsigned int _inputDim;
+	unsigned int _outputDim;
+	Parameters::Ptr _params;
+	Eigen::Map<const MatrixType> _W; // The weight vector
+	Sink<VectorType> _inputPort;
 	
 };
 
+inline
+std::ostream& operator<<( std::ostream& os, const LinearRegressor& lreg )
+{
+	os << lreg._W;
+	return os;
 }
 
+}

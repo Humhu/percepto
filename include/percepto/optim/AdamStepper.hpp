@@ -20,9 +20,11 @@ struct AdamParameters
 	// Whether or not to shrink the step size
 	bool enableDecay;
 
+	double maxStepElement;
+
 	AdamParameters()
 	: alpha( 1E-3 ), beta1( 0.9 ), beta2( 0.999 ), epsilon( 1E-7 ),
-	  enableDecay( false ) {}
+	  enableDecay( false ), maxStepElement( std::numeric_limits<double>::infinity() ) {}
 };
 
 // Based on work by Kingma and Ba. See (Kingma, Ba 2015)
@@ -88,8 +90,15 @@ public:
 		{
 			step = _params.alpha / std::sqrt( _t );
 		}
+		// std::cout << "step: " << step << std::endl;
 		VectorType ret = ( step * mhat.array() / 
 		         ( vhat.array().sqrt() + _params.epsilon ) ).matrix();
+
+		double largestG = ret.array().abs().maxCoeff();
+		if( largestG > _params.maxStepElement )
+		{
+			ret = ret / ( largestG / _params.maxStepElement );
+		}
 		return ret;
 	}
 

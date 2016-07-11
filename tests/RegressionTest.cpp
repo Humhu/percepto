@@ -29,7 +29,7 @@ double ClocksToMicrosecs( clock_t c )
 	return c * 1E6 / CLOCKS_PER_SEC;
 }
 
-unsigned int matDim = 6;
+unsigned int matDim = 3;
 unsigned int dFeatDim = 5;
 
 unsigned int lOutDim = matDim*(matDim-1)/2;

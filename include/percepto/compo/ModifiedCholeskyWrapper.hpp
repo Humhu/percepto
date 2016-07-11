@@ -24,10 +24,10 @@ public:
 	typedef MatrixType OutputType;
 
 	ModifiedCholeskyWrapper() 
-	: _lInput( this ), _dInput( this ) {}
+	: _lInput( this ), _dInput( this ), _initialized( false ) {}
 
 	ModifiedCholeskyWrapper( const ModifiedCholeskyWrapper& other ) 
-	: _lInput( this ), _dInput( this ) {}
+	: _lInput( this ), _dInput( this ), _initialized( false ) {}
 
 	void SetLSource( InputSourceType* l ) { l->RegisterConsumer( &_lInput ); }
 	void SetDSource( InputSourceType* d ) { d->RegisterConsumer( &_dInput ); }
@@ -35,48 +35,60 @@ public:
 	// Assuming that dodx is given w.r.t. matrix col-major ordering
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
-		if( nextDodx.cols() != _D.rows() * _D.cols() )
-		{
-			std::cout << "nextDodx cols: " << nextDodx.cols() << std::endl;
-			std::cout << "D size: " << _D.size() << std::endl;
-			throw std::runtime_error( "ModifiedCholeskyWrapper: Backprop dim error." );
-		}
+		// clock_t start = clock();
 
 		MatrixType dody = nextDodx;
 		if( nextDodx.size() == 0 )
 		{
-			dody = MatrixType::Identity( _D.rows(), _D.cols() );
+			dody = MatrixType::Identity( _D.size(), _D.size() );
 		}
 
-		// Calculate output matrix deriv wrt L inputs
-		MatrixType d = MatrixType::Zero( _D.rows(), _D.cols() );
-		MatrixType dSdl = MatrixType( _D.size(), _tmap.NumPositions() );
-		for( unsigned int i = 0; i < _tmap.NumPositions(); i++ )
+		if( dody.cols() != _D.rows() * _D.cols() )
 		{
-			const TriangularMapping::Index& ind = _tmap.PosToIndex( i );
-			// Have to add one to get the offset from the diagonal
-			d( ind.first + 1, ind.second ) = 1;
-			MatrixType dSdi = d * _D * _L.transpose() + _L * _D * d.transpose();
-			Eigen::Map<VectorType> dSdiVec( dSdi.data(), dSdi.size(), 1 );
-			dSdl.col(i) = dSdiVec;
-			d( ind.first + 1, ind.second ) = 0;
+			std::cout << "nextDodx cols: " << dody.cols() << std::endl;
+			std::cout << "D size: " << _D.size() << std::endl;
+			throw std::runtime_error( "ModifiedCholeskyWrapper: Backprop dim error." );
 		}
-		MatrixType midLInfoDodx = dody * dSdl;
+
+		if( !_initialized )
+		{
+			// Calculate output matrix deriv wrt L inputs
+			_dSdl = MatrixType( _D.size(), _tmap.NumPositions() );
+			MatrixType DLT = _D * _L.transpose();
+			for( unsigned int i = 0; i < _tmap.NumPositions(); i++ )
+			{
+				const TriangularMapping::Index& ind = _tmap.PosToIndex( i );
+				// Have to add one to get the offset from the diagonal
+				MatrixType dSdi = MatrixType::Zero( _D.rows(), _D.cols() );
+				dSdi.row( ind.first + 1 ) = DLT.row( ind.second );
+				dSdi.col( ind.first + 1 ) += DLT.row( ind.second );
+				
+				Eigen::Map<const VectorType> dSdiVec( dSdi.data(), dSdi.size(), 1 );
+				_dSdl.col(i) = dSdiVec;
+			}
+
+			// Perform D backprop
+			_dSdd = MatrixType( _D.size(), _D.rows() );
+			for( unsigned int i = 0; i < _D.rows(); i++ )
+			{
+				MatrixType dSdi = MatrixType::Zero( _D.rows(), _D.cols() );
+				dSdi.row(i) = _L.col(i);
+				dSdi = _L * dSdi;
+
+				Eigen::Map<const VectorType> dSdiVec( dSdi.data(), dSdi.size(), 1 );
+				_dSdd.col(i) = dSdiVec;
+			}
+			_initialized = true;
+		}
+
+		// std::cout << "MC backprop: " << ((double) clock() - start)/CLOCKS_PER_SEC << std::endl;
+
+		MatrixType midLInfoDodx = dody * _dSdl;
 		_lInput.Backprop( midLInfoDodx );
-
-		// Perform D backprop
-		MatrixType dSdd = MatrixType( _D.size(), _D.rows() );
-		for( unsigned int i = 0; i < _D.rows(); i++ )
-		{
-			// TODO Make more efficient with row product
-			d( i, i ) = 1;
-			MatrixType dSdi = _L * d * _L.transpose();
-			Eigen::Map<VectorType> dSdiVec( dSdi.data(), dSdi.size(), 1 );
-			dSdd.col(i) = dSdiVec;
-			d( i, i ) = 0;
-		}
-		MatrixType midDInfoDodx = dody * dSdd;
+		
+		MatrixType midDInfoDodx = dody * _dSdd;
 		_dInput.Backprop( midDInfoDodx );
+		// std::cout << "MC return: " << ((double) clock() - start)/CLOCKS_PER_SEC << std::endl;
 	}
 
 	virtual void Foreprop()
@@ -98,6 +110,7 @@ public:
 
 			_tmap.VecToLowerTriangular( lVec, _L );
 			_D.diagonal() = dVec;
+			_initialized = false;
 			OutputSourceType::SetOutput( _L * _D * _L.transpose() );
 			OutputSourceType::Foreprop();
 		}
@@ -108,6 +121,10 @@ private:
 	SinkType _lInput;
 	SinkType _dInput;
 	TriangularMapping _tmap;
+
+	bool _initialized;
+	MatrixType _dSdl;
+	MatrixType _dSdd;
 
 	typedef Eigen::DiagonalMatrix <ScalarType,
 	                               Eigen::Dynamic,

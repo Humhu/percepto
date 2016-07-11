@@ -20,10 +20,10 @@ public:
 	typedef Sink<DataType> SinkType;
 
 	ExponentialWrapper() 
-	: _input( this ) {}
+	: _input( this ), _initialized( false ) {}
 
 	ExponentialWrapper( const ExponentialWrapper& other ) 
-	: _input( this ) {}
+	: _input( this ), _initialized( false ) {}
 
 	// TODO Make a reference?
 	void SetSource( SourceType* in ) { in->RegisterConsumer( &_input ); }
@@ -34,19 +34,25 @@ public:
 	{
 		// std::cout << "ExponentialWrapper backprop" << std::endl;
 		
-		DataType mid = _input.GetInput();
-
-		MatrixType dydx = MatrixType::Zero( mid.size(), mid.size() );
-		for( unsigned int i = 0; i < mid.size(); i++ )
+		if( !_initialized )
 		{
-			dydx(i,i) = std::exp( mid(i) );
+			DataType mid = _input.GetInput();
+
+			_dydx = MatrixType::Zero( mid.size(), mid.size() );
+			for( unsigned int i = 0; i < mid.size(); i++ )
+			{
+				_dydx(i,i) = std::exp( mid(i) );
+			}
+			_initialized = true;
 		}
-		MatrixType thisDodx = nextDodx * dydx;
+		
+		MatrixType thisDodx = nextDodx * _dydx;
 		_input.Backprop( thisDodx );
 	}
 
 	virtual void Foreprop()
 	{
+		_initialized = false;
 		SourceType::SetOutput( _input.GetInput().array().exp().matrix() );
 		SourceType::Foreprop();
 	}
@@ -54,6 +60,8 @@ public:
 private:
 
 	SinkType _input;
+	bool _initialized;
+	MatrixType _dydx;
 
 };
 

@@ -24,10 +24,10 @@ public:
 	typedef MatrixType OutputType;
 
 	InverseWrapper() 
-	: _input( this ) {}
+	: _input( this ), _initialized( false ) {}
 
 	InverseWrapper( const InverseWrapper& other ) 
-	: _input( this ) {}
+	: _input( this ), _initialized( false ) {}
 
 	void SetSource( SourceType* src ) { src->RegisterConsumer( &_input ); }
 
@@ -35,6 +35,7 @@ public:
 	{
 		MatrixType in = _input.GetInput();
 		SolverType solver( _input.GetInput() );
+		_initialized = false;
 		SourceType::SetOutput( solver.solve( MatrixType::Identity( in.rows(), 
 		                                                           in.cols() ) ) );
 		SourceType::Foreprop();
@@ -42,37 +43,50 @@ public:
 
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
+		// clock_t start = clock();
+
 		MatrixType Sinv = SourceType::GetOutput(); // Current output
 		if( nextDodx.cols() != Sinv.size() )
 		{
 			throw std::runtime_error( "InverseWrapper: Backprop dim error." );
 		}
-		MatrixType dSdx( Sinv.size(), Sinv.size() );
-		MatrixType d = MatrixType::Zero( Sinv.rows(),
-		                                 Sinv.cols() );
-		for( unsigned int i = 0; i < Sinv.size(); i++ )
+
+		if( !_initialized )
 		{
-			d(i) = 1;
-			MatrixType temp = Sinv * d * Sinv.transpose();
-			dSdx.col(i) = -Eigen::Map<VectorType>( temp.data(), temp.size(), 1 );
-			d(i) = 0;
+			_dSdx = MatrixType( Sinv.size(), Sinv.size() );
+			MatrixType d = MatrixType::Zero( Sinv.rows(),
+			                                 Sinv.cols() );
+			for( unsigned int i = 0; i < Sinv.size(); i++ )
+			{
+				d(i) = 1;
+				MatrixType temp = Sinv * d * Sinv.transpose();
+				_dSdx.col(i) = -Eigen::Map<VectorType>( temp.data(), temp.size(), 1 );
+				d(i) = 0;
+			}
+			_initialized = true;
 		}
+		
+		// std::cout << "Inverse backprop: " << ((double) clock() - start)/CLOCKS_PER_SEC << std::endl;
 
 		if( nextDodx.size() == 0 )
 		{
 			// std::cout << "Inverse dSdx: " << dSdx << std::endl;
-			_input.Backprop( dSdx );
+			_input.Backprop( _dSdx );
 		}
 		else
 		{
 			// std::cout << "Inverse nextDodx * dSdx: " << nextDodx * dSdx << std::endl;
-			_input.Backprop( nextDodx * dSdx );
+			_input.Backprop( nextDodx * _dSdx );
 		}
+		// std::cout << "Inverse return: " << ((double) clock() - start)/CLOCKS_PER_SEC << std::endl;
+
 	}
 
 private:
 
 	SinkType _input;
+	bool _initialized;
+	MatrixType _dSdx;
 };
 
 }

@@ -222,6 +222,22 @@ private:
 	std::vector<Parameters::Ptr> _paramSets;
 	ParameterWrapper _params;
 
+	template <template<typename> class L, typename A>
+	friend std::ostream& operator<<( std::ostream& os, const FullyConnectedNet<L, A>& n );
 };
+
+template <template<typename> class L, typename A>
+std::ostream& operator<<( std::ostream& os, const FullyConnectedNet<L, A>& n )
+{
+	for( unsigned int i = 0; i < n._layers.size(); i++ )
+	{
+		os << "layer " << i << std::endl << n._layers[i] << std::endl;
+	}
+	if( n._outputMode == FullyConnectedNet<L, A>::OUTPUT_UNRECTIFIED )
+	{
+		os << "layer " << n._layers.size() << std::endl << n._unrectifiedLayer << std::endl;
+	}
+	return os;
+}
 
 }

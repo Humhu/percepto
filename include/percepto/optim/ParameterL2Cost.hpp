@@ -27,6 +27,7 @@ public:
 
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
+		// clock_t start = clock();
 		// Add the L2 cost into the dodw
 		VectorType current = _params->GetParamsVec();
 		MatrixType thisDodw;
@@ -39,6 +40,7 @@ public:
 			thisDodw = _w * nextDodx * current.transpose();
 		}
 		_params->AccumulateDerivs( thisDodw );
+		// std::cout << "L2 backprop: " << ((double) clock() - start )/CLOCKS_PER_SEC;
 	}
 
 	virtual void Foreprop()

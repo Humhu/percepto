@@ -52,12 +52,17 @@ public:
 
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
+		// clock_t start = clock();
 		if( _sinks.size() == 0 ) { return; }
 		MatrixType thisDodx = nextDodx / _sinks.size();
 		BOOST_FOREACH( SinkType& input, _sinks )
 		{
+			// clock_t starti = clock();
 			input.Backprop( thisDodx );
+			// std::cout << "Mean i: " << ((double) clock() - starti )/CLOCKS_PER_SEC << std::endl;
 		}
+		// std::cout << "Mean overall: " << ((double) clock() - start )/CLOCKS_PER_SEC << std::endl;
+
 	}
 
 	// TODO Take a comparator as a template parameter

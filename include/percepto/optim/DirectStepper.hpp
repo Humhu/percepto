@@ -14,8 +14,10 @@ struct DirectStepperParameters
 	// Whether or not to shrink the step size over time
 	bool enableDecay;
 
+	double maxStepElement;
+
 	DirectStepperParameters()
-	: alpha( 1E-3 ), enableDecay( false ) {}
+	: alpha( 1E-3 ), enableDecay( false ), maxStepElement( std::numeric_limits<double>::infinity() ) {}
 };
 
 
@@ -44,7 +46,15 @@ public:
 		{
 			step = _params.alpha / std::sqrt( _t );
 		}
-		return step * gradient;
+
+		VectorType g = step * gradient;
+		double largestG = g.array().abs().maxCoeff();
+		if( largestG > _params.maxStepElement )
+		{
+			g = g / ( largestG / _params.maxStepElement );
+		}
+
+		return g;
 	}
 
 private:

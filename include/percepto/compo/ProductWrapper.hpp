@@ -37,6 +37,8 @@ public:
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
 
+		// clock_t start = clock();
+
 		MatrixType M = _mat.GetInput();
 		VectorType v = _vec.GetInput();
 		
@@ -45,7 +47,6 @@ public:
 			throw std::runtime_error( "VectorProductWrapper: Backprop dim error." );
 		}
 
-		_vec.Backprop( nextDodx * M );
 
 		MatrixType thisDodw = MatrixType( nextDodx.rows(), M.size() );
 		for( unsigned int i = 0; i < nextDodx.rows(); i++ )
@@ -56,6 +57,9 @@ public:
 					nextDodx(i,j) * v.transpose();
 			}
 		}
+		// std::cout << "Product backprop: " << ((double) clock() - start)/CLOCKS_PER_SEC << std::endl;;
+
+		_vec.Backprop( nextDodx * M );
 		_mat.Backprop( thisDodw );
 	}
 
@@ -103,29 +107,63 @@ public:
 		}
 
 		MatrixType dSdL( outputDim, left.size() );
-		MatrixType d = MatrixType::Zero( left.rows(), left.cols() );
-		for( unsigned int i = 0; i < left.size(); i++ )
+		// MatrixType dSdLo( outputDim, left.size() );
+		for( unsigned int i = 0; i < left.rows(); i++ )
 		{
-			d(i) = 1;
-			MatrixType dSdi = d * right;
-			dSdL.col(i) = Eigen::Map<VectorType>( dSdi.data(), dSdi.size() );
-			d(i) = 0;
+			for( unsigned int j = 0; j < left.cols(); j++ )
+			{
+				MatrixType dSdi = MatrixType::Zero( left.rows(), right.cols() );
+				dSdi.row(i) = right.row(j);
+				unsigned int ind = i + j*left.rows();
+				dSdL.col(ind) = Eigen::Map<VectorType>( dSdi.data(), dSdi.size() );
+			}
 		}
+
+		// MatrixType d = MatrixType::Zero( left.rows(), left.cols() );
+		// for( unsigned int i = 0; i < left.size(); i++ )
+		// {
+		// 	d(i) = 1;
+		// 	MatrixType dSdi = d * right;
+		// 	dSdLo.col(i) = Eigen::Map<VectorType>( dSdi.data(), dSdi.size() );
+		// 	d(i) = 0;
+		// }
+
+		// if( ( (dSdLo - dSdL).array().abs() > 1E-3 ).any() )
+		// {
+		// 	throw std::runtime_error( "dSdL calculation wrong!" );
+		// }
+
 		MatrixType midLInfoDodx = nextDodx * dSdL;
-		// std::cout << "Product: midL: " << midLInfoDodx << std::endl;
 		_left.Backprop( midLInfoDodx );
 
 		MatrixType dSdR( outputDim, right.size() );
-		d = MatrixType::Zero( right.rows(), right.cols() );
-		for( unsigned int i = 0; i < right.size(); i++ )
+		// MatrixType dSdRo( outputDim, right.size() );
+		for( unsigned int i = 0; i < right.rows(); i++ )
 		{
-			d(i) = 1;
-			MatrixType dSdi = left * d;
-			dSdR.col(i) = Eigen::Map<VectorType>( dSdi.data(), dSdi.size() );
-			d(i) = 0;
+			for( unsigned int j = 0; j < right.cols(); j++ )
+			{
+				MatrixType dSdi = MatrixType::Zero( left.rows(), right.cols() );
+				dSdi.col(j) = left.col(i);
+				unsigned int ind = i + j*right.rows();
+				dSdR.col(ind) = Eigen::Map<VectorType>( dSdi.data(), dSdi.size() );
+			}
 		}
+
+		// d = MatrixType::Zero( right.rows(), right.cols() );
+		// for( unsigned int i = 0; i < right.size(); i++ )
+		// {
+		// 	d(i) = 1;
+		// 	MatrixType dSdi = left * d;
+		// 	dSdRo.col(i) = Eigen::Map<VectorType>( dSdi.data(), dSdi.size() );
+		// 	d(i) = 0;
+		// }
+
+		// if( ( (dSdRo - dSdR).array().abs() > 1E-3 ).any() )
+		// {
+		// 	throw std::runtime_error( "dSdR calculation wrong!" );
+		// }
+
 		MatrixType midRInfoDodx = nextDodx * dSdR;
-		// std::cout << "Product: midR: " << midRInfoDodx << std::endl;
 		_right.Backprop( midRInfoDodx );
 	}
 
