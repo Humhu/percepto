@@ -53,8 +53,8 @@ public:
 		p.col( p.cols() - 1 ) = off;
 		Eigen::Map<VectorType> v( p.data(), p.size(), 1 );
 		_params->SetParamsVec( v );
-		new (&_weights) Eigen::Map<const MatrixType>( _params->GetParamsVec().data(),
-		                                              _outputDim, _inputDim + 1 );
+		new (&_weights) Eigen::Map<const RowMatrixType>( _params->GetParamsVec().data(),
+		                                                 _outputDim, _inputDim + 1 );
 	}
 
 	void SetParameters( Parameters::Ptr params )
@@ -64,8 +64,8 @@ public:
 			throw std::runtime_error( "LinearLayer: Invalid parameter dimension." );
 		}
 		_params = params;
-		new (&_weights) Eigen::Map<const MatrixType>( params->GetParamsVec().data(),
-		                                              _outputDim, _inputDim + 1 );
+		new (&_weights) Eigen::Map<const RowMatrixType>( params->GetParamsVec().data(),
+		                                                 _outputDim, _inputDim + 1 );
 	}
 
 	void SetSource( SourceType* b ) 
@@ -94,15 +94,13 @@ public:
 		MatrixType dody;
 		if( nextDodx.size() == 0 )
 		{
-			const OutputType& output = SourceType::GetOutput();
-			dody = MatrixType::Identity( output.size(), output.size() );
+			dody = MatrixType::Identity( OutputDim(), OutputDim() );
 		}
 		else
 		{
 			dody = nextDodx;
 		}
 
-		// clock_t start = clock();
 		// TODO Implement Forward/Backward semantics to avoid double evaluation
 		OutputType preAct = _weights * input.homogeneous();
 
@@ -113,12 +111,16 @@ public:
 			double actDeriv = _activation.Derivative( preAct(j) );
 			for( unsigned int i = 0; i < dody.rows(); i++ )
 			{
-				thisDodw.block(i, j*(InputDim()+1), 1, InputDim()+1 )
+				thisDodw.block( i, j*(InputDim()+1), 1, InputDim()+1 )
 				    = dody(i,j) * input.homogeneous().transpose() * actDeriv;
 				thisDodx.row(i) += dody(i,j) * _weights.block(j, 0, 1, InputDim() ) * actDeriv;
 			}
 		}
-		// std::cout << "Linear backprop: " << ((double) clock() - start )/CLOCKS_PER_SEC;
+
+		// std::cout << "input: " << input.transpose() << std::endl;
+		// std::cout << "weights: " << std::endl << _weights << std::endl;
+		// std::cout << "thisDodw: " << std::endl << thisDodw << std::endl;
+		// std::cout << "thisDodx: " << std::endl << thisDodx << std::endl;
 
 		_params->AccumulateDerivs( thisDodw );
 		_inputPort.Backprop( thisDodx );
@@ -137,7 +139,7 @@ private:
 	unsigned int _outputDim;
 	Sink<VectorType> _inputPort;
 	Parameters::Ptr _params;
-	Eigen::Map<const MatrixType> _weights;
+	Eigen::Map<const RowMatrixType> _weights;
 	ActivationType _activation;
 
 	template <typename A>

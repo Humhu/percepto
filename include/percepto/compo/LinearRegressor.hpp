@@ -48,7 +48,7 @@ public:
 			throw std::runtime_error( "LinearRegressor: Invalid parameter dimension." );
 		}
 		_params = params;
-		new (&_W) Eigen::Map<const MatrixType>( params->GetParamsVec().data(),
+		new (&_W) Eigen::Map<const RowMatrixType>( params->GetParamsVec().data(),
 		                                        _outputDim, _inputDim + 1 );
 	}
 
@@ -58,7 +58,7 @@ public:
 		p.col( p.cols() - 1 ) = off;
 		Eigen::Map<VectorType> v( p.data(), p.size(), 1 );
 		_params->SetParamsVec( v );
-		new (&_W) Eigen::Map<const MatrixType>( _params->GetParamsVec().data(),
+		new (&_W) Eigen::Map<const RowMatrixType>( _params->GetParamsVec().data(),
 		                                              _outputDim, _inputDim + 1 );
 	}
 
@@ -71,22 +71,40 @@ public:
 	
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
-		if( nextDodx.cols() != OutputDim() )
+		MatrixType nDodx;
+		if( nextDodx.size() == 0 )
+		{
+			nDodx = MatrixType::Identity( OutputDim(), OutputDim() );
+		}
+		else
+		{
+			nDodx = nextDodx;
+		}
+
+		if( nDodx.cols() != OutputDim() )
 		{
 			throw std::runtime_error( "LinearRegressor: Backprop dim error!" );
 		}
 
 		const VectorType& input = _inputPort.GetInput();
-		MatrixType thisDodw = MatrixType( nextDodx.rows(), ParamDim() );
-		for( unsigned int i = 0; i < nextDodx.rows(); i++ )
+		MatrixType thisDodw = MatrixType::Zero( nDodx.rows(), ParamDim() );
+		for( unsigned int i = 0; i < nDodx.rows(); i++ )
 		{
 			for( unsigned int j = 0; j < OutputDim(); j++ )
 			{
 				thisDodw.block(i, j*(InputDim()+1), 1, InputDim()+1) =
-					nextDodx(i,j) * input.homogeneous().transpose();
+					nDodx(i,j) * input.homogeneous().transpose();
 			}
 		}
-		MatrixType thisDodx = nextDodx * _W;
+		MatrixType thisDodx = nDodx * _W;
+
+		if( !SourceType::modName.empty() )
+		{
+			std::cout << SourceType::modName << " dodx: " << nDodx << std::endl << "dodw: " << thisDodw << std::endl;
+			std::cout << "acc dodw: " << _params->GetDerivs() << std::endl;
+			std::cout << "input: " << input.transpose() << std::endl;
+			std::cout << "param dim: " << ParamDim() << std::endl;
+		}
 
 		_params->AccumulateDerivs( thisDodw );
 		_inputPort.Backprop( thisDodx );
@@ -101,7 +119,7 @@ private:
 	unsigned int _inputDim;
 	unsigned int _outputDim;
 	Parameters::Ptr _params;
-	Eigen::Map<const MatrixType> _W; // The weight vector
+	Eigen::Map<const RowMatrixType> _W; // The weight vector
 	Sink<VectorType> _inputPort;
 	
 };

@@ -6,7 +6,9 @@ namespace percepto
 {
 
 typedef double ScalarType;
-typedef Eigen::MatrixXd MatrixType;
+typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> MatrixType;
+typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> RowMatrixType;
+
 typedef Eigen::VectorXd VectorType;
 
 typedef Eigen::Map<MatrixType> MatrixViewType;
