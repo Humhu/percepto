@@ -82,7 +82,7 @@ public:
 	{
 		// clock_t start = clock();
 
-		if( nextDodx.cols() != _transform.rows() * _transform.rows() )
+		if( nextDodx.cols() != 0 && nextDodx.cols() != _transform.rows() * _transform.rows() )
 		{
 			throw std::runtime_error( "TransformWrapper: Backprop dim error!" );
 		}
@@ -104,26 +104,6 @@ public:
 			}
 		}
 
-		// const MatrixType& input = _input.GetInput();
-		// MatrixType d = MatrixType::Zero( input.rows(), 
-		//                                  input.cols() );
-		// MatrixType dSdxo( outDim, inDim );
-		// for( unsigned int i = 0; i < inDim; ++i )
-		// {
-		// 	d(i) = 1;
-		// 	MatrixType temp = _transform * d * _transform.transpose();
-		// 	dSdxo.col(i) = Eigen::Map<VectorType>( temp.data(), temp.size(), 1 );
-		// 	d(i) = 0;
-		// }
-
-		// std::cout << "old: " << std::endl << dSdxo << std::endl;
-		// std::cout << "new: " << std::endl << dSdx << std::endl;
-
-		// if( !SourceType::modName.empty() )
-		// {
-		// 	std::cout << SourceType::modName << " backprop: " << ((double) clock() - start)/CLOCKS_PER_SEC << std::endl;
-		// }
-
 		if( nextDodx.size() == 0 )
 		{
 			_input.Backprop( dSdx );
@@ -132,10 +112,6 @@ public:
 		{
 			_input.Backprop( nextDodx * dSdx );
 		}
-		// if( !SourceType::modName.empty() )
-		// {
-		// 	std::cout << SourceType::modName << " return: " << ((double) clock() - start)/CLOCKS_PER_SEC << std::endl;
-		// }
 	}
 
 private:

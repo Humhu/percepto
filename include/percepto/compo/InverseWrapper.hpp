@@ -46,7 +46,7 @@ public:
 		// clock_t start = clock();
 
 		MatrixType Sinv = SourceType::GetOutput(); // Current output
-		if( nextDodx.cols() != Sinv.size() )
+		if( nextDodx.size() != 0 && nextDodx.cols() != Sinv.size() )
 		{
 			throw std::runtime_error( "InverseWrapper: Backprop dim error." );
 		}

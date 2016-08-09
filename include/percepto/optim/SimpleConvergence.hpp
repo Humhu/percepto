@@ -88,8 +88,10 @@ public:
 		double avgDeltaParams = deltaParams.sum() / deltaParams.size();
 		if( avgDeltaParams < _criteria.minAverageDelta ) { return true; }
 
+		
 		VectorType gradAbs = gradient.array().abs().matrix();
 		double maxGradient = gradAbs.maxCoeff();
+		std::cout << "max gradient element: " << maxGradient << std::endl;
 		if( maxGradient < _criteria.minElementGradient ) { return true; }
 		double avgGradient = gradAbs.sum() / gradAbs.size();
 		std::cout << "avg gradient: " << avgGradient << std::endl;

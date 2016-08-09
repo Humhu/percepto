@@ -8,16 +8,15 @@ namespace percepto
 // TODO Matrix version?
 /*! \brief Exponential regressor that takes a vector output and passes it
  * element-wise through an exponential. */
-template <typename DataType>
 class ExponentialWrapper
 : public Source<VectorType>
 {
 public:
 
-	typedef DataType InputType;
-	typedef DataType OutputType;
-	typedef Source<DataType> SourceType;
-	typedef Sink<DataType> SinkType;
+	typedef VectorType InputType;
+	typedef VectorType OutputType;
+	typedef Source<VectorType> SourceType;
+	typedef Sink<VectorType> SinkType;
 
 	ExponentialWrapper() 
 	: _input( this ), _initialized( false ) {}
@@ -36,7 +35,7 @@ public:
 		
 		if( !_initialized )
 		{
-			DataType mid = _input.GetInput();
+			VectorType mid = _input.GetInput();
 
 			_dydx = MatrixType::Zero( mid.size(), mid.size() );
 			for( unsigned int i = 0; i < mid.size(); i++ )

@@ -44,19 +44,8 @@ public:
 	// TODO Handle empty nextDodx
 	virtual void BackpropImplementation( const MatrixType& nextDodx )
 	{
-		// clock_t start = clock();
-		// std::cout << "Additive: nextDodx: " << nextDodx << std::endl;
 		_inputA.Backprop( nextDodx );
-		// if( !SourceType::modName.empty() )
-		// {
-		// 	std::cout << SourceType::modName << " backprop A return: " << ((double) clock() - start)/CLOCKS_PER_SEC << std::endl;
-		// }
-		// start = clock();
 		_inputB.Backprop( nextDodx );
-		// if( !SourceType::modName.empty() )
-		// {
-		// 	std::cout << SourceType::modName << " backprop B return: " << ((double) clock() - start)/CLOCKS_PER_SEC << std::endl;
-		// }
 	}
 
 private:

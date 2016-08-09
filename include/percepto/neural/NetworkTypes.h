@@ -17,12 +17,6 @@ namespace percepto
 typedef FullyConnectedNet<LinearLayer, HingeActivation> ReLUNet;
 
 typedef FullyConnectedNet<LinearLayer, SigmoidActivation> PerceptronNet;
-/**
- * @brief A fully connected unit with sigmoid activations followed by a final
- * linear output layer.
- */
-// typedef FullyConnectedNet<LinearLayer, SigmoidActivation> PerceptronSubnet;
-// typedef SeriesWrapper<VectorType, VectorType> PerceptronSeries;
-// typedef InputWrapper<VectorType, VectorType> PerceptronNet;
+
 
 }

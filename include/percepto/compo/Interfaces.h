@@ -216,11 +216,8 @@ public:
 
 	typedef Output OutputType;
 	typedef Source<Output> SourceType;
-	std::string name;
 
-	TerminalSource() : name("") {}
-
-	TerminalSource( const std::string& n ) : name( n ) {}
+	TerminalSource() {}
 
 	virtual ~TerminalSource() {}
 
@@ -232,14 +229,16 @@ public:
 
 	virtual void Foreprop()
 	{
+		if( !SourceType::modName.empty() )
+		{
+			std::cout << SourceType::modName << " output: " << _cache << std::endl;
+		}
 		SourceType::SetOutput( _cache );
 		SourceType::Foreprop();
 	}
 
 	virtual void BackpropImplementation( const MatrixType& nextDodx ) 
-	{
-		// std::cout << "Terminal source backprop: " << name << std::endl;
-	}
+	{}
 
 private:
 

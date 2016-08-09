@@ -24,14 +24,31 @@ public:
 	typedef Stepper StepperType;
 	typedef Convergence ConvergenceType;
 
+	enum OptimizationMode
+	{
+		OPT_MINIMIZATION,
+		OPT_MAXIMIZATION
+	}
+
 	/** 
 	 * @brief Create an optimization object with references to an problem,
 	 * stepper, and convergence object. Keeps references only. */
 	ModularOptimizer( StepperType& stepper, ConvergenceType& convergence,
-	                  Parameters& parameters )
+	                  Parameters& parameters, OptimizationMode mode = OPT_MINIMIZATION )
 	: _stepper( stepper ), _convergence( convergence ), _parametric( parameters )
 	{
 		Initialize();
+		switch( mode )
+		{
+			case OPT_MINIMIZATION:
+				_direction = -1.0;
+				break;
+			case OPT_MAXIMIZATION:
+				_direction = 1.0;
+				break;
+			default:
+				throw std::runtime_error( "Unknown minimization mode." );
+		}
 	}
 
 	void Initialize()
@@ -47,6 +64,7 @@ public:
 		return _profiler.GetResults();
 	}
 
+	// TODO Make backstepping parameters settable and moved into a module
 	template <typename Problem>
 	bool StepOnce( Problem& problem )
 	{
@@ -64,19 +82,45 @@ public:
 		{
 			throw std::runtime_error( "Cost derivative dimension error." );
 		}
-		VectorType gradient = VectorType( dodw.transpose() );
+		VectorType gradient = _direction * VectorType( dodw.transpose() );
 		_profiler.FinishGradientCall();
 
-		VectorType step = _stepper.GetStep( -gradient );
+		VectorType step = _stepper.GetStep( gradient );
 		VectorType params = _parametric.GetParamsVec();
 		if( params.size() != step.size() )
 		{
 			throw std::runtime_error( "Parameter step the wrong size!" );
 		}
 
-		_parametric.SetParamsVec( params + step );
+		double alpha = 1.0;
+		// double beta = 0.5;
+		// double c = 0.0;
+		// double m = step.dot( gradient ) / step.norm();
+		// #define MAX_NUM_STEPS (20)
+		// for( unsigned int i = 0; i < MAX_NUM_STEPS; i++ )
+		// {
+			_parametric.SetParamsVec( params + alpha * step );
 
-		bool converged = _convergence.Converged( value, params, step );
+		// 	problem.Invalidate();
+		// 	problem.ForepropSame();
+		// 	double postValue = problem.GetOutput();
+
+		// 	if( value - postValue >= alpha * -c * m )
+		// 	{
+		// 		break;
+		// 	}
+		// 	alpha = alpha * beta;
+		// }
+
+		// problem.Invalidate();
+		// problem.ForepropSame();
+		// double postValue = problem.GetOutput();
+		// if( postValue > value  )
+		// {
+		// 	std::cout << "Objective increased! pre-step objective: " << value << " after: " << postValue << std::endl;
+		// }
+
+		bool converged = _convergence.Converged( value, params, alpha * step );
 		bool failed = _convergence.Failed();
 
 		return converged || failed;
@@ -112,10 +156,10 @@ public:
 			{
 				throw std::runtime_error( "Cost derivative dimension error." );
 			}
-			gradient = VectorType( dodw.transpose() );
+			gradient = _direction * VectorType( dodw.transpose() );
 			_profiler.FinishGradientCall();
 
-			step = _stepper.GetStep( -gradient );
+			step = _stepper.GetStep( gradient );
 			params = _parametric.GetParamsVec();
 			if( params.size() != step.size() )
 			{
@@ -149,7 +193,7 @@ private:
 	StepperType& _stepper; /**< A reference to this optimizer's stepper. */
 	ConvergenceType& _convergence; /**< A reference to this optimizer's convergence object. */
 	Parameters& _parametric;
-
+	double _direction;
 };
 
 }

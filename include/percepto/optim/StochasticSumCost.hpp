@@ -65,6 +65,11 @@ public:
 		_hasResampled = true;
 	}
 
+	void UseSameSamples()
+	{
+		_hasResampled = true;
+	}
+
 	const std::vector<unsigned int>& GetActiveInds() const
 	{
 		return _activeInds;

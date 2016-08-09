@@ -10,9 +10,9 @@ namespace percepto
 {
 
 /*! \brief Calculate the log-likelihood of a sample under a zero-mean Gaussian 
- * distribution with specified covariance. */
-inline ScalarType GaussianLogLikelihood( const VectorType& x, 
-                                         const MatrixType& info )
+ * distribution with specified inverse covariance. */
+inline ScalarType GaussianLogPDF( const VectorType& x, 
+                                  const MatrixType& info )
 {
 	// TODO Does not check squareness or PD-ness of cov!
 	Eigen::LDLT<MatrixType> ldlt( info );
@@ -24,8 +24,8 @@ inline ScalarType GaussianLogLikelihood( const VectorType& x,
 }
 
 /*! \brief Represents a cost function calculated as the log likelihood of a
- * set of samples drawn from a zero mean Gaussian with the covariance specified
- * per sample by a MatrixBase. Returns negative log-likelihood since
+ * set of samples drawn from a zero mean Gaussian with the inverse covariance 
+ * specified per sample by a MatrixBase. Returns negative log-likelihood since
  * it is supposed to be a cost. */
 class GaussianLogLikelihoodCost 
 : public Source<double>
@@ -54,7 +54,7 @@ public:
 	 * covariance generated from the input features. */
 	virtual void Foreprop()
 	{
-		double out = -GaussianLogLikelihood( _sample, _input.GetInput() );
+		double out = -GaussianLogPDF( _sample, _input.GetInput() );
 		_initialized = false;
 		OutputSourceType::SetOutput( out );
 		OutputSourceType::Foreprop();
@@ -123,7 +123,7 @@ public:
 	{
 		if( _info.IsValid() && _sample.IsValid() )
 		{
-			double out = -GaussianLogLikelihood( _sample.GetInput(), _info.GetInput() );
+			double out = -GaussianLogPDF( _sample.GetInput(), _info.GetInput() );
 			_initialized = false;
 			OutputSourceType::SetOutput( out );
 			OutputSourceType::Foreprop();
