@@ -28,7 +28,7 @@ public:
 	{
 		OPT_MINIMIZATION,
 		OPT_MAXIMIZATION
-	}
+	};
 
 	/** 
 	 * @brief Create an optimization object with references to an problem,
