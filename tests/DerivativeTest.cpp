@@ -1,10 +1,13 @@
 #include "percepto/compo/AdditiveWrapper.hpp"
+#include "percepto/compo/LinearRegressor.hpp"
 #include "percepto/compo/ConstantRegressor.hpp"
 #include "percepto/compo/ExponentialWrapper.hpp"
 #include "percepto/compo/OffsetWrapper.hpp"
 #include "percepto/compo/ModifiedCholeskyWrapper.hpp"
 #include "percepto/compo/TransformWrapper.hpp"
 #include "percepto/compo/InverseWrapper.hpp"
+
+#include "percepto/compo/NormalizationWrapper.hpp"
 
 #include "percepto/utils/LowerTriangular.hpp"
 #include "percepto/utils/Randomization.hpp"
@@ -26,21 +29,23 @@ double ClocksToMicrosecs( clock_t c )
 	return c * 1E6 / CLOCKS_PER_SEC;
 }
 
-unsigned int matDim = 6;
+unsigned int matDim = 3;
 unsigned int dFeatDim = 5;
 
 unsigned int lOutDim = matDim*(matDim-1)/2;
 unsigned int dOutDim = matDim;
 
 unsigned int numHiddenLayers = 1;
-unsigned int layerWidth = 10;
+unsigned int layerWidth = 1;
 
 struct Regressor
 {
 	TerminalSource<VectorType> dInput;
 	ConstantVectorRegressor lReg;
 	ReLUNet dReg;
-	ExponentialWrapper<VectorType> expReg;
+	// LinearRegressor dReg;
+	L1NormalizationWrapper normReg;
+	ExponentialWrapper expReg;
 	ModifiedCholeskyWrapper psdReg;
 	OffsetWrapper<MatrixType> pdReg;
 	TransformWrapper transReg;
@@ -48,12 +53,16 @@ struct Regressor
 	GaussianLogLikelihoodCost gll;
 
 	Regressor()
-	: lReg( lOutDim ), 
+	: lReg( lOutDim ),
+	// dReg( dFeatDim, dOutDim )
 	dReg( dFeatDim, dOutDim, numHiddenLayers, layerWidth,
 	      HingeActivation( 1.0, 1E-3 ) )
 	{
 		dReg.SetSource( &dInput );
-		expReg.SetSource( &dReg.GetOutputSource() ); // TODO Streamline
+		normReg.SetSource( &dReg.GetOutputSource() );
+		// expReg.SetSource( &dReg.GetOutputSource() ); // TODO Streamline
+		expReg.SetSource( &normReg );
+		// expReg.SetSource( &dReg );
 		psdReg.SetLSource( &lReg );
 		psdReg.SetDSource( &expReg );
 		pdReg.SetSource( &psdReg );
@@ -67,7 +76,10 @@ struct Regressor
 	: lReg( other.lReg ), dReg( other.dReg ), pdReg( other.pdReg )
 	{
 		dReg.SetSource( &dInput );
-		expReg.SetSource( &dReg.GetOutputSource() );
+		normReg.SetSource( &dReg.GetOutputSource() );
+		// expReg.SetSource( &dReg.GetOutputSource() );
+		expReg.SetSource( &normReg );
+		// expReg.SetSource( &dReg );
 		psdReg.SetLSource( &lReg );
 		psdReg.SetDSource( &expReg );
 		pdReg.SetSource( &psdReg );
@@ -144,14 +156,30 @@ int main( void )
 
 	double maxSeen, acc;
 
-	// 3. Test ANN gradients
-	std::cout << "Testing ANN gradients..." << std::endl;
+	// std::cout << "Testing ANN gradients..." << std::endl;
+	// maxSeen = -std::numeric_limits<double>::infinity();
+	// acc = 0;
+	// for( unsigned int i = 0; i < popSize; i++ )
+	// {
+	// 	std::vector<double> errors = EvalMatDeriv( regressors[i], 
+	// 	                                           regressors[i].dReg.GetOutputSource(),
+	// 	                                           // regressors[i].dReg,
+	// 	                                           paramWrapper );
+	// 	iter = std::max_element( errors.begin(), errors.end() );
+	// 	acc += *iter;
+	// 	if( *iter > maxSeen ) { maxSeen = *iter; }
+	// }
+	// std::cout << "Max error: " << maxSeen << std::endl;
+	// std::cout << "Avg max error: " << acc / popSize << std::endl;
+
+	// 3. Test normalization gradients
+	std::cout << "Testing normalization gradients..." << std::endl;
 	maxSeen = -std::numeric_limits<double>::infinity();
 	acc = 0;
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
 		std::vector<double> errors = EvalMatDeriv( regressors[i], 
-		                                           regressors[i].dReg.GetOutputSource(),
+		                                           regressors[i].normReg,
 		                                           paramWrapper );
 		iter = std::max_element( errors.begin(), errors.end() );
 		acc += *iter;
@@ -159,6 +187,7 @@ int main( void )
 	}
 	std::cout << "Max error: " << maxSeen << std::endl;
 	std::cout << "Avg max error: " << acc / popSize << std::endl;
+	return 0;
 
 	// 4. Test cholesky gradients
 	std::cout << "Testing Modified Cholesky gradients..." << std::endl;

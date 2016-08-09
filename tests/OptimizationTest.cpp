@@ -24,7 +24,7 @@
 using namespace percepto;
 
 typedef ReLUNet BaseRegressor;
-typedef ExponentialWrapper<VectorType> ExpModule;
+typedef ExponentialWrapper ExpModule;
 typedef ModifiedCholeskyWrapper PSDModule;
 typedef OffsetWrapper<MatrixType> MatrixOffset;
 typedef TransformWrapper TransCovEstimate;

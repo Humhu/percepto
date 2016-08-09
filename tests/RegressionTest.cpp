@@ -17,7 +17,7 @@
 
 using namespace percepto;
 
-typedef ExponentialWrapper<VectorType> ExpModule;
+typedef ExponentialWrapper ExpModule;
 typedef ModifiedCholeskyWrapper PSDModule;
 typedef OffsetWrapper<MatrixType> OffsetModule;
 
