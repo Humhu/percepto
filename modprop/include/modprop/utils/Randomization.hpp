@@ -14,7 +14,11 @@ template <typename Derived>
 void randomize_vector( Eigen::DenseBase<Derived>& mat, 
                        double minRange = -1.0, double maxRange = 1.0 )
 {
-	if( minRange == maxRange ) { return; }
+	if( minRange == maxRange ) 
+	{ 
+		mat.setConstant( minRange );
+		return;
+	}
 	mat.setConstant( minRange );
 
 	boost::random::mt19937 generator;

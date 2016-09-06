@@ -28,7 +28,8 @@ void ContinuousPolicyManager::Initialize( ContinuousPolicyInterface* interface,
 	unsigned int inputDim = _inputStreams.GetDim();
 	unsigned int outputDim = _interface->GetNumOutputs();
 
-	_policy.Initialize( inputDim, outputDim, ph );
+	ros::NodeHandle neth( ph.resolveName("policy") );
+	_policy.Initialize( inputDim, outputDim, neth );
 
 	// Read initialization if we have it
 	const VectorType& lowerLimit = _interface->GetLowerLimits();
@@ -43,14 +44,24 @@ void ContinuousPolicyManager::Initialize( ContinuousPolicyInterface* interface,
 	initParams.info = MatrixType::Identity( outputDim, outputDim );
 	for( unsigned int i = 0; i < paramNames.size(); ++i )
 	{
-		_policyScales(i) = std::abs( upperLimit(i) - lowerLimit(i) );
-		_policyOffsets(i) = ( upperLimit(i) - lowerLimit(i) ) / 2;
+		if( !std::isfinite( upperLimit(i) ) || !std::isfinite( lowerLimit(i) ) )
+		{
+			_policyScales(i) = 1.0;
+			_policyOffsets(i) = 0.0;
+		}
+		else
+		{
+			_policyScales(i) = ( upperLimit(i) - lowerLimit(i) ) / 2;
+			_policyOffsets(i) = ( upperLimit(i) - lowerLimit(i) ) / 2;
+		}
 		initParams.mean(i) = 0;
 		initParams.info(i,i) = 10;
 	}
 	_policy.InitializeOutput( initParams );
 
 	ROS_INFO_STREAM( "Network initialized: " << std::endl << *_policy.GetPolicyModule() );
+	ROS_INFO_STREAM( "Policy scales: " << _policyScales.transpose() << std::endl <<
+	                 "Policy offsets: " << _policyOffsets.transpose() << std::endl );
 
 	unsigned int seed;
 	if( HasParam( ph, "rng_seed" ) )
@@ -86,15 +97,15 @@ VectorType ContinuousPolicyManager::GetInput( const ros::Time& time )
 }
 
 ContinuousPolicyManager::DistributionParameters
-ContinuousPolicyManager::GetNormalizedDistributionParams( const ros::Time& time )
+ContinuousPolicyManager::GetNormalizedDistribution( const ros::Time& time )
 {
 	return _policy.GenerateOutput( GetInput( time ) );
 }
 
 ContinuousPolicyManager::DistributionParameters 
-ContinuousPolicyManager::GetDistributionParams( const ros::Time& time )
+ContinuousPolicyManager::GetDistribution( const ros::Time& time )
 {
-	DistributionParameters initParams = GetNormalizedDistributionParams( time );
+	DistributionParameters initParams = GetNormalizedDistribution( time );
 	initParams.mean = ( _policyScales.array() * initParams.mean.array() ).matrix();
 	Eigen::LDLT<MatrixType> infoLDLT( initParams.info );
 	MatrixType cov = infoLDLT.solve( MatrixType::Identity( initParams.mean.size(),
@@ -108,7 +119,7 @@ ContinuousPolicyManager::GetDistributionParams( const ros::Time& time )
 
 VectorType ContinuousPolicyManager::GetNormalizedOutput( const ros::Time& time )
 {
-	ContinuousPolicyManager::DistributionParameters initParams = GetDistributionParams( time );
+	ContinuousPolicyManager::DistributionParameters initParams = GetDistribution( time );
 	_mvg.SetMean( initParams.mean );
 	_mvg.SetInformation( initParams.info );
 	return _mvg.Sample( _maxSampleDevs );
@@ -117,10 +128,10 @@ VectorType ContinuousPolicyManager::GetNormalizedOutput( const ros::Time& time )
 VectorType ContinuousPolicyManager::GetOutput( const ros::Time& time )
 {
 	VectorType out = GetNormalizedOutput( time );
-	return ( out.array() * _policyScales.array() ).matrix();
+	return ( out.array() * _policyScales.array() ).matrix() + _policyOffsets;
 }
 
-void ContinuousPolicyManager::Execute( const ros::Time& now )
+ContinuousAction ContinuousPolicyManager::Execute( const ros::Time& now )
 {
 	VectorType in = GetInput( now );
 	VectorType out = GetOutput( now );
@@ -129,7 +140,9 @@ void ContinuousPolicyManager::Execute( const ros::Time& now )
 	ContinuousAction act( now, in, out );
 	_actionPub.publish( act.ToMsg() );
 	act.Normalize( _policyScales, _policyOffsets );
-	_actionPub.publish( act.ToMsg() );
+	_normalizedActionPub.publish( act.ToMsg() );
+
+	return act;
 }
 
 bool ContinuousPolicyManager::SetParamHandler( percepto_msgs::SetParameters::Request& req,

@@ -27,14 +27,14 @@ public:
 	VectorType GetInput( const ros::Time& time );
 	
 	// NOTE Returns normalized distribution parameters
-	DistributionParameters GetNormalizedDistributionParams( const ros::Time& time );
-	DistributionParameters GetDistributionParams( const ros::Time& time );
+	DistributionParameters GetNormalizedDistribution( const ros::Time& time );
+	DistributionParameters GetDistribution( const ros::Time& time );
 	
 	VectorType GetNormalizedOutput( const ros::Time& time );
 	VectorType GetOutput( const ros::Time& time );
 
 	// Samples from the policy and sets the output through the interface
-	void Execute( const ros::Time& now );
+	ContinuousAction Execute( const ros::Time& now );
 
 private:
 

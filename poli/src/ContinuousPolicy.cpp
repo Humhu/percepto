@@ -76,7 +76,7 @@ void ContinuousPolicy::ReadInitialization( unsigned int inputDim,
 	double initScale;
 	GetParam( info, "initial_magnitude", initScale, 1.0 );
 	VectorType paramVec = _networkParameters->GetParamsVec();
-	percepto::randomize_vector( paramVec, -initScale, initScale );
+	randomize_vector( paramVec, -initScale, initScale );
 	_networkParameters->SetParamsVec( paramVec );
 }
 
@@ -121,6 +121,7 @@ ContinuousPolicy::GenerateOutput( const VectorType& input )
 	DistributionParameters out;
 	out.mean = _network->GetMeanSource().GetOutput();
 	out.info = _network->GetInfoSource().GetOutput();
+	ROS_INFO_STREAM( "Policy: " << out );
 	return out;
 }
 
@@ -133,6 +134,14 @@ void ContinuousPolicy::InitializeOutput( const DistributionParameters& params )
 {
 	_network->InitializeMean( params.mean );
 	_network->InitializeInformation( params.info );
+}
+
+std::ostream& operator<<( std::ostream& os, 
+                          const ContinuousPolicy::DistributionParameters& params )
+{
+	os << "Mean: " << params.mean.transpose() << std::endl;
+	os << "Information: " << std::endl << params.info;
+	return os;
 }
 
 }
