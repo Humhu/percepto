@@ -1,0 +1,201 @@
+#pragma once
+
+#include <Eigen/Cholesky>
+#include <deque>
+
+#include "modprop/ModpropTypes.h"
+
+namespace percepto
+{
+
+struct NaturalStepperParameters
+{
+	// The step size (1E-3)
+	double alpha;
+
+	// The damping factor
+	double epsilon; 
+
+	bool enableDecay;
+
+	double maxStepElement;
+
+	unsigned int windowLen;
+
+	NaturalStepperParameters()
+	: alpha( 1E-3 ), epsilon( 1E-6 ), enableDecay( false ), 
+	  maxStepElement( std::numeric_limits<double>::infinity() ) {}
+};
+
+template <typename Convergence>
+class NaturalOptimizer
+{
+public:
+
+	typedef Convergence ConvergenceType;
+	typedef std::function<bool()> UserCheck;
+
+	NaturalOptimizer( ConvergenceType& convergence,
+	                  Parameters& optParams,
+	                  const NaturalStepperParameters& params = NaturalStepperParameters(),
+	                  OptimizationMode mode = OPT_MINIMIZATION )
+	: _convergence( convergence ), _params( params ), _optParams( optParams )
+	{
+		Reset();
+		switch( mode )
+		{
+			case OPT_MINIMIZATION:
+				_direction = -1.0;
+				break;
+			case OPT_MAXIMIZATION:
+				_direction = 1.0;
+				break;
+			default:
+				throw std::runtime_error( "Unknown minimization mode." );
+		}
+	}
+
+	void Reset()
+	{
+		_t = 0;
+		_initialized = false;
+	}
+
+	void AddUserCheck( const UserCheck& check )
+	{
+		_checks.emplace_back( check );
+	}
+
+	template <typename Problem>
+	OptimizationResults Optimize( Problem& problem )
+	{
+		_convergence.Reset();
+
+		double value;
+		VectorType gradient, step, params;
+		MatrixType sysDodx = MatrixType::Identity(1,1);
+		bool converged = false;
+		bool failed = false;
+		do
+		{
+			_optParams.ResetAccumulators();
+			problem.Invalidate();
+			problem.Foreprop();
+			value = problem.GetOutput();
+			problem.Backprop();
+			VectorType gradient = _direction * VectorType( _optParams.GetDerivs() );
+			if( gradient.size() != _optParams.ParamDim() )
+			{
+				throw std::runtime_error( "Cost derivative dimension error." );
+			}
+
+			// Update Fisher info matrix
+			_optParams.ResetAccumulators();
+			problem.Invalidate();
+			problem.BackpropNatural();
+			VectorType naturalGradient( _optParams.GetDerivs() );
+			UpdateFisher( naturalGradient );
+
+			// Perform step
+			step = GetStep( gradient );
+			params = _optParams.GetParamsVec();
+			if( params.size() != step.size() )
+			{
+				throw std::runtime_error( "Parameter step the wrong size!" );
+			}
+
+			_optParams.SetParamsVec( params + step );
+
+			converged = _convergence.Converged( value, params, step );
+			failed = _convergence.Failed() || UserFailed();
+		}
+		while( !converged && !failed );
+
+		OptimizationResults results;
+		results.finalObjective = value;
+		results.converged = converged;
+		return results;
+	}
+
+	void UpdateFisher( const VectorType& w )
+	{
+		if( !_initialized )
+		{
+			_initialized = true;
+			unsigned int N = w.size();
+			_ldlt = Eigen::LDLT<MatrixType>( _params.epsilon * MatrixType::Identity( N, N ) );
+			// _ldlt = Eigen::LDLT<MatrixType>( w * w.transpose() );
+		}
+
+		_ldlt.rankUpdate( w );
+
+		_gradients.push_back( w );
+		while( _gradients.size() > _params.windowLen )
+		{
+			_ldlt.rankUpdate( _gradients.front(), -1 );
+			_gradients.pop_front();
+		}
+	}
+
+	VectorType GetStep( const VectorType& gradient )
+	{
+		++_t;
+		
+		double step = _params.alpha;
+		if( _params.enableDecay )
+		{
+			step = _params.alpha / std::sqrt( _t );
+		}
+
+		VectorType g;
+		if( _gradients.size() < _params.windowLen )
+		{
+			g = step * gradient;
+			std::cout << "NaturalOptimizer: Has " << _gradients.size() << 
+			             " samples, less than required " << _params.windowLen << std::endl;
+		}
+		else
+		{
+			g = step * _ldlt.solve( gradient * _gradients.size() );
+		}
+
+		// NOTE Since we actually want the average inverse, we need to
+		// scale the output
+		double largestG = g.array().abs().maxCoeff();
+		if( largestG > _params.maxStepElement )
+		{
+			g = g / ( largestG / _params.maxStepElement );
+		}
+
+		// std::cout << "Parameters: " << _optParams.GetParamsVec().transpose() << std::endl;
+		// std::cout << "Raw gradient: " << gradient.transpose() << std::endl;
+		// std::cout << "Natural gradient: " << g.transpose() << std::endl;
+
+		return g;
+	}
+
+private:
+
+	ConvergenceType _convergence;
+	NaturalStepperParameters _params;
+	Parameters& _optParams;
+	double _direction;
+
+	unsigned int _t;
+
+	bool _initialized;
+	Eigen::LDLT<MatrixType> _ldlt;
+	std::deque<VectorType> _gradients;
+	std::vector<UserCheck> _checks;
+
+	bool UserFailed()
+	{
+		BOOST_FOREACH( UserCheck& c, _checks )
+		{
+			if( c() ) { return true;}
+		}
+		return false;
+	}
+};
+
+}
