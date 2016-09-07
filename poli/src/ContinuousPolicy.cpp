@@ -21,7 +21,7 @@ void ContinuousPolicy::Initialize( unsigned int inputDim,
                                    const YAML::Node& info )
 {
 	ReadInitialization( inputDim, outputDim, info );
-} 
+}
 
 template <typename InfoType>
 void ContinuousPolicy::ReadInitialization( unsigned int inputDim,

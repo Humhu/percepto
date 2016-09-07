@@ -33,9 +33,6 @@ public:
 	// Retrieve the policy parameters
 	percepto::Parameters::Ptr GetParameters();
 
-	unsigned int OutputDim() const;
-	unsigned int InputDim() const;
-
 	DistributionParameters GenerateOutput( const VectorType& input );
 
 	// Set offsets for the policy network

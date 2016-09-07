@@ -18,8 +18,8 @@ ContinuousAction::ContinuousAction( const MsgType& msg )
   output( GetVectorView( msg.output ) ) {}
 
 ContinuousAction::ContinuousAction( const ros::Time& t,
-                                              const VectorType& in,
-                                              const VectorType& out )
+                                    const VectorType& in,
+                                    const VectorType& out )
 : ParamAction( t, in ), output( out ) {}
 
 ContinuousAction::MsgType ContinuousAction::ToMsg() const

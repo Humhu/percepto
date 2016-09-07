@@ -76,7 +76,8 @@ public:
 
 	ContinuousPolicyLearner();
 
-	void Initialize( ros::NodeHandle& nh, ros::NodeHandle& ph );
+	void Initialize( ros::NodeHandle& nh, 
+	                 ros::NodeHandle& ph );
 
 private:
 
@@ -86,10 +87,9 @@ private:
 	PolicyInfoManager _infoManager;
 	ContinuousPolicy _policy;
 
+	ros::ServiceClient _getCritiqueClient;
 	ros::ServiceClient _setParamsClient;
 	ros::Subscriber _actionSub;
-
-	PolicyCritic::Ptr _critic;
 
 	ros::Timer _updateTimer;
 	ros::Time _lastOptimizationTime;

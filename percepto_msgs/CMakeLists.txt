@@ -13,9 +13,11 @@ add_message_files( FILES
                    ContinuousAction.msg
                    DiscreteAction.msg
                    RewardStamped.msg
+                   SRSTuple.msg
 )
 
 add_service_files( FILES
+                   GetCritique.srv
                    GetParameters.srv
                    SetParameters.srv )
 

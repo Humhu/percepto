@@ -4,9 +4,7 @@
 #include "argus_utils/utils/ParamUtils.h"
 #include "argus_utils/utils/MapUtils.hpp"
 
-#include "relearn/DifferenceCritic.h"
-#include "relearn/TDErrorCritic.h"
-
+#include "percepto_msgs/GetCritique.h"
 #include "percepto_msgs/GetParameters.h"
 #include "percepto_msgs/SetParameters.h"
 
@@ -138,7 +136,8 @@ bool PolicyDivergenceChecker::ExceededLimits()
 ContinuousPolicyLearner::ContinuousPolicyLearner() 
 : _optimizationChecker( _optimization ), _infoManager( _lookup ) {}
 
-void ContinuousPolicyLearner::Initialize( ros::NodeHandle& nh, ros::NodeHandle& ph )
+void ContinuousPolicyLearner::Initialize( ros::NodeHandle& nh, 
+                                          ros::NodeHandle& ph )
 {
 	WriteLock lock( _mutex );
 	
@@ -146,7 +145,7 @@ void ContinuousPolicyLearner::Initialize( ros::NodeHandle& nh, ros::NodeHandle& 
 	GetParamRequired( ph, "policy_name", policyName );
 
 	// Read policy information
-	if( !_infoManager.ReadMemberInfo( policyName, true, ros::Duration( 10.0 ) ) )
+	if( !_infoManager.CheckMemberInfo( policyName, true, ros::Duration( 10.0 ) ) )
 	{
 		throw std::runtime_error( "Could not find policy: " + policyName );
 	}
@@ -155,6 +154,8 @@ void ContinuousPolicyLearner::Initialize( ros::NodeHandle& nh, ros::NodeHandle& 
 	
 	// Get initial policy parameters
 	ros::service::waitForService( info.paramQueryService );
+	ros::service::waitForService( info.paramSetService );
+
 	percepto_msgs::GetParameters::Request req;
 	percepto_msgs::GetParameters::Response res;
 	if( !ros::service::call( info.paramQueryService, req, res ) )
@@ -162,6 +163,7 @@ void ContinuousPolicyLearner::Initialize( ros::NodeHandle& nh, ros::NodeHandle& 
 		throw std::runtime_error( "Could not query parameters at: " + info.paramQueryService );
 	}
 	_policy.GetParameters()->SetParamsVec( GetVectorView( res.parameters ) );
+	ROS_INFO_STREAM( "Initialized policy: " << std::endl << *_policy.GetPolicyModule() );
 
 	_setParamsClient = nh.serviceClient<percepto_msgs::SetParameters>( info.paramSetService, true );
 
@@ -211,6 +213,7 @@ void ContinuousPolicyLearner::Initialize( ros::NodeHandle& nh, ros::NodeHandle& 
 	GetParamRequired( lh, "batch_size", batchSize );
 	_optimization.Initialize( _policy.GetParameters(), l2Weight, batchSize );
 
+	// Add constraint on data divergence
 	double maxDivergence;
 	GetParamRequired( lh, "max_divergence", maxDivergence );
 	_optimizationChecker.SetDivergenceLimit( maxDivergence );
@@ -218,24 +221,11 @@ void ContinuousPolicyLearner::Initialize( ros::NodeHandle& nh, ros::NodeHandle& 
 	                                                           &_optimizationChecker );
 	_optimizer->AddUserCheck( divCheck );
 
-	ros::NodeHandle ch( ph.resolveName( "critic" ) );
-	std::string criticType;
-	GetParamRequired( ch, "type", criticType );
-	if( criticType == "difference" )
-	{
-		_critic = std::make_shared<DifferenceCritic>();
-		_critic->Initialize( nh, ch );
-	}
-	else if( criticType == "td_error" )
-	{
-		_critic = std::make_shared<TDErrorCritic>();
-		_critic->Initialize( nh, ch );
-	}
-	else
-	{
-		throw std::invalid_argument( "ContinuousPolicyLearner: Unsupported critic type: " + criticType );
-	}
+	std::string critiqueTopic;
+	GetParamRequired( ph, "critique_service_topic", critiqueTopic );
+	_getCritiqueClient = nh.serviceClient<percepto_msgs::GetCritique>( critiqueTopic, true );
 
+	// Subscribe to policy action feed
 	_actionSub = nh.subscribe( "actions", 
 	                           0, 
 	                           &ContinuousPolicyLearner::ActionCallback, 
@@ -274,16 +264,15 @@ void ContinuousPolicyLearner::TimerCallback( const ros::TimerEvent& event )
 	{
 		ContinuousAction action( _actionBuffer.begin()->second );
 
-		double advantage;
-		try
+		percepto_msgs::GetCritique getCritique;
+		getCritique.request.time = action.time;
+
+		if( _getCritiqueClient.call( getCritique ) )
 		{
-			advantage = _critic->Evaluate( action );
-		}
-		catch( std::out_of_range )
-		{
-			ROS_WARN_STREAM( "Could not evaluate action at time: " << action.time );
+			ROS_WARN_STREAM( "Could not get critique for time: " << action.time );
 			break;
 		}
+		double advantage = getCritique.response.critique;
 
 		remove_lowest( _actionBuffer );
 		if( !action.input.allFinite() )
@@ -344,12 +333,10 @@ void ContinuousPolicyLearner::TimerCallback( const ros::TimerEvent& event )
 
 	// Set new parameters
 	percepto_msgs::SetParameters srv;
-	VectorType updatedParams = _policy.GetParameters()->GetParamsVec();
-	srv.request.parameters = std::vector<double>( updatedParams.data(), 
-	                                              updatedParams.data() + updatedParams.size() );
+	SerializeMatrix( _policy.GetParameters()->GetParamsVec(), srv.request.parameters );
 	if( !_setParamsClient.call( srv ) )
 	{
-		ROS_WARN_STREAM( "Could not set parameters." );
+		throw std::runtime_error( "Could not set parameters." );
 	}
 }
 

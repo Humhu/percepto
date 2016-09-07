@@ -2,6 +2,7 @@
 
 #include "poli/ContinuousPolicy.h"
 #include "poli/PoliInterfaces.h"
+#include "poli/PolicyInfoManager.h"
 
 #include "broadcast/BroadcastMultiReceiver.h"
 #include "argus_utils/random/MultivariateGaussian.hpp"
@@ -37,6 +38,11 @@ public:
 	ContinuousAction Execute( const ros::Time& now );
 
 private:
+
+	std::string _policyName;
+
+	argus::LookupInterface _lookup;
+	PolicyInfoManager _infoManager;
 
 	ContinuousPolicy _policy;
 	ContinuousPolicyInterface* _interface;

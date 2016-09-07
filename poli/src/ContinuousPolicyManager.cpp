@@ -4,6 +4,8 @@
 #include "argus_utils/utils/MatrixUtils.h"
 #include "modprop/utils/Randomization.hpp"
 
+#include "lookup/LookupUtils.hpp"
+
 #include <boost/foreach.hpp>
 #include <sstream>
 
@@ -12,30 +14,30 @@ using namespace argus;
 namespace percepto
 {
 
-ContinuousPolicyManager::ContinuousPolicyManager() {}
+ContinuousPolicyManager::ContinuousPolicyManager() 
+: _infoManager( _lookup ) {}
 
 void ContinuousPolicyManager::Initialize( ContinuousPolicyInterface* interface,
                                           ros::NodeHandle& nh,
                                           ros::NodeHandle& ph )
 {
-
-	// Initialize input listeners
-	ros::NodeHandle subh( ph.resolveName("input_streams") );
-	_inputStreams.Initialize( subh );
-	
+	// Read information from interface
 	_interface = interface;
-
-	unsigned int inputDim = _inputStreams.GetDim();
-	unsigned int outputDim = _interface->GetNumOutputs();
-
-	ros::NodeHandle neth( ph.resolveName("policy") );
-	_policy.Initialize( inputDim, outputDim, neth );
-
-	// Read initialization if we have it
 	const VectorType& lowerLimit = _interface->GetLowerLimits();
 	const VectorType& upperLimit = _interface->GetUpperLimits();
-	
+	unsigned int outputDim = _interface->GetNumOutputs();
 	std::vector<std::string> paramNames = _interface->GetParameterNames();
+
+	// Read information from input listener
+	ros::NodeHandle subh( ph.resolveName("input_streams") );
+	_inputStreams.Initialize( subh );
+	unsigned int inputDim = _inputStreams.GetDim();
+
+	// Parse policy info
+	ros::NodeHandle neth( ph.resolveName("policy_class") );
+	_policy.Initialize( inputDim, outputDim, neth );
+
+	// Compute initializations
 	_policyScales = VectorType( outputDim );
 	_policyOffsets = VectorType( outputDim );
 	
@@ -63,6 +65,7 @@ void ContinuousPolicyManager::Initialize( ContinuousPolicyInterface* interface,
 	ROS_INFO_STREAM( "Policy scales: " << _policyScales.transpose() << std::endl <<
 	                 "Policy offsets: " << _policyOffsets.transpose() << std::endl );
 
+	// See if any RNG seed was given
 	unsigned int seed;
 	if( HasParam( ph, "rng_seed" ) )
 	{
@@ -79,10 +82,27 @@ void ContinuousPolicyManager::Initialize( ContinuousPolicyInterface* interface,
 	_actionPub = ph.advertise<percepto_msgs::ContinuousAction>( "action_raw", 0 );
 	_normalizedActionPub = ph.advertise<percepto_msgs::ContinuousAction>( "action_normalized", 0 );
 
-	_getParamServer = ph.advertiseService( "get_initParams", &ContinuousPolicyManager::GetParamHandler, this );
-	_setParamServer = ph.advertiseService( "set_initParams", &ContinuousPolicyManager::SetParamHandler, this );
-}
+	// Advertise parameter services
+	std::string getParamTopic = ph.resolveName( "get_params" );
+	std::string setParamTopic = ph.resolveName( "set_params" );
+	_getParamServer = nh.advertiseService( getParamTopic, &ContinuousPolicyManager::GetParamHandler, this );
+	_setParamServer = nh.advertiseService( setParamTopic, &ContinuousPolicyManager::SetParamHandler, this );
 
+	GetParamRequired( ph, "policy_name", _policyName );
+	register_lookup_target( ph, _policyName );
+
+	// Register information
+	PolicyInfo info;
+	info.inputDim = inputDim;
+	info.outputDim = outputDim;
+	info.paramQueryService = getParamTopic;
+	info.paramSetService = setParamTopic;
+	GetParamRequired( neth, "", info.networkInfo );
+	if( !_infoManager.WriteMemberInfo( _policyName, info, true, ros::Duration( 10.0 ) ) )
+	{
+		throw std::runtime_error( "Could not write policy info!" );
+	}
+}
 
 VectorType ContinuousPolicyManager::GetInput( const ros::Time& time )
 {
@@ -119,7 +139,7 @@ ContinuousPolicyManager::GetDistribution( const ros::Time& time )
 
 VectorType ContinuousPolicyManager::GetNormalizedOutput( const ros::Time& time )
 {
-	ContinuousPolicyManager::DistributionParameters initParams = GetDistribution( time );
+	ContinuousPolicyManager::DistributionParameters initParams = GetNormalizedDistribution( time );
 	_mvg.SetMean( initParams.mean );
 	_mvg.SetInformation( initParams.info );
 	return _mvg.Sample( _maxSampleDevs );
@@ -141,7 +161,7 @@ ContinuousAction ContinuousPolicyManager::Execute( const ros::Time& now )
 	_actionPub.publish( act.ToMsg() );
 	act.Normalize( _policyScales, _policyOffsets );
 	_normalizedActionPub.publish( act.ToMsg() );
-
+	act.Unnormalize( _policyScales, _policyOffsets );
 	return act;
 }
 

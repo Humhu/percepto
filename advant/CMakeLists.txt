@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(relearn)
+project(advant)
 
 set(CMAKE_CXX_FLAGS "-g -Wall -std=c++11")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/cmake/")
@@ -10,7 +10,9 @@ find_package(catkin REQUIRED
              COMPONENTS	roscpp
              argus_utils
              modprop
-             poli )
+             broadcast
+             valu
+             percepto_msgs )
 
 # Use Boost for most utilities, threading
 find_package(Boost REQUIRED COMPONENTS random)
@@ -20,23 +22,18 @@ find_package(Eigen3 REQUIRED)
 
 catkin_package(
                INCLUDE_DIRS 	include
-               
-               LIBRARIES		relearn
+
+               LIBRARIES		advant
 
                CATKIN_DEPENDS 	roscpp 
                argus_utils
                modprop
-               poli
-               
-               DEPENDS 		Boost 
-               system_lib )
+               broadcast
+               percepto_msgs
 
-add_library( relearn
-            src/ContinuousPolicyLearner.cpp
-            src/PolicyLogGradientModules.cpp )
-add_dependencies( relearn relearn_gencfg ${relearn_EXPORTED_TARGETS} )
-target_link_libraries( relearn
-                      ${catkin_LIBRARIES} )
+               DEPENDS 		Boost 
+               system_lib
+               )
 
 include_directories( include
                     ${EIGEN3_INCLUDE_DIR}
@@ -44,15 +41,20 @@ include_directories( include
                     ${catkin_INCLUDE_DIRS}
                     )
 
-add_executable( continuous_policy_learner_node nodes/continuous_policy_learner_node.cpp )
-add_dependencies( continuous_policy_learner_node ${PROJECT_NAME}_gencfg )
-target_link_libraries( continuous_policy_learner_node
-                      ${catkin_LIBRARIES}
-                      ${Boost_LIBRARIES}
-                      relearn )
+add_library( advant
+            src/GeneralizedAdvantageCritic.cpp
+            #src/DifferenceCritic.cpp
+            #src/RunningAverageBaseline.cpp
+            src/TDErrorCritic.cpp )
+add_dependencies( advant advant_gencfg ${advant_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
+target_link_libraries( advant
+                      ${catkin_LIBRARIES} )
 
-install( TARGETS relearn 
-        continuous_policy_learner_node
+add_executable( critic_node nodes/critic_node.cpp )
+add_dependencies( critic_node advant_gencfg ${advant_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
+target_link_libraries( critic_node advant ${catkin_LIBRARIES} )
+
+install( TARGETS advant 
         ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
         LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
         RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
