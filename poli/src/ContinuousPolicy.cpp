@@ -121,7 +121,6 @@ ContinuousPolicy::GenerateOutput( const VectorType& input )
 	DistributionParameters out;
 	out.mean = _network->GetMeanSource().GetOutput();
 	out.info = _network->GetInfoSource().GetOutput();
-	ROS_INFO_STREAM( "Policy: " << out );
 	return out;
 }
 

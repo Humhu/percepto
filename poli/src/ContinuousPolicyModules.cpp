@@ -229,7 +229,7 @@ FixedVarianceGaussian::FixedVarianceGaussian( unsigned int inputDim,
         numHiddenLayers, 
         layerWidth, 
         percepto::SigmoidActivation(),
-        percepto::PerceptronNet::OUTPUT_RECTIFIED ),
+        percepto::PerceptronNet::OUTPUT_UNRECTIFIED ),
   correlations( matDim*(matDim-1)/2 ),
   logVariances( matDim ),
   useCorrelations( useCorr )
