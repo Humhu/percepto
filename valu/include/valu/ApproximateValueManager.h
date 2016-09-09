@@ -9,6 +9,8 @@
 #include "percepto_msgs/SetParameters.h"
 #include "percepto_msgs/GetParameters.h"
 
+#include "argus_utils/synchronization/SynchronizationTypes.h"
+
 namespace percepto
 {
 
@@ -29,6 +31,8 @@ public:
 	virtual double GetCritique( const ros::Time& time ) const;
 
 private:
+
+	mutable argus::Mutex _mutex;
 
 	ApproximateValue _value;
 	argus::BroadcastMultiReceiver::Ptr _receiver;

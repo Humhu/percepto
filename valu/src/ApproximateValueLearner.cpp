@@ -184,11 +184,13 @@ void ApproximateValueLearner::Initialize( ros::NodeHandle& nh, ros::NodeHandle& 
 
 void ApproximateValueLearner::SRSCallback( const percepto_msgs::SRSTuple::ConstPtr& msg )
 {
+	WriteLock lock( _mutex );
 	_srsBuffer.emplace_back( *msg );
 }
 
 void ApproximateValueLearner::UpdateCallback( const ros::TimerEvent& event )
 {
+	WriteLock lock( _mutex );
 	while( !_srsBuffer.empty() )
 	{
 		const SRSTuple& srs = _srsBuffer.front();
@@ -196,6 +198,7 @@ void ApproximateValueLearner::UpdateCallback( const ros::TimerEvent& event )
 		double dt = (srs.nextTime - srs.time).toSec();
 		double discountFactor = std::exp( dt * std::log( _discountRate ) );
 
+		ROS_INFO_STREAM( srs );
 		_problem.EmplaceModule( _value.GetApproximatorModule(),
 		                        srs.state,
 		                        _value.GetApproximatorModule(),
@@ -204,16 +207,9 @@ void ApproximateValueLearner::UpdateCallback( const ros::TimerEvent& event )
 		                        discountFactor );
 		_srsBuffer.pop_front();
 	}
+	lock.unlock();
 
 	RunOptimization();
-
-	percepto_msgs::SetParameters setParams;
-	SerializeMatrix( _value.GetParameters()->GetParamsVec(), setParams.request.parameters );
-	if( !_setParamsClient.call( setParams ) )
-	{
-		throw std::runtime_error( "Could not set parameters." );
-	}
-	
 }
 
 void ApproximateValueLearner::RunOptimization()
@@ -230,6 +226,7 @@ void ApproximateValueLearner::RunOptimization()
 		// _stepper->Reset();
 	}
 
+	ROS_INFO_STREAM( "Beginning optimization..." );
 	percepto::OptimizationResults results = _optimizer->Optimize( _problem );
 	ROS_INFO_STREAM( "Objective: " << results.finalObjective );
 	_optimCounter++;
@@ -247,6 +244,15 @@ void ApproximateValueLearner::RunOptimization()
 	{
 		_problem.RemoveOldest();
 	}
+
+	ROS_INFO_STREAM( "Setting parameters..." );
+	percepto_msgs::SetParameters setParams;
+	SerializeMatrix( _value.GetParameters()->GetParamsVec(), setParams.request.parameters );
+	if( !_setParamsClient.call( setParams ) )
+	{
+		throw std::runtime_error( "Could not set parameters." );
+	}
+	ROS_INFO_STREAM( "Setting parameters done." );
 }
 
 }

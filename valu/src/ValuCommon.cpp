@@ -28,4 +28,15 @@ SRSTuple::MsgType SRSTuple::ToMsg() const
 	return msg;
 }
 
+std::ostream& operator<<( std::ostream& os, const SRSTuple& srs )
+{
+	os << "time: " << srs.time << std::endl;
+	os << "state: " << srs.state.transpose() << std::endl;
+	os << "reward: " << srs.reward << std::endl;
+	os << "next time: " << srs.nextTime << std::endl;
+	os << "next state: " << srs.nextState.transpose();
+	return os;
+}
+
+
 }

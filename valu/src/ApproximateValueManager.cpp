@@ -20,6 +20,8 @@ void ApproximateValueManager::Initialize( ros::NodeHandle& ph )
 void ApproximateValueManager::Initialize( BroadcastMultiReceiver::Ptr inputs,
                                           ros::NodeHandle& ph )
 {
+	WriteLock lock( _mutex );
+
 	_receiver = inputs;
 	unsigned int inputDim = _receiver->GetDim();
 	ros::NodeHandle vh( ph.resolveName( "approximator" ) );
@@ -45,15 +47,26 @@ void ApproximateValueManager::Initialize( BroadcastMultiReceiver::Ptr inputs,
 
 double ApproximateValueManager::GetCritique( const ros::Time& time ) const
 {
+	// ROS_INFO_STREAM( "Enter GetCritique" );
+	WriteLock lock( _mutex );
+	// ROS_INFO_STREAM( "Acquired GetCritique" );
 	return _value.GetValue( GetInput( time ) );
 }
 
 VectorType ApproximateValueManager::GetInput( const ros::Time& time ) const
 {
+	if( !_receiver->IsReady() )
+	{
+		throw std::out_of_range( "Receiver is not ready." );
+	}
+
 	StampedFeatures features;
 	if( !_receiver->ReadStream( time, features ) )
 	{
-		throw std::out_of_range( "ApproximateValueManager: Could not get input stream." );
+		std::stringstream ss;
+		ss << "ApproximateValueManager: Could not get input stream. Earliest time: "
+		   << _receiver->EarliestTime() << " latest: " << _receiver->LatestTime();
+		throw std::out_of_range( ss.str() );
 	}
 	return features.features;
 }
@@ -61,6 +74,7 @@ VectorType ApproximateValueManager::GetInput( const ros::Time& time ) const
 bool ApproximateValueManager::SetParamsCallback( percepto_msgs::SetParameters::Request& req,
                                                  percepto_msgs::SetParameters::Response& res )
 {
+	WriteLock lock( _mutex );
 	_value.GetParameters()->SetParamsVec( GetVectorView( req.parameters ) );
 	return true;
 }
@@ -68,6 +82,7 @@ bool ApproximateValueManager::SetParamsCallback( percepto_msgs::SetParameters::R
 bool ApproximateValueManager::GetParamsCallback( percepto_msgs::GetParameters::Request& req,
                                                  percepto_msgs::GetParameters::Response& res )
 {
+	ReadLock lock( _mutex );
 	SerializeMatrix( _value.GetParameters()->GetParamsVec(), res.parameters );
 	return true;
 }

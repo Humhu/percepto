@@ -114,7 +114,7 @@ ros::Duration RewardInterpolater::ComputeSpan() const
 	return get_highest_key( _rewards ) - get_lowest_key( _rewards );
 }
 
-double RewardInterpolater::InterpolateZeroOrderHold( const ros::Time& t ) const
+double RewardInterpolater::InterpolatePiecewiseLinear( const ros::Time& t ) const
 {
 	RewardSeries::const_iterator prev, after;
 	if( !get_closest_lesser_eq( _rewards, t, prev ) ||
@@ -132,7 +132,7 @@ double RewardInterpolater::InterpolateZeroOrderHold( const ros::Time& t ) const
 	return interp;
 }
 
-double RewardInterpolater::InterpolatePiecewiseLinear( const ros::Time& t ) const
+double RewardInterpolater::InterpolateZeroOrderHold( const ros::Time& t ) const
 {
 	RewardSeries::const_iterator prev;
 	if( !get_closest_lesser_eq( _rewards, t, prev ) )

@@ -12,6 +12,8 @@
 #include "modprop/optim/StochasticMeanCost.hpp"
 #include "modprop/compo/AdditiveWrapper.hpp"
 
+#include "argus_utils/synchronization/SynchronizationTypes.h"
+
 namespace percepto
 {
 
@@ -72,6 +74,8 @@ public:
 	void Initialize( ros::NodeHandle& nh, ros::NodeHandle& ph );
 
 private:
+
+	argus::Mutex _mutex;
 
 	std::string _valueName;
 	argus::LookupInterface _lookup;

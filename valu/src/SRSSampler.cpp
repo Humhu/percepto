@@ -51,18 +51,26 @@ void SRSSampler::TimerCallback( const ros::TimerEvent& event )
 	srs.nextTime = srs.time + _timestep;
 
 	StampedFeatures feat, nextFeat;
+	
 	try
 	{
-		_inputs->ReadStream( srs.time, feat );
-		_inputs->ReadStream( srs.nextTime, nextFeat );
+		srs.reward = _rewards->IntegratedReward( srs.time, srs.nextTime );
 	}
 	catch( std::out_of_range )
 	{
-		ROS_WARN_STREAM( "Could not read inputs." );
+		return;
+	}
+
+	if( !_inputs->ReadStream( srs.time, feat ) ||
+	    !_inputs->ReadStream( srs.nextTime, nextFeat ) )
+	{
+		return;
 	}
 
 	srs.state = feat.features;
 	srs.nextState = nextFeat.features;
+
+	ROS_INFO_STREAM( srs );
 
 	_srsPub.publish( srs.ToMsg() );
 }

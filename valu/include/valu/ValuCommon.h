@@ -3,6 +3,8 @@
 #include "modprop/ModpropTypes.h"
 #include "percepto_msgs/SRSTuple.h"
 
+#include <iostream>
+
 namespace percepto
 {
 
@@ -20,5 +22,7 @@ struct SRSTuple
 	SRSTuple( const MsgType& msg );
 	MsgType ToMsg() const;
 };
+
+std::ostream& operator<<( std::ostream& os, const SRSTuple& srs );
 
 }
