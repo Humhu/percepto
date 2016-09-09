@@ -181,31 +181,31 @@ void ContinuousPolicyLearner::Initialize( ros::NodeHandle& nh,
 	GetParam( lh, "convergence/max_iters", criteria.maxIterations, std::numeric_limits<unsigned int>::max() );
 	GetParam( lh, "convergence/min_avg_delta", criteria.minAverageDelta, -std::numeric_limits<double>::infinity() );
 	GetParam( lh, "convergence/min_avg_grad", criteria.minAverageGradient, -std::numeric_limits<double>::infinity() );
-	percepto::AdamParameters stepperParams;
-	// percepto::NaturalStepperParameters stepperParams;
+	// percepto::AdamParameters stepperParams;
+	percepto::NaturalStepperParameters stepperParams;
 	GetParam( lh, "stepper/step_size", stepperParams.alpha, 1E-3 );
 	GetParam( lh, "stepper/max_step", stepperParams.maxStepElement, 1.0 );
 	// GetParam( lh, "stepper/beta1", stepperParams.beta1, 0.9 );
 	// GetParam( lh, "stepper/beta2", stepperParams.beta2, 0.99 );
-	// GetParam( lh, "stepper/epsilon", stepperParams.epsilon, 1E-7 );
+	GetParam( lh, "stepper/epsilon", stepperParams.epsilon, 1E-7 );
 
-	// double windowRatio;
-	// GetParam( lh, "stepper/window_ratio", windowRatio, 1.0 );
-	// stepperParams.windowLen = std::ceil( windowRatio * _manager.GetParameters()->ParamDim() );
-	// ROS_INFO_STREAM( "Initializing natural gradient window with " << stepperParams.windowLen <<
-	                 // " sample length." );
+	double windowRatio;
+	GetParam( lh, "stepper/window_ratio", windowRatio, 1.0 );
+	stepperParams.windowLen = std::ceil( windowRatio * _policy.GetParameters()->ParamDim() );
+	ROS_INFO_STREAM( "Initializing natural gradient window with " << stepperParams.windowLen <<
+	                 " sample length." );
 
 	GetParam( lh, "stepper/enable_decay", stepperParams.enableDecay, false );
-	_stepper = std::make_shared<percepto::AdamStepper>( stepperParams );
+	// _stepper = std::make_shared<percepto::AdamStepper>( stepperParams );
 	_convergence = std::make_shared<percepto::SimpleConvergence>( criteria );
-	_optimizer = std::make_shared<percepto::AdamOptimizer>( *_stepper, 
-	                                                          *_convergence,
-	                                                          *_policy.GetParameters(),
-	                                                          percepto::OPT_MAXIMIZATION );
-	// _optimizer = std::make_shared<percepto::SimpleNaturalOptimizer>( *_convergence,
-	//                                                                  *_manager.GetParameters(),
-	//                                                                  stepperParams,
-	//                                                                  percepto::OPT_MAXIMIZATION );
+	// _optimizer = std::make_shared<percepto::AdamOptimizer>( *_stepper, 
+	//                                                           *_convergence,
+	//                                                           *_policy.GetParameters(),
+	//                                                           percepto::OPT_MAXIMIZATION );
+	_optimizer = std::make_shared<percepto::SimpleNaturalOptimizer>( *_convergence,
+	                                                                 *_policy.GetParameters(),
+	                                                                 stepperParams,
+	                                                                 percepto::OPT_MAXIMIZATION );
 
 	double l2Weight;
 	unsigned int batchSize;
@@ -223,6 +223,7 @@ void ContinuousPolicyLearner::Initialize( ros::NodeHandle& nh,
 
 	std::string critiqueTopic;
 	GetParamRequired( ph, "critique_service_topic", critiqueTopic );
+	ros::service::waitForService( critiqueTopic );
 	_getCritiqueClient = nh.serviceClient<percepto_msgs::GetCritique>( critiqueTopic, true );
 
 	// Subscribe to policy action feed
@@ -267,12 +268,13 @@ void ContinuousPolicyLearner::TimerCallback( const ros::TimerEvent& event )
 		percepto_msgs::GetCritique getCritique;
 		getCritique.request.time = action.time;
 
-		if( _getCritiqueClient.call( getCritique ) )
+		if( !_getCritiqueClient.call( getCritique ) )
 		{
 			ROS_WARN_STREAM( "Could not get critique for time: " << action.time );
 			break;
 		}
 		double advantage = getCritique.response.critique;
+		ROS_INFO_STREAM( "Advantage: " << advantage );
 
 		remove_lowest( _actionBuffer );
 		if( !action.input.allFinite() )

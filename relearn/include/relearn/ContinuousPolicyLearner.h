@@ -108,9 +108,9 @@ private:
 
 	std::shared_ptr<percepto::AdamStepper> _stepper;
 	std::shared_ptr<percepto::SimpleConvergence> _convergence;
-	std::shared_ptr<percepto::AdamOptimizer> _optimizer;
+	// std::shared_ptr<percepto::AdamOptimizer> _optimizer;
 
-	// std::shared_ptr<percepto::SimpleNaturalOptimizer> _optimizer;
+	std::shared_ptr<percepto::SimpleNaturalOptimizer> _optimizer;
 
 	void ActionCallback( const percepto_msgs::ContinuousAction::ConstPtr& msg );
 	void TimerCallback( const ros::TimerEvent& event );
