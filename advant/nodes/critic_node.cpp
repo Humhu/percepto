@@ -37,9 +37,15 @@ public:
 		ros::NodeHandle ah( ph.resolveName( "advantage_estimator" ) );
 		_critic.Initialize( _tde, ah );
 
-		_critiqueServer = ph.advertiseService( "get_critique", 
-		                                       &CriticNode::CritiqueCallback, 
-		                                       this );
+		_valueServer = ph.advertiseService( "get_value",
+		                                    &CriticNode::ValueCallback,
+		                                    this );
+		_tdServer = ph.advertiseService( "get_td_error",
+		                                 &CriticNode::TDCallback,
+		                                 this );
+		_advantageServer = ph.advertiseService( "get_advantage", 
+		                                        &CriticNode::AdvantageCallback, 
+		                                        this );
 	}
 
 private:
@@ -50,18 +56,53 @@ private:
 	TDErrorCritic::Ptr _tde;
 	GeneralizedAdvantageCritic _critic;
 
-	ros::ServiceServer _critiqueServer;
+	ros::ServiceServer _valueServer;
+	ros::ServiceServer _tdServer;
+	ros::ServiceServer _advantageServer;
 
-	bool CritiqueCallback( percepto_msgs::GetCritique::Request& req,
-	                       percepto_msgs::GetCritique::Response& res )
+	bool ValueCallback( percepto_msgs::GetCritique::Request& req,
+	                    percepto_msgs::GetCritique::Response& res )
+	{
+		try
+		{
+			res.critique = _value->GetCritique( req.time );
+		}
+		catch( std::out_of_range e )
+		{
+			ROS_WARN_STREAM( "Could not get value for time: " << req.time  
+			                 << std::endl << e.what() );
+			return false;
+		}
+		return true;
+	}
+
+	bool TDCallback( percepto_msgs::GetCritique::Request& req,
+	                 percepto_msgs::GetCritique::Response& res )
+	{
+		try
+		{
+			res.critique = _tde->GetCritique( req.time );
+		}
+		catch( std::out_of_range e )
+		{
+			ROS_WARN_STREAM( "Could not get TD error for time: " << req.time 
+			                 << std::endl << e.what() );
+			return false;
+		}
+		return true;
+	}
+
+	bool AdvantageCallback( percepto_msgs::GetCritique::Request& req,
+	                        percepto_msgs::GetCritique::Response& res )
 	{
 		try
 		{
 			res.critique = _critic.GetCritique( req.time );
 		}
-		catch( std::out_of_range )
+		catch( std::out_of_range e )
 		{
-			ROS_WARN_STREAM( "Could not get critique for time: " << req.time );
+			ROS_WARN_STREAM( "Could not get advantage for time: " << req.time 
+			                 << std::endl << e.what() );
 			return false;
 		}
 		return true;

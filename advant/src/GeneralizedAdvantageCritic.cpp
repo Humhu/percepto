@@ -33,6 +33,7 @@ double GeneralizedAdvantageCritic::GetCritique( const ros::Time& time ) const
 	{
 		racc += gacc * _tdErr->GetCritique( current );
 		gacc *= _lambda * _discountFactor;
+		current += _timestep;
 	}
 	return racc;
 }
