@@ -170,7 +170,8 @@ public:
 	typedef std::shared_ptr<VariableVarianceGaussian> Ptr;
 
 	percepto::PerceptronNet mean;
-	percepto::PerceptronNet correlations;
+	// percepto::PerceptronNet correlations;
+	percepto::ConstantVectorRegressor correlations;
 	percepto::PerceptronNet logVariances;
 
 	percepto::ExponentialWrapper variances;

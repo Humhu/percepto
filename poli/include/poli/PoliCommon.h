@@ -52,4 +52,7 @@ struct DiscreteAction
 	MsgType ToMsg() const;
 };
 
+double gaussian_kl_divergence( const VectorType& mean1, const MatrixType& info1,
+                               const VectorType& mean2, const MatrixType& info2 );
+
 }

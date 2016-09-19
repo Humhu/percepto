@@ -37,6 +37,9 @@ void ContinuousPolicyManager::Initialize( ContinuousPolicyInterface* interface,
 	ros::NodeHandle neth( ph.resolveName("policy_class") );
 	_policy.Initialize( inputDim, outputDim, neth );
 
+	double initialInfo;
+	GetParam( neth, "initial_info", initialInfo, 10.0 );
+
 	// Compute initializations
 	_policyScales = VectorType( outputDim );
 	_policyOffsets = VectorType( outputDim );
@@ -57,7 +60,7 @@ void ContinuousPolicyManager::Initialize( ContinuousPolicyInterface* interface,
 			_policyOffsets(i) = ( upperLimit(i) - lowerLimit(i) ) / 2;
 		}
 		initParams.mean(i) = 0;
-		initParams.info(i,i) = 10;
+		initParams.info(i,i) = initialInfo;
 	}
 	_policy.InitializeOutput( initParams );
 
