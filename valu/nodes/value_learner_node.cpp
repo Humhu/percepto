@@ -15,7 +15,7 @@ int main( int argc, char** argv )
 	avl.Initialize( nh, ph );
 	
 	unsigned int numThreads;
-	GetParam( ph, "num_threads", numThreads, (unsigned int) 2 );
+	GetParam( ph, "num_threads", numThreads, (unsigned int) 1 );
 	ros::AsyncSpinner spinner( numThreads );
 	spinner.start();
 	ros::waitForShutdown();

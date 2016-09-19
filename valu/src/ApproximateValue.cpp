@@ -92,4 +92,9 @@ ApproximateValue::GetApproximatorModule() const
 	}
 }
 
+void ApproximateValue::InitializeOutput( double out )
+{
+	_approximator->InitializeOutput( out );
+}
+
 }

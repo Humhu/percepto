@@ -10,7 +10,9 @@ find_package(catkin REQUIRED
              COMPONENTS	roscpp
              argus_utils
              modprop
-             poli )
+             poli 
+             optim
+)
 
 # Use Boost for most utilities, threading
 find_package(Boost REQUIRED COMPONENTS random)
@@ -27,13 +29,15 @@ catkin_package(
                argus_utils
                modprop
                poli
+               optim
                
                DEPENDS 		Boost 
                system_lib )
 
 add_library( relearn
             src/ContinuousPolicyLearner.cpp
-            src/PolicyLogGradientModules.cpp )
+            src/PolicyLogGradientModules.cpp
+            src/PolicyGradientProblem.cpp )
 add_dependencies( relearn relearn_gencfg ${relearn_EXPORTED_TARGETS} )
 target_link_libraries( relearn
                       ${catkin_LIBRARIES} )

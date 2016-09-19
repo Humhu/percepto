@@ -10,6 +10,7 @@ find_package(catkin REQUIRED
              COMPONENTS	roscpp
              argus_utils
              modprop
+             optim
              broadcast
              percepto_msgs )
 
@@ -27,6 +28,7 @@ catkin_package(
                CATKIN_DEPENDS 	roscpp 
                argus_utils
                modprop
+               optim
                broadcast
                percepto_msgs
 
@@ -44,6 +46,7 @@ add_library( valu
             src/ValuCommon.cpp
             src/ValueInfoManager.cpp
             src/ValueFunctionModules.cpp
+            src/ValueLearningProblem.cpp
             src/ValueResidualModules.cpp )
 add_dependencies( valu valu_gencfg ${valu_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
 target_link_libraries( valu

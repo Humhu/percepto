@@ -1,4 +1,5 @@
 #include "valu/ValueResidualModules.h"
+#include <iostream>
 
 namespace percepto
 {
@@ -27,12 +28,28 @@ BellmanResidualModule::BellmanResidualModule( ScalarFieldApproximator::Ptr estVa
 	residual.SetMinusSource( &targetValue );
 	loss.SetSource( &residual );
 	loss.SetTarget( 0.0 );
+
+	estValue->GetOutputSource().modName = "est_value";
+	input.modName = "input";
+	nextValue->GetOutputSource().modName = "next_value";
+	nextInput.modName = "next_input";
+	discountedNextValue.modName = "discounted_next_value";
+	targetValue.modName = "target_value";
+	residual.modName = "residual";
+	loss.modName = "loss";
 }
 
 void BellmanResidualModule::Foreprop()
 {
 	input.Foreprop();
 	nextInput.Foreprop();
+	if( !std::isfinite( residual.GetOutput() ) )
+	{
+		throw std::runtime_error( "Non-finite residual." );
+	}
+
+	// std::cout << "Residual: " << residual.GetOutput() << " reward: " << targetValue.GetOffset() 
+	          // << " estValue: " << estValue->GetOutputSource().GetOutput() << std::endl;
 }
 
 void BellmanResidualModule::Invalidate()
