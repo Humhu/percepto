@@ -1,7 +1,8 @@
 #pragma once
 
-#include <modprop/optim/OptimizerTypes.h>
 #include <modprop/optim/ParameterL2Cost.hpp>
+
+#include "optim/ModularOptimizer.h"
 
 #include <argus_utils/utils/LinalgTypes.h>
 #include <argus_utils/filters/FilterInfo.h>
@@ -11,11 +12,11 @@
 
 #include <boost/foreach.hpp>
 
-#include "covreg/InnovationProblem.h"
+#include "covreg/InnovationLikelihoodProblem.h"
 #include "covreg/CovarianceEstimator.h"
 #include "argus_utils/synchronization/SynchronizationTypes.h"
 
-namespace argus
+namespace percepto
 {
 
 // TODO Get rid of this? There aren't that many parameters
@@ -40,9 +41,9 @@ public:
 
 	void AddObservationReg( CovarianceEstimator& reg, const std::string& name );
 
-	void AddPredict( const PredictInfo& info, const VectorType& input );
+	void AddPredict( const argus::PredictInfo& info, const VectorType& input );
 
-	bool AddUpdate( const UpdateInfo& info, const VectorType& input,
+	bool AddUpdate( const argus::UpdateInfo& info, const VectorType& input,
 	                const std::string& name, double weight, const ros::Time& stamp );
 
 	// Terminates the current episode and starts a new one
@@ -50,13 +51,13 @@ public:
 	void RemoveEarliestEpisode();
 	ros::Time GetEarliestTime();
 
-	void InitializeOptimization( const percepto::SimpleConvergenceCriteria& criteria,
-	                             const percepto::AdamParameters& params );
 	// Returns whether it converged or bailed early
 	bool Optimize();
 
 	size_t NumEpisodes() const;
 	size_t CurrentEpisodeLength() const;
+
+	void InitializeOptimization( const ros::NodeHandle& ph );
 
 	double CalculateCost();
 	void Print( std::ostream& os );
@@ -67,13 +68,13 @@ private:
 	InnovationClipOptimizer( const InnovationClipOptimizer& other );
 	InnovationClipOptimizer& operator=( const InnovationClipOptimizer& other );
 
-	mutable Mutex _mutex;
+	mutable argus::Mutex _mutex;
 	
 	// All parameters from optimized estimators
-	percepto::ParameterWrapper::Ptr _paramWrapper;
+	ParameterWrapper::Ptr _paramWrapper;
 	
 	KalmanFilterEpisode* _currentEpisode;
-	std::vector< std::pair<PredictInfo,VectorType> > _predBuffer;
+	std::vector< std::pair<argus::PredictInfo,VectorType> > _predBuffer;
 
 	// The regressors optimized
 	CovarianceEstimator& _transReg;
@@ -84,11 +85,7 @@ private:
 	
 	unsigned int _maxEpisodeLength;
 
-	// Optimization
-	std::shared_ptr<percepto::AdamStepper> _stepper;
-	std::shared_ptr<percepto::SimpleConvergence> _convergence;
-	std::shared_ptr<percepto::AdamOptimizer> _optimizer;
-
+	ModularOptimizer::Ptr _optimizer;
 };
 
 std::ostream& operator<<( std::ostream& os, InnovationClipOptimizer& opt );

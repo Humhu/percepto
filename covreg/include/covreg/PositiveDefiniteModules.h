@@ -10,7 +10,7 @@
 
 #include "argus_utils/utils/LinalgTypes.h"
 
-namespace argus
+namespace percepto
 {
 
 class PosDefModule

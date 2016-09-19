@@ -2,23 +2,27 @@
 
 #include "covreg/KalmanFilterEpisode.h"
 
+#include "optim/OptimInterfaces.h"
 #include <modprop/optim/StochasticMeanCost.hpp>
 #include <modprop/optim/ParameterL2Cost.hpp>
 
 #include <list>
 
-namespace argus
+namespace percepto
 {
 
 std::ostream& operator<<( std::ostream& os, const KalmanFilterEpisode& episode );
 
+// TODO Implement natural optimization interface
 struct InnovationLikelihoodProblem
+: public OptimizationProblem
 {
 
 	std::deque<KalmanFilterEpisode> episodes;
 	percepto::StochasticMeanCost<double> loss;
 	percepto::ParameterL2Cost regularizer;
 	percepto::AdditiveWrapper<double> objective;
+	percepto::Parameters::Ptr parameters;
 
 	InnovationLikelihoodProblem( percepto::Parameters::Ptr params,
 	                             double l2Weight,
@@ -31,6 +35,13 @@ struct InnovationLikelihoodProblem
 		loss.AddSource( episodes.back().GetLL() );
 	}
 
+	virtual void Resample();
+	virtual bool IsMinimization() const;
+	virtual double ComputeObjective();
+	virtual VectorType ComputeGradient();
+	virtual VectorType GetParameters() const;
+	virtual void SetParameters( const VectorType& params );
+
 	void RemoveOldestEpisode();
 
 	size_t NumEpisodes() const;
@@ -41,18 +52,6 @@ struct InnovationLikelihoodProblem
 
 	const KalmanFilterEpisode* GetCurrentEpisode() const;
 
-	void Invalidate();
-
-	void Foreprop();
-
-	void ForepropSame();
-
-	void ForepropAll();
-
-	void Backprop();
-
-	double GetOutput() const;
-
 private:
 
 	// Forbid copying
@@ -61,6 +60,13 @@ private:
 	// Forbid assigning
 	InnovationLikelihoodProblem& 
 	operator=( const InnovationLikelihoodProblem& other );
+
+	void Invalidate();
+	void Foreprop();
+	void Backprop();
+
+	percepto::Parameters::Ptr _parameters;
+
 };
 
 std::ostream& operator<<( std::ostream& os, 

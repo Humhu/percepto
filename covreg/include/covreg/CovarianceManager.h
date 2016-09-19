@@ -8,7 +8,7 @@
 
 #include <deque>
 
-namespace argus
+namespace percepto
 {
 
 class CovarianceManager
@@ -37,9 +37,9 @@ private:
 	std::string _sourceName;
 	ros::Subscriber _paramSub;
 	std::shared_ptr<CovarianceEstimator> _estimator;
-	BroadcastMultiReceiver _receiver;
+	argus::BroadcastMultiReceiver _receiver;
 
-	Mutex _estimatorMutex;
+	mutable argus::Mutex _estimatorMutex;
 
 	void ParamCallback( const covreg::CovarianceEstimatorInfo::ConstPtr& msg );
 

@@ -1,17 +1,52 @@
-#include "covreg/InnovationProblem.h"
+#include "covreg/InnovationLikelihoodProblem.h"
 
-namespace argus
+namespace percepto
 {
 
 InnovationLikelihoodProblem::InnovationLikelihoodProblem( percepto::Parameters::Ptr params,
                                                           double l2Weight,
                                                           unsigned int batchSize )
+: parameters( params )
 {
 	loss.SetBatchSize( batchSize );
-	regularizer.SetParameters( params );
+	regularizer.SetParameters( parameters );
 	regularizer.SetWeight( l2Weight );
 	objective.SetSourceA( &loss );
 	objective.SetSourceB( &regularizer );
+}
+
+bool InnovationLikelihoodProblem::IsMinimization() const
+{
+	return false;
+}
+
+void InnovationLikelihoodProblem::Resample()
+{
+	loss.Resample();
+}
+
+double InnovationLikelihoodProblem::ComputeObjective()
+{
+	Invalidate();
+	Foreprop();
+	return loss.GetOutput();
+}
+
+VectorType InnovationLikelihoodProblem::ComputeGradient()
+{
+	Invalidate();
+	Foreprop();
+	return _parameters->GetDerivs();
+}
+
+VectorType InnovationLikelihoodProblem::GetParameters() const
+{
+	return _parameters->GetParamsVec();
+}
+
+void InnovationLikelihoodProblem::SetParameters( const VectorType& params )
+{
+	_parameters->SetParamsVec( params );
 }
 
 void InnovationLikelihoodProblem::RemoveOldestEpisode()
@@ -59,54 +94,17 @@ void InnovationLikelihoodProblem::Invalidate()
 
 void InnovationLikelihoodProblem::Foreprop()
 {
-	// clock_t start = clock();
-	regularizer.Foreprop();
-
-	loss.Resample();
 	const std::vector<unsigned int>& activeEpsInds = loss.GetActiveInds();
 	BOOST_FOREACH( const unsigned int& ind, activeEpsInds )
 	{
 		episodes[ind].Foreprop();
 	}
-	// clock_t finish = clock();
-	// std::cout << "Foreprop took: " << ((double) finish - start)/CLOCKS_PER_SEC << std::endl;
-}
-
-void InnovationLikelihoodProblem::ForepropSame()
-{
-	// clock_t start = clock();
 	regularizer.Foreprop();
-
-	loss.UseSameSamples();
-	const std::vector<unsigned int>& activeEpsInds = loss.GetActiveInds();
-	BOOST_FOREACH( const unsigned int& ind, activeEpsInds )
-	{
-		episodes[ind].Foreprop();
-	}
-	// clock_t finish = clock();
-	// std::cout << "Foreprop took: " << ((double) finish - start)/CLOCKS_PER_SEC << std::endl;
-}
-void InnovationLikelihoodProblem::ForepropAll()
-{
-	regularizer.Foreprop();
-	BOOST_FOREACH( KalmanFilterEpisode& ep, episodes )
-	{
-		ep.ForepropAll();
-	}
-	loss.ParentCost::Foreprop();
 }
 
 void InnovationLikelihoodProblem::Backprop()
 {
-	// clock_t start = clock();
 	objective.Backprop( MatrixType::Identity(1,1) );
-	// clock_t finish = clock();
-	// std::cout << "Problem backprop took: " << ((double) finish - start)/CLOCKS_PER_SEC << std::endl;
-}
-
-double InnovationLikelihoodProblem::GetOutput() const
-{
-	return objective.GetOutput();
 }
 
 std::ostream& operator<<( std::ostream& os, const InnovationLikelihoodProblem& problem )

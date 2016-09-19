@@ -3,8 +3,9 @@
 #include "argus_utils/utils/ParamUtils.h"
 
 using namespace argus_msgs;
+using namespace argus;
 
-namespace argus
+namespace percepto
 {
 
 AdaptiveTransitionCovarianceEstimator::AdaptiveTransitionCovarianceEstimator() 

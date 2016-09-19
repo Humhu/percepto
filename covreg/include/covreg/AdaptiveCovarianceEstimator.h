@@ -3,8 +3,9 @@
 #include <ros/ros.h>
 #include "argus_utils/filters/FilterInfo.h"
 #include "argus_utils/filters/FilterUtils.h"
+#include "modprop/ModpropTypes.h"
 
-namespace argus
+namespace percepto
 {
 
 // Based on Mohamed and Schwarz 1999

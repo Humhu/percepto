@@ -7,7 +7,7 @@
 #include "covreg/PositiveDefiniteModules.h"
 #include "covreg/CovarianceEstimatorInfo.h"
 
-namespace argus
+namespace percepto
 {
 
 class CovarianceEstimator

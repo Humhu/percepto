@@ -6,7 +6,7 @@
 #include "covreg/KalmanFilterModules.h"
 #include <ros/ros.h>
 
-namespace argus
+namespace percepto
 {
 	
 class KalmanFilterEpisode

@@ -1,6 +1,6 @@
 #include "covreg/KalmanFilterModules.h"
 
-namespace argus
+namespace percepto
 {
 
 KalmanFilterPredictModule::KalmanFilterPredictModule( percepto::Source<VectorType>* xPrev,

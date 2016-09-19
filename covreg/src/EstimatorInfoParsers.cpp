@@ -4,8 +4,9 @@
 #include <fstream>
 
 using namespace covreg;
+using namespace argus;
 
-namespace argus
+namespace percepto
 {
 
 template <>

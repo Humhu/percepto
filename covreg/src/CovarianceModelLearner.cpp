@@ -4,8 +4,9 @@
 #include "argus_msgs/FloatVectorStamped.h"
 
 using namespace argus_msgs;
+using namespace argus;
 
-namespace argus
+namespace percepto
 {
 
 CovarianceModelLearner::CovarianceModelLearner() {}

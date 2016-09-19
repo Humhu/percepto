@@ -3,9 +3,7 @@
 #define POSDEF_OFFSET_SCALE (1E-9)
 #define RELU_LEAKY_SLOPE (1E-3)
 
-using namespace percepto;
-
-namespace argus
+namespace percepto
 {
 
 PosDefModule::PosDefModule()

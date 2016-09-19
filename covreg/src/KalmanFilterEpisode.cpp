@@ -1,6 +1,6 @@
 #include "covreg/KalmanFilterEpisode.h"
 
-namespace argus
+namespace percepto
 {
 
 KalmanFilterEpisode::KalmanFilterEpisode( const VectorType& xinit,

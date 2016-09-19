@@ -1,11 +1,12 @@
 #include "covreg/ClipOptimizer.h"
+#include "optim/OptimizerParser.h"
 
 #include <iostream>
 #include <sstream>
 
-using namespace percepto;
+using namespace argus;
 
-namespace argus
+namespace percepto
 {
 
 InnovationClipOptimizer::InnovationClipOptimizer( CovarianceEstimator& qReg,
@@ -124,40 +125,30 @@ size_t InnovationClipOptimizer::CurrentEpisodeLength() const
 	return _problem.GetCurrentEpisode()->NumUpdates();
 }
 
-void InnovationClipOptimizer::InitializeOptimization( const percepto::SimpleConvergenceCriteria& criteria,
-                                                      const percepto::AdamParameters& params )
+void InnovationClipOptimizer::InitializeOptimization( const ros::NodeHandle& ph )
 {
 	WriteLock lock( _mutex );
-	_stepper = std::make_shared<percepto::AdamStepper>( params );
-	_convergence = std::make_shared<percepto::SimpleConvergence>( criteria );
-	_optimizer = std::make_shared<percepto::AdamOptimizer>( *_stepper, 
-	                                                        *_convergence,
-	                                                        *_paramWrapper );
+	_optimizer = parse_modular_optimizer( ph );
+	_optimizer->ResetAll();
 }
 
 bool InnovationClipOptimizer::Optimize()
 {	
 	WriteLock lock( _mutex );
-	// _convergence->Reset();
-	// percepto::OptimizationResults results = _optimizer->Optimize( _problem );
-	// return results.converged;
-	return _optimizer->StepOnce( _problem );
+	_optimizer->Optimize( _problem );
+	return false;
 }
 
 double InnovationClipOptimizer::CalculateCost()
 {
 	WriteLock lock( _mutex );
-	_problem.Invalidate();
-	_problem.ForepropAll();
-	return _problem.loss.GetOutput();
+	return _problem.ComputeObjective();
 }
 
 void InnovationClipOptimizer::Print( std::ostream& os )
 {
+	// TODO
 	WriteLock lock( _mutex );
-	_problem.Invalidate();
-	_problem.ForepropAll();
-	_problem.Backprop();
 	os << "Optimization problem: " << std::endl << _problem;
 }
 

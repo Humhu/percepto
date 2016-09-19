@@ -9,8 +9,9 @@
 #include <sstream>
 
 using namespace covreg;
+using namespace argus;
 
-namespace argus
+namespace percepto
 {
 
 CovarianceManager::CovarianceManager()

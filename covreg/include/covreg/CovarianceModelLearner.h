@@ -9,7 +9,7 @@
 #include <ros/ros.h>
 #include <argus_msgs/FilterStepInfo.h>
 
-namespace argus
+namespace percepto
 {
 
 class CovarianceModelLearner

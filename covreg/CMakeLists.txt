@@ -16,6 +16,7 @@ find_package(catkin REQUIRED
 					broadcast
 					visualization_msgs
 					modprop
+					optim
 )
 include_directories( ${catkin_INCLUDE_DIRS} )
 
@@ -57,6 +58,7 @@ catkin_package(
 					broadcast
 					visualization_msgs
 					modprop
+					optim
 					
 	DEPENDS 		Boost 
 					percepto
@@ -91,12 +93,12 @@ target_link_libraries( covreg
 #                        ${covreg_LIBS}
 #                        covreg )
 
-add_executable( covariance_repeater nodes/covariance_repeater.cpp )
-add_dependencies( covariance_repeater covreg_gencfg )
-target_link_libraries( covariance_repeater
-                       ${catkin_LIBRARIES}
-                       ${covreg_LIBS}
-                       covreg )
+# add_executable( covariance_repeater nodes/covariance_repeater.cpp )
+# add_dependencies( covariance_repeater covreg_gencfg )
+# target_link_libraries( covariance_repeater
+#                        ${catkin_LIBRARIES}
+#                        ${covreg_LIBS}
+#                        covreg )
 
 add_executable( performance_estimator nodes/performance_estimator.cpp )
 add_dependencies( performance_estimator covreg_gencfg )
@@ -120,7 +122,11 @@ target_link_libraries( velocity_visualizer
                        covreg )
 
 ## Mark executables and/or libraries for installation
-install(TARGETS covreg covariance_repeater performance_estimator adaptive_covariance_repeater #optimizer_node
+install(TARGETS covreg 
+                #covariance_repeater 
+                performance_estimator 
+                adaptive_covariance_repeater 
+                #optimizer_node
 	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 	RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

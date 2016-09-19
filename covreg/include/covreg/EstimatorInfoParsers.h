@@ -6,7 +6,7 @@
 #include "covreg/CovarianceEstimatorInfo.h"
 #include "covreg/NeuralNetworkInfo.h"
 
-namespace argus
+namespace percepto
 {
 
 template <typename Info>

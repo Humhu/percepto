@@ -1,14 +1,14 @@
 #include "covreg/CovarianceEstimator.h"
-
+#include "argus_utils/utils/MatrixUtils.h"
 #include "modprop/utils/Randomization.hpp"
 
-#include "argus_utils/utils/MatrixUtils.h"
 
 #define VAR_RAND_RANGE (1E-1)
 
+using namespace argus;
 using namespace covreg;
 
-namespace argus
+namespace percepto
 {
 
 CovarianceEstimator::CovarianceEstimator( const std::string& source, 

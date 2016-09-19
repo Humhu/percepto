@@ -13,7 +13,7 @@
 #include "covreg/CovarianceEstimator.h"
 #include "argus_utils/utils/LinalgTypes.h"
 
-namespace argus
+namespace percepto
 {
 
 // Represents the KF predict step for the estimate covariance

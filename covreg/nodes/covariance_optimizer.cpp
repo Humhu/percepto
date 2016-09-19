@@ -105,25 +105,8 @@ public:
 			_clipOptimizer->AddObservationReg( *item.second.estimator, item.first );
 		}
 
-		GetParam<unsigned int>( privHandle, "num_optimizer_steps", _numOptimizerSteps, 1 );
-		// GetParam<unsigned int>( privHandle, "min_eps_to_optimize", _minOptimizeSize );
-		GetParamRequired<double>( privHandle, "min_span_to_optimize", _minOptimizeTime );
-		GetParamRequired<double>( privHandle, "max_span_to_keep", _maxEpisodeSpan );
-		GetParam<bool>( privHandle, "clear_after_optimize", _clearAfterOptimize, false );
-
-		percepto::SimpleConvergenceCriteria criteria;
-		GetParam<double>( privHandle, "convergence/max_time", criteria.maxRuntime, std::numeric_limits<double>::infinity() );
-		GetParam<unsigned int>( privHandle, "convergence/max_iters", criteria.maxIterations, std::numeric_limits<unsigned int>::max() );
-		GetParam<double>( privHandle, "convergence/min_avg_delta", criteria.minAverageDelta, -std::numeric_limits<double>::infinity() );
-		GetParam<double>( privHandle, "convergence/min_avg_grad", criteria.minAverageGradient, -std::numeric_limits<double>::infinity() );
-		percepto::AdamParameters optParams;
-		GetParam( privHandle, "optimizer/step_size", optParams.alpha, 1E-3 );
-		GetParam( privHandle, "optimizer/max_step", optParams.maxStepElement, 1.0 );
-		GetParam( privHandle, "optimizer/beta1", optParams.beta1, 0.9 );
-		GetParam( privHandle, "optimizer/beta2", optParams.beta2, 0.99 );
-		GetParam( privHandle, "optimizer/epsilon", optParams.epsilon, 1E-7 );
-		GetParam( privHandle, "optimizer/enable_decay", optParams.enableDecay, false );
-		_clipOptimizer->InitializeOptimization( criteria, optParams );
+		ros::NodeHandle optHandle( ph.resolveName( "optimization" ) );
+		_clipOptimizer->InitializeOptimization( optHandle );
 
 		double bufferProcessRate;
 		GetParam<double>( privHandle, "buffer_process_rate", bufferProcessRate, 10.0 );
