@@ -10,7 +10,8 @@
 #include "modprop/optim/ParameterL2Cost.hpp"
 #include "modprop/optim/GaussianLogLikelihoodCost.hpp"
 #include "modprop/optim/StochasticMeanCost.hpp"
-#include "modprop/optim/OptimizerTypes.h"
+
+#include "optim/Optimizers.h"
 
 #include "modprop/utils/MultivariateGaussian.hpp"
 #include "modprop/utils/Randomization.hpp"
@@ -37,8 +38,8 @@ unsigned int dOutDim = matDim;
 unsigned int numHiddenLayers = 1;
 unsigned int layerWidth = 10;
 
-double l2Weight = 0;
-unsigned int minibatchSize = 30;
+double l2Weight = 1E-3;
+unsigned int batchSize = 30;
 
 struct Regressor
 {
@@ -94,61 +95,91 @@ struct Regressor
 
 struct Likelihood
 {
-	Regressor regA;
-	Regressor regB;
-	TransformWrapper transRegA;
-	TransformWrapper transRegB;
-	AdditiveWrapper<MatrixType> sumReg;
+	Regressor reg;
+	TransformWrapper transReg;
 	GaussianLogLikelihoodCost gll;
 
-	Likelihood()
+	Likelihood( const Regressor& a )
+	: reg( a )
 	{
-		transRegA.SetSource( &regA.pdReg );
-		transRegB.SetSource( &regB.pdReg );
-		sumReg.SetSourceA( &transRegA );
-		sumReg.SetSourceB( &transRegB );
-		gll.SetSource( &sumReg );
-	}
-
-	Likelihood( const Regressor& a, const Regressor& b )
-	: regA( a ), regB( b )
-	{
-		transRegA.SetSource( &regA.pdReg );
-		transRegB.SetSource( &regB.pdReg );
-		sumReg.SetSourceA( &transRegA );
-		sumReg.SetSourceB( &transRegB );
-		gll.SetSource( &sumReg );
+		transReg.SetSource( &reg.pdReg );
+		gll.SetSource( &transReg );
 	}
 
 	void Invalidate() 
 	{
-		regA.Invalidate(); 
-		regB.Invalidate();
+		reg.Invalidate(); 
 	}
 	
 	void Foreprop() 
 	{
-		regA.Foreprop();
-		regB.Foreprop();
+		reg.Foreprop();
 	}
 
 	void Backprop() { gll.Backprop( MatrixType() ); }
 };
 
-struct OptimizationProblem
+struct LikelihoodProblem
+: public NaturalOptimizationProblem
 {
 	std::deque<Likelihood> likelihoods;
 	StochasticMeanCost<double> loss;
 	ParameterL2Cost regularizer;
 	AdditiveWrapper<double> objective;
 
-	OptimizationProblem()
+	Parameters::Ptr params;
+
+	LikelihoodProblem( Parameters::Ptr p,
+	                   unsigned int batchSize,
+	                   double l2Weight )
 	{
+		params = p;
+		loss.SetBatchSize( batchSize );
+		regularizer.SetWeight( l2Weight );
+		regularizer.SetParameters( params );
 		objective.SetSourceA( &regularizer );
 		objective.SetSourceB( &loss );
 	}
 
-	double GetOutput() { return objective.GetOutput(); }
+	virtual bool IsMinimization() const { return false; }
+
+	virtual void Resample()
+	{
+		loss.Resample();
+	}
+
+	virtual double ComputeObjective()
+	{
+		Invalidate();
+		Foreprop();
+		return objective.GetOutput();
+	}
+
+	virtual VectorType ComputeGradient()
+	{
+		Invalidate();
+		Foreprop();
+		Backprop();
+		return params->GetDerivs();
+	}
+
+	virtual VectorType ComputeNaturalGradient()
+	{
+		Invalidate();
+		Foreprop();
+		BackpropNatural();
+		return params->GetDerivs();
+	}
+
+	virtual VectorType GetParameters() const
+	{
+		return params->GetParamsVec();
+	}
+
+	virtual void SetParameters( const VectorType& p )
+	{
+		params->SetParamsVec( p );
+	}
 
 	void Invalidate()
 	{
@@ -157,9 +188,20 @@ struct OptimizationProblem
 			likelihoods[i].Invalidate();
 		}
 		regularizer.Invalidate();
+		params->ResetAccumulators();
 	}
 
 	void Foreprop()
+	{
+		const std::vector<unsigned int>& inds = loss.GetActiveInds();
+		BOOST_FOREACH( unsigned int i, inds )
+		{
+			likelihoods[i].Foreprop();
+		}
+		regularizer.Foreprop();
+	}
+
+	void ForepropAll()
 	{
 		for( unsigned int i = 0; i < likelihoods.size(); i++ )
 		{
@@ -170,7 +212,17 @@ struct OptimizationProblem
 
 	void Backprop()
 	{
-		objective.Backprop( MatrixType() );
+		objective.Backprop( MatrixType::Identity(1,1) );
+	}
+
+	void BackpropNatural()
+	{
+		const std::vector<unsigned int>& inds = loss.GetActiveInds();
+		MatrixType dodw = MatrixType::Identity( 1, 1 ) / inds.size();
+		BOOST_FOREACH( unsigned int i, inds )
+		{
+			likelihoods[i].gll.Backprop( dodw );
+		}
 	}
 };
 
@@ -182,8 +234,7 @@ void TestOptimization( Optimizer& opt, Problem& problem,
 {
 	std::cout << "Beginning test with " << para.ParamDim() << " parameters." << std::endl;
 	problem.Invalidate();
-	problem.Foreprop();
-	double initialObjective = problem.GetOutput();
+	problem.Resample();
 
 	// opt.SetVerbosity( false ); // TODO
 	OptimizationResults results;
@@ -206,119 +257,90 @@ void TestOptimization( Optimizer& opt, Problem& problem,
 	para.SetParamsVec( trueParams );
 	problem.Invalidate();
 	problem.Foreprop();
-	double minCost = problem.GetOutput();
+	double minCost = problem.ComputeObjective();
 
 	para.SetParamsVec( finalParams );
 
 	std::cout << "True params: " << std::endl << trueParams.transpose() << std::endl;
 	std::cout << "Final params: " << std::endl << finalParams.transpose() << std::endl;
-	std::cout << "\tInitial objective: " << initialObjective << std::endl;
+	std::cout << "\tInitial objective: " << results.initialObjective << std::endl;
 	std::cout << "\tFinal objective: " << results.finalObjective << std::endl;
 	std::cout << "\tTrue objective: " << minCost << std::endl;
-	std::cout << "\tOverall time: " << results.totalElapsedSecs << std::endl;
-	std::cout << "\tObjective time: " << results.totalObjectiveSecs << std::endl;
-	std::cout << "\tGradient time: " << results.totalGradientSecs << std::endl;
-	std::cout << "\tObjective evaluations: " << results.numObjectiveEvaluations << std::endl;
-	std::cout << "\tGradient evaluations: " << results.numGradientEvaluations << std::endl;
-	std::cout << "\tAvg time/objective: " << results.totalObjectiveSecs/results.numObjectiveEvaluations << std::endl;
-	std::cout << "\tAvg time/gradient: " << results.totalGradientSecs/results.numGradientEvaluations << std::endl;
+	// std::cout << "\tOverall time: " << results.totalElapsedSecs << std::endl;
+	// std::cout << "\tObjective time: " << results.totalObjectiveSecs << std::endl;
+	// std::cout << "\tGradient time: " << results.totalGradientSecs << std::endl;
+	// std::cout << "\tObjective evaluations: " << results.numObjectiveEvaluations << std::endl;
+	// std::cout << "\tGradient evaluations: " << results.numGradientEvaluations << std::endl;
+	// std::cout << "\tAvg time/objective: " << results.totalObjectiveSecs/results.numObjectiveEvaluations << std::endl;
+	// std::cout << "\tAvg time/gradient: " << results.totalGradientSecs/results.numGradientEvaluations << std::endl;
 	std::cout << "\tAverage error norm: " << errorNorm << std::endl;
 	std::cout << "\tMax error: " << errorMax << std::endl;
 }
 
 int main( void )
 {
-
 	std::cout << "Matrix dim: " << matDim << std::endl;
 	std::cout << "D feature dim: " << dFeatDim << std::endl;
 	std::cout << "L output dim: " << lOutDim << std::endl;
 	std::cout << "D output dim: " << dOutDim << std::endl;
 
-	MatrixType pdOffset = 1E-2 * MatrixType::Identity( matDim, matDim );
-	HingeActivation relu( 1.0, 1E-3 );
-
-	Regressor trueRegA, trueRegB, regA, regB;
+	Regressor trueRegA, reg;
 	VectorType p;
 	Parameters::Ptr temp;
 
 	// True A
 	Parameters::Ptr trueLParamsA = trueRegA.lReg.CreateParameters();
 	Parameters::Ptr trueDParamsA = trueRegA.dReg.CreateParameters();
-	// True B
-	Parameters::Ptr trueLParamsB = trueRegB.lReg.CreateParameters();
-	Parameters::Ptr trueDParamsB = trueRegB.dReg.CreateParameters();
 
 	ParameterWrapper trueParams;
 	trueParams.AddParameters( trueLParamsA );
 	trueParams.AddParameters( trueDParamsA );
-	trueParams.AddParameters( trueLParamsB );
-	trueParams.AddParameters( trueDParamsB );
 	
 	p = VectorType( trueParams.ParamDim() );
-	randomize_vector( p );
+	randomize_vector( p, -0.5, 0.5 );
 	trueParams.SetParamsVec( p );
 
 	// Init
-	Parameters::Ptr lParamsA = regA.lReg.CreateParameters();
-	Parameters::Ptr dParamsA = regA.dReg.CreateParameters();
+	Parameters::Ptr lParamsA = reg.lReg.CreateParameters();
+	Parameters::Ptr dParamsA = reg.dReg.CreateParameters();
 	
-	Parameters::Ptr lParamsB = regB.lReg.CreateParameters();
-	Parameters::Ptr dParamsB = regB.dReg.CreateParameters();
-
 	ParameterWrapper::Ptr params = std::make_shared<ParameterWrapper>();
 	params->AddParameters( lParamsA );
 	params->AddParameters( dParamsA );
-	params->AddParameters( lParamsB );
-	params->AddParameters( dParamsB );
 
 	p = VectorType( params->ParamDim() );
-	randomize_vector( p );
+	randomize_vector( p, -0.2, 0.2 );
 	params->SetParamsVec( p );
-
-	ParameterL2Cost l2Cost;
-	l2Cost.SetParameters( params );
-	l2Cost.SetWeight( l2Weight );
 
 	// Create test population
 	unsigned int popSize = 1000;
 	std::cout << "Sampling " << popSize << " datapoints..." << std::endl;
 	
-	OptimizationProblem problem;
+
+	LikelihoodProblem problem( params, batchSize, l2Weight );
 
 	MultivariateGaussian<> mvg( MultivariateGaussian<>::VectorType::Zero( matDim ),
 	                            MultivariateGaussian<>::MatrixType::Identity( matDim, matDim ) );
 
-	problem.regularizer.SetParameters( params );
-	problem.loss.SetBatchSize( minibatchSize );
 	for( unsigned int i = 0; i < popSize; i++ )
 	{
 		VectorType dInputA( dFeatDim );
 		randomize_vector( dInputA );
-		VectorType dInputB( dFeatDim );
-		randomize_vector( dInputB );
 
 		trueRegA.dInput.SetOutput( dInputA );
-		trueRegB.dInput.SetOutput( dInputB );
 		trueRegA.Invalidate();
 		trueRegA.Foreprop();
-		trueRegB.Invalidate();
-		trueRegB.Foreprop();
 		MatrixType outputA = trueRegA.pdReg.GetOutput();
-		MatrixType outputB = trueRegB.pdReg.GetOutput();
 
 		MatrixType transformA = MatrixType::Random( matDim, matDim );
-		MatrixType transformB = MatrixType::Random( matDim, matDim );
 		MatrixType trueCovA = transformA * outputA * transformA.transpose();
-		MatrixType trueCovB = transformB * outputB * transformB.transpose();
 
-		mvg.SetCovariance( trueCovA + trueCovB );
+		mvg.SetCovariance( trueCovA );
 		VectorType sample = mvg.Sample(); 
 
-		problem.likelihoods.emplace_back( regA, regB );
-		problem.likelihoods[i].regA.dInput.SetOutput( dInputA );
-		problem.likelihoods[i].regB.dInput.SetOutput( dInputB );
-		problem.likelihoods[i].transRegA.SetTransform( transformA );
-		problem.likelihoods[i].transRegB.SetTransform( transformB );
+		problem.likelihoods.emplace_back( reg );
+		problem.likelihoods[i].reg.dInput.SetOutput( dInputA );
+		problem.likelihoods[i].transReg.SetTransform( transformA );
 		problem.likelihoods[i].gll.SetSample( sample );
 		problem.loss.AddSource( &problem.likelihoods[i].gll );
 	}
@@ -327,19 +349,26 @@ int main( void )
 	VectorType initParamsVec = params->GetParamsVec();
 	VectorType trueParamsVec = trueParams.GetParamsVec();
 
-	// NLOptParameters optParams;
-	// optParams.algorithm = nlopt::LD_LBFGS;
-	// NLOptimizer nlOpt( optParams );
-	// TestOptimization( nlOpt, penalizedMeanCosts, initParams, trueParams );
+	ModularOptimizer optimizer;
+	
+	// AdamSearchDirector::Ptr director = std::make_shared<AdamSearchDirector>();
+	// GradientSearchDirector::Ptr director = std::make_shared<GradientSearchDirector>();
+	NaturalSearchDirector::Ptr director = std::make_shared<NaturalSearchDirector>();
+	optimizer.SetSearchDirector( director );
 
-	AdamStepper stepper;
-	SimpleConvergenceCriteria criteria;
-	criteria.maxRuntime = 120;
-	criteria.minElementGradient = 1E-3;
-	SimpleConvergence convergence( criteria );
+	BacktrackingSearchStepper::Ptr stepper = std::make_shared<BacktrackingSearchStepper>();
+	stepper->SetInitialStep( 1E-3 );
+	stepper->SetBacktrackingRatio( 0.5 );
+	stepper->SetMaxBacktracks( 20 );
+	stepper->SetImprovementRatio( 0.75 );
 
-	AdamOptimizer modOpt( stepper, convergence, *params );
-	TestOptimization( modOpt, problem, *params, 
+	optimizer.SetSearchStepper( stepper );
+
+	RuntimeTerminationChecker::Ptr runtimeChecker = std::make_shared<RuntimeTerminationChecker>();
+	runtimeChecker->SetMaxRuntime( 20 );
+	optimizer.AddTerminationChecker( runtimeChecker );
+
+	TestOptimization( optimizer, problem, *params, 
 	                  initParamsVec, trueParamsVec );
 	
 	problem.Invalidate();

@@ -35,7 +35,6 @@ public:
 	/*! \brief Creates a cost by averaging costs on a poulation of
 	 * inputs. */
 	StochasticMeanCost()
-	: _hasResampled( false )
 	{
 		boost::random::random_device rng;
 		_generator.seed( rng );
@@ -60,12 +59,6 @@ public:
 	void Resample()
 	{
 		RandomSample();
-		_hasResampled = true;
-	}
-
-	void UseSameSamples()
-	{
-		_hasResampled = true;
 	}
 
 	const std::vector<unsigned int>& GetActiveInds() const
@@ -80,12 +73,6 @@ public:
 	 * first to get an equivalent Derivative(). */
 	virtual void Foreprop()
 	{
-		if( !_hasResampled ) 
-		{
-			RandomSample(); 
-			_hasResampled = true;
-		}
-
 		if( _activeInds.size() == 0 ) { return; }
 		for( unsigned int i = 0; i < _activeInds.size(); i++ )
 		{
@@ -104,7 +91,6 @@ public:
 
 	virtual void Invalidate()
 	{
-		_hasResampled = false;
 		ParentCost::SourceType::Invalidate();
 	}
 
@@ -115,7 +101,6 @@ private:
 
 	unsigned int _subsetSize;
 	mutable std::vector<unsigned int> _activeInds;
-	mutable bool _hasResampled;
 
 	void RandomSample() const
 	{

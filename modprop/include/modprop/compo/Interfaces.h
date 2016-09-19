@@ -22,7 +22,9 @@ public:
 
 	// Perform backward derivative propogation pass
 	// If an empty nextDodx is given, this module is the terminal output
-	virtual void Backprop( const MatrixType& nextDodx ) = 0;
+	// If force flag is set, does not wait for all backprops to accumulate
+	virtual void Backprop( const MatrixType& nextDodx,
+	                       bool forceBackprop ) = 0;
 };
 
 template <typename Input>
@@ -62,13 +64,10 @@ public:
 	bool IsValid() const { return _valid; }
 	const InputType& GetInput() const { return _input; }
 
-	virtual void Backprop( const MatrixType& nextDodx )
+	virtual void Backprop( const MatrixType& nextDodx, 
+	                       bool forceBackprop = false )
 	{
-		// if( !nextDodx.allFinite() )
-		// {
-		// 	throw std::runtime_error( "Non-finite backprop" );
-		// }
-		_source->Backprop( nextDodx );
+		_source->Backprop( nextDodx, forceBackprop );
 	}
 
 private:
@@ -126,7 +125,9 @@ public:
 		return _output; 
 	}
 
-	virtual void Backprop( const MatrixType& nextDodx ) final
+	// Perform a backprop operation
+	virtual void Backprop( const MatrixType& nextDodx,
+	                       bool forceBackprop = false ) final
 	{
 		if( _dodxAcc.size() == 0 )
 		{
@@ -138,15 +139,15 @@ public:
 		}
 		_backpropsReceived++;
 
-		
-		// If we are the terminal source (get an empty nextDodx), then 
-		// we will have 0 consumers. We need to then propagate immediately
-		// so this check looks for >= than # consumers
-		if( !modName.empty() )
+		if( !nextDodx.allFinite() )
 		{
-			std::cout << modName << " has " << _backpropsReceived << " out of " << _consumers.size() << std::endl;
+			throw std::runtime_error( modName + ": Non-finite nextDodx." );
 		}
-		if( _backpropsReceived >= _consumers.size() )
+
+		// If we are the terminal source, then 
+		// we will have 0 consumers so this check looks for >= than # consumers
+		// Alternatively, if flag is set, backprop immediately
+		if( _backpropsReceived >= _consumers.size() || forceBackprop )
 		{
 			BackpropImplementation( _dodxAcc );
 		}

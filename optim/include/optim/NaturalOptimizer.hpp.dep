@@ -124,7 +124,6 @@ public:
 			_initialized = true;
 			unsigned int N = w.size();
 			_ldlt = Eigen::LDLT<MatrixType>( _params.epsilon * MatrixType::Identity( N, N ) );
-			// _ldlt = Eigen::LDLT<MatrixType>( w * w.transpose() );
 		}
 
 		_ldlt.rankUpdate( w );
@@ -148,16 +147,16 @@ public:
 		}
 
 		VectorType g;
-		if( _gradients.size() < _params.windowLen )
-		{
-			g = step * gradient;
-			std::cout << "NaturalOptimizer: Has " << _gradients.size() << 
-			             " samples, less than required " << _params.windowLen << std::endl;
-		}
-		else
-		{
+		// if( _gradients.size() < _params.windowLen )
+		// {
+		// 	g = step * gradient;
+		// 	std::cout << "NaturalOptimizer: Has " << _gradients.size() << 
+		// 	             " samples, less than required " << _params.windowLen << std::endl;
+		// }
+		// else
+		// {
 			g = step * _ldlt.solve( gradient * _gradients.size() );
-		}
+		// }
 
 		// NOTE Since we actually want the average inverse, we need to
 		// scale the output

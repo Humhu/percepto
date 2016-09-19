@@ -33,7 +33,7 @@ public:
 	typedef SumCost<DataType> ParentCost;
 
 	StochasticSumCost()
-	: _hasResampled( false ), _subsetSize( 0 ), _ssRatio( 0 )
+	: _subsetSize( 0 ), _ssRatio( 0 )
 	{
 		boost::random::random_device rng;
 		_generator.seed( rng );
@@ -62,12 +62,6 @@ public:
 	void Resample()
 	{
 		RandomSample();
-		_hasResampled = true;
-	}
-
-	void UseSameSamples()
-	{
-		_hasResampled = true;
 	}
 
 	const std::vector<unsigned int>& GetActiveInds() const
@@ -82,12 +76,6 @@ public:
 	 * first to get an equivalent Derivative(). */
 	virtual void Foreprop()
 	{
-		if( !_hasResampled ) 
-		{
-			RandomSample(); 
-			_hasResampled = true;
-		}
-
 		if( _activeInds.size() == 0 ) 
 		{
 			 // TODO Generalize to other datatypes
@@ -112,7 +100,6 @@ public:
 
 	virtual void Invalidate()
 	{
-		_hasResampled = false;
 		ParentCost::SourceType::Invalidate();
 	}
 
@@ -121,7 +108,6 @@ private:
 	// Used for random selection
 	mutable boost::random::mt19937 _generator;
 
-	mutable bool _hasResampled;
 	unsigned int _subsetSize;
 	double _ssRatio;
 	mutable std::vector<unsigned int> _activeInds;

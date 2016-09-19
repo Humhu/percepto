@@ -11,7 +11,7 @@
 #include "modprop/optim/StochasticMeanCost.hpp"
 #include "modprop/optim/ParameterL2Cost.hpp"
 
-#include "modprop/optim/OptimizerTypes.h"
+#include "optim/Optimizers.h"
 
 #include <boost/random/uniform_real_distribution.hpp>
 #include <boost/random/random_device.hpp>
@@ -27,14 +27,14 @@
 using namespace percepto;
 
 // Comment the above and uncomment below to use Rectified Linear Units instead
-// typedef PerceptronNet TestNet;
-typedef ReLUNet TestNet;
+typedef PerceptronNet TestNet;
+// typedef ReLUNet TestNet;
 
 unsigned int inputDim = 1;
 unsigned int outputDim = 1;
 unsigned int numHiddenLayers = 3;
-unsigned int layerWidth = 50;
-unsigned int batchSize = 10;
+unsigned int layerWidth = 20;
+unsigned int batchSize = 20;
 
 struct Regressor
 {
@@ -44,7 +44,7 @@ struct Regressor
 
 	Regressor()
 	: net( inputDim, outputDim, numHiddenLayers, layerWidth,
-	       HingeActivation( 1, 1E-3 ), ReLUNet::OUTPUT_UNRECTIFIED )
+	       SigmoidActivation(), TestNet::OUTPUT_UNRECTIFIED )
 	{
 		net.SetSource( &netInput );
 		loss.SetSource( &net.GetOutputSource() );
@@ -73,17 +73,66 @@ struct Regressor
 	}
 };
 
-struct OptimizationProblem
+struct RegressionProblem
+: public NaturalOptimizationProblem
 {
 	std::deque<Regressor> regressors;
 	StochasticMeanCost<double> losses;
 	ParameterL2Cost regularizer;
 	AdditiveWrapper<double> objective;
+	
+	Parameters::Ptr params;
 
-	OptimizationProblem() 
+	RegressionProblem( Parameters::Ptr p,
+	                   unsigned int batchSize,
+	                   double l2Weight ) 
 	{
+		params = p;
+		losses.SetBatchSize( batchSize );
+		regularizer.SetWeight( l2Weight );
+		regularizer.SetParameters( params );
 		objective.SetSourceA( &losses );
 		objective.SetSourceB( &regularizer );
+	}
+
+	virtual bool IsMinimization() const { return true; }
+
+	virtual void Resample()
+	{
+		losses.Resample();
+	}
+
+	virtual double ComputeObjective()
+	{
+		Invalidate();
+		Foreprop();
+		return objective.GetOutput();
+	}
+
+	virtual VectorType ComputeGradient()
+	{
+		Invalidate();
+		Foreprop();
+		Backprop();
+		return params->GetDerivs();
+	}
+
+	virtual VectorType ComputeNaturalGradient()
+	{
+		Invalidate();
+		Foreprop();
+		BackpropNatural();
+		return params->GetDerivs();
+	}
+
+	virtual VectorType GetParameters() const
+	{
+		return params->GetParamsVec();
+	}
+
+	virtual void SetParameters( const VectorType& p )
+	{
+		params->SetParamsVec( p );
 	}
 
 	void Invalidate()
@@ -93,9 +142,20 @@ struct OptimizationProblem
 			regressors[i].Invalidate();
 		}
 		regularizer.Invalidate();
+		params->ResetAccumulators();
 	}
 
 	void Foreprop()
+	{
+		const std::vector<unsigned int>& inds = losses.GetActiveInds();
+		BOOST_FOREACH( unsigned int i, inds )
+		{
+			regressors[i].Foreprop();
+		}
+		regularizer.Foreprop();
+	}
+
+	void ForepropAll()
 	{
 		for( unsigned int i = 0; i < regressors.size(); i++ )
 		{
@@ -104,14 +164,19 @@ struct OptimizationProblem
 		regularizer.Foreprop();
 	}
 
-	double GetOutput()
-	{
-		return objective.GetOutput();
-	}
-
 	void Backprop()
 	{
-		objective.Backprop( MatrixType() );
+		objective.Backprop( MatrixType::Identity(1,1) );
+	}
+
+	void BackpropNatural()
+	{
+		const std::vector<unsigned int>& inds = losses.GetActiveInds();
+		MatrixType dodw = MatrixType::Identity( 1, 1 ) / inds.size();
+		BOOST_FOREACH( unsigned int i, inds )
+		{
+			regressors[i].loss.Backprop( dodw );
+		}
 	}
 };
 
@@ -160,37 +225,23 @@ int main( int argc, char** argv )
 	std::cout << "Initializing net..." << std::endl;
 	std::cout << "Creating linear layers..." << std::endl;
 
-	// Perceptron initialization
-	// SigmoidActivation act;
-	// PerceptronSubnet subnet( inputDim, layerWidth, numHiddenLayers, 
-	//                          layerWidth, act );
-	// LinearLayer<NullActivation> outputLayer( layerWidth, outputDim, NullActivation() );
-	// InputWrapper<PerceptronSubnet> subnetWrapper( subnet );
-	// PerceptronSeries netSeries( subnetWrapper, outputLayer );
-	// PerceptronNet testNet( subnetWrapper, netSeries );
-
-	// netParametrics.AddParametric( &subnet );
-	// netParametrics.AddParametric( &outputLayer );
-
 	// // ReLU initialization
 	Regressor reg;
 	Parameters::Ptr params = reg.net.CreateParameters();
 
 	// Randomize parameters
 	VectorType p( params->ParamDim() );
-	randomize_vector( p );
+	randomize_vector( p, -0.2, 0.2 );
 	params->SetParamsVec( p );
+	std::cout << "Initial net: " << std::endl << reg.net << std::endl;
 
 	// Create the loss functions
 	std::cout << "Generating losses..." << std::endl;
-	OptimizationProblem trainProblem;
-	OptimizationProblem testProblem;
+	RegressionProblem trainProblem( params, batchSize, l2Weight );
+	RegressionProblem testProblem( params, batchSize, l2Weight );
 	
 	// NOTE If we don't reserve, the vector resizing and moving may
 	// invalidate the references. Alternatively we can use a deque
-	trainProblem.losses.SetBatchSize( batchSize );
-	trainProblem.regularizer.SetParameters( params );
-	trainProblem.regularizer.SetWeight( l2Weight );
 	for( unsigned int i = 0; i < numTrain; i++ )
 	{
 		trainProblem.regressors.emplace_back( reg );
@@ -199,9 +250,6 @@ int main( int argc, char** argv )
 		trainProblem.losses.AddSource( &trainProblem.regressors[i].loss );
 	}
 
-	testProblem.losses.SetBatchSize( batchSize );
-	testProblem.regularizer.SetParameters( params );
-	testProblem.regularizer.SetWeight( l2Weight );
 	for( unsigned int i = 0; i < numTest; i++ )
 	{
 		testProblem.regressors.emplace_back( reg );
@@ -210,33 +258,40 @@ int main( int argc, char** argv )
 		testProblem.losses.AddSource( &testProblem.regressors[i].loss );
 	}
 
-	AdamStepper stepper;
+	ModularOptimizer optimizer;
 	
-	SimpleConvergenceCriteria criteria;
-	criteria.maxRuntime = 20;
-	criteria.minElementGradient = 1E-3;
-	//criteria.minObjectiveDelta = 1E-3;
-	SimpleConvergence convergence( criteria );
+	// AdamSearchDirector::Ptr director = std::make_shared<AdamSearchDirector>();
+	// GradientSearchDirector::Ptr director = std::make_shared<GradientSearchDirector>();
+	NaturalSearchDirector::Ptr director = std::make_shared<NaturalSearchDirector>();
+	optimizer.SetSearchDirector( director );
 
-	// std::cout << "Evaluating derivatives..." << std::endl;
-	// double acc = 0;
-	// unsigned int num = 0;
-	// double maxSeen = -std::numeric_limits<double>::infinity();
-	// for( unsigned int i = 0; i < numTrain; i++ )
-	// {
-	// 	std::vector<double> errors = EvalCostDeriv( testLosses[i], params );
-	// 	double trialMax = *std::max_element( errors.begin(), errors.end() );
-	// 	if( trialMax > maxSeen ) { maxSeen = trialMax; }
-	// 	acc += trialMax;
-	// 	++num;
-	// }
-	// std::cout << "Mean max error: " << acc / num << std::endl;
-	// std::cout << "Max overall error: " << maxSeen << std::endl;
+	BacktrackingSearchStepper::Ptr stepper = std::make_shared<BacktrackingSearchStepper>();
+	stepper->SetInitialStep( 1E-1 );
+	stepper->SetBacktrackingRatio( 0.5 );
+	stepper->SetMaxBacktracks( 20 );
+	stepper->SetImprovementRatio( 0.75 );
+
+	// L1ConstrainedSearchStepper::Ptr stepper = std::make_shared<L1ConstrainedSearchStepper>();
+	// stepper->SetMaxL1Norm( 1E-1 );
+	// stepper->SetStepSize( 1E-2 );
+	optimizer.SetSearchStepper( stepper );
+
+	RuntimeTerminationChecker::Ptr runtimeChecker = std::make_shared<RuntimeTerminationChecker>();
+	runtimeChecker->SetMaxRuntime( 20 );
+	optimizer.AddTerminationChecker( runtimeChecker );
+
+	// GradientTerminationChecker::Ptr gradientChecker = std::make_shared<GradientTerminationChecker>();
+	// gradientChecker->SetMinGradientNorm( 1E-9 );
+	// optimizer.AddTerminationChecker( gradientChecker );
+
+	// IterationTerminationChecker::Ptr iterationChecker = std::make_shared<IterationTerminationChecker>();
+	// iterationChecker->SetMaxIterations( 1e3 );
+	// optimizer.AddTerminationChecker( iterationChecker );
 
 	trainProblem.Invalidate();
 	testProblem.Invalidate();
-	trainProblem.Foreprop();
-	testProblem.Foreprop();
+	trainProblem.ForepropAll();
+	testProblem.ForepropAll();
 	trainProblem.losses.ParentCost::Foreprop();
 	testProblem.losses.ParentCost::Foreprop();
 	std::cout << "initial train avg loss: " << trainProblem.losses.ParentCost::GetOutput() << std::endl;
@@ -245,13 +300,16 @@ int main( int argc, char** argv )
 	std::cout << "initial test max loss: " << testProblem.losses.ParentCost::ComputeMax() << std::endl;
 
 	std::cout << "Beginning optimization..." << std::endl;
-	AdamOptimizer optimizer( stepper, convergence, *params );
-	optimizer.Optimize( trainProblem );
+	optimizer.ResetAll();
+	trainProblem.Resample();
+	OptimizationResults result = optimizer.Optimize( trainProblem );
+	std::cout << "Terminated with condition: " << result.status << std::endl;
+	std::cout << "Final net: " << std::endl << reg.net << std::endl;
 
 	trainProblem.Invalidate();
 	testProblem.Invalidate();
-	trainProblem.Foreprop();
-	testProblem.Foreprop();
+	trainProblem.ForepropAll();
+	testProblem.ForepropAll();
 	trainProblem.losses.ParentCost::Foreprop();
 	testProblem.losses.ParentCost::Foreprop();
 	std::cout << "train avg loss: " << trainProblem.losses.ParentCost::GetOutput() << std::endl;

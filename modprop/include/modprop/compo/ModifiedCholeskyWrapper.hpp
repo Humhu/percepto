@@ -123,8 +123,9 @@ public:
 			}
 
 			_tmap.VecToLowerTriangular( lVec, _L );
+
 			_D.diagonal() = dVec;
-			_initialized = false;
+
 			OutputSourceType::SetOutput( _L * _D * _L.transpose() );
 			OutputSourceType::Foreprop();
 		}

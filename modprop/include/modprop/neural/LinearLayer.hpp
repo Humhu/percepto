@@ -20,12 +20,6 @@ public:
 	typedef VectorType OutputType;
 	typedef Activation ActivationType;
 
-	static unsigned int compute_param_dim( unsigned int inputDim, 
-	                                       unsigned int outputDim )
-	{
-		return outputDim * (inputDim + 1);
-	}
-
 	/*! Creates a layer with the specified dimensionality and all zero parameters. */
 	LinearLayer( unsigned int inputDim, unsigned int outputDim,
 	             const ActivationType& activation )
@@ -122,10 +116,14 @@ public:
 			}
 		}
 
-		// std::cout << "input: " << input.transpose() << std::endl;
-		// std::cout << "weights: " << std::endl << _weights << std::endl;
-		// std::cout << "thisDodw: " << std::endl << thisDodw << std::endl;
-		// std::cout << "thisDodx: " << std::endl << thisDodx << std::endl;
+		if( !thisDodx.allFinite() )
+		{
+			std::cout << "input: " << input.transpose() << std::endl;
+			std::cout << "weights: " << std::endl << _weights << std::endl;
+			std::cout << "thisDodw: " << std::endl << thisDodw << std::endl;
+			std::cout << "thisDodx: " << std::endl << thisDodx << std::endl;
+			throw std::runtime_error( "Non-finite thisDodx in LinearLayer" );
+		}
 
 		_params->AccumulateDerivs( thisDodw );
 		_inputPort.Backprop( thisDodx );
@@ -147,6 +145,12 @@ private:
 	Eigen::Map<const RowMatrixType> _weights;
 	ActivationType _activation;
 
+	static unsigned int compute_param_dim( unsigned int inputDim, 
+	                                       unsigned int outputDim )
+	{
+		return outputDim * (inputDim + 1);
+	}
+	
 	template <typename A>
 	friend std::ostream& operator<<( std::ostream& os, const LinearLayer<A>& l );
 
