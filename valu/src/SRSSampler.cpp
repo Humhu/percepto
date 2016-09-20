@@ -58,6 +58,7 @@ void SRSSampler::TimerCallback( const ros::TimerEvent& event )
 	}
 	catch( std::out_of_range )
 	{
+		ROS_WARN_STREAM( "Could not get reward at time: " << srs.time );
 		return;
 	}
 
