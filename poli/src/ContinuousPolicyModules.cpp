@@ -350,19 +350,20 @@ VariableVarianceGaussian::VariableVarianceGaussian( unsigned int inputDim,
   //               layerWidth,
   //               percepto::SigmoidActivation(), 
   //               percepto::PerceptronNet::OUTPUT_UNRECTIFIED ),
-  correlations( matDim*(matDim-1)/2 ),
+  // correlations( matDim*(matDim-1)/2 ),
   logVariances( inputDim, 
                 matDim, 
                 numHiddenLayers, 
                 layerWidth,
                 percepto::SigmoidActivation(), 
-                percepto::PerceptronNet::OUTPUT_UNRECTIFIED ),
-  useCorrelations( useCorr )
+                percepto::PerceptronNet::OUTPUT_UNRECTIFIED )
+  // useCorrelations( useCorr )
 {
 	variances.SetSource( &logVariances.GetOutputSource() );
 	// psdModule.SetLSource( &correlations.GetOutputSource() );
-	psdModule.SetLSource( &correlations );
-	psdModule.SetDSource( &variances );
+	// psdModule.SetLSource( &correlations );
+	// psdModule.SetDSource( &variances );
+	psdModule.SetSource( &variances );
 	information.SetSource( &psdModule );
 	information.SetOffset( POSDEF_OFFSET_SCALE * 
 	                    MatrixType::Identity( matDim, matDim ) );
@@ -372,17 +373,18 @@ VariableVarianceGaussian::VariableVarianceGaussian( unsigned int inputDim,
 // shared parameters with the original
 VariableVarianceGaussian::VariableVarianceGaussian( const VariableVarianceGaussian& other )
 : mean( other.mean ),
-  correlations( other.correlations ),
+  // correlations( other.correlations ),
   logVariances( other.logVariances ),
   variances( other.variances ),
-  information( other.information ),
-  useCorrelations( other.useCorrelations ),
-  corrParams( other.corrParams )
+  information( other.information )
+  // useCorrelations( other.useCorrelations ),
+  // corrParams( other.corrParams )
 {
 	variances.SetSource( &logVariances.GetOutputSource() );
 	// psdModule.SetLSource( &correlations.GetOutputSource() );
-	psdModule.SetLSource( &correlations );
-	psdModule.SetDSource( &variances );
+	// psdModule.SetLSource( &correlations );
+	// psdModule.SetDSource( &variances );
+	psdModule.SetSource( &variances );
 	information.SetSource( &psdModule );
 }
 
@@ -412,44 +414,45 @@ void VariableVarianceGaussian::InitializeMean( const VectorType& u )
 
 void VariableVarianceGaussian::InitializeInformation( const MatrixType& n )
 {
-	Eigen::LDLT<MatrixType> ldlt( n );
-	VectorType d = ldlt.vectorD();
-	VectorType l = GetLowerTriangular( MatrixType( ldlt.matrixL() ), 1 );
-	logVariances.SetOutputOffsets( d.array().log().matrix() );
+	logVariances.SetOutputOffsets( n.diagonal().array().log().matrix() );
+	// Eigen::LDLT<MatrixType> ldlt( n );
+	// VectorType d = ldlt.vectorD();
+	// VectorType l = GetLowerTriangular( MatrixType( ldlt.matrixL() ), 1 );
+	// logVariances.SetOutputOffsets( d.array().log().matrix() );
 	// correlations.SetOutputOffsets( l );
-	correlations.SetOutput( l );
+	// correlations.SetOutput( l );
 }
 
 percepto::Parameters::Ptr VariableVarianceGaussian::CreateParameters()
 {
 	percepto::Parameters::Ptr meanParams = mean.CreateParameters();
-	corrParams = correlations.CreateParameters();
+	// corrParams = correlations.CreateParameters();
 	percepto:: Parameters::Ptr logVarParams = logVariances.CreateParameters();
 	
 	ParameterWrapper::Ptr params = std::make_shared<ParameterWrapper>();
 	params->AddParameters( meanParams );
-	if( useCorrelations )
-	{
-		params->AddParameters( corrParams );
-	}
-	else
-	{
-		VectorType corrVec = corrParams->GetParamsVec();
-		corrVec.setZero();
-		corrParams->SetParamsVec( corrVec );
-	}
+	// if( useCorrelations )
+	// {
+		// params->AddParameters( corrParams );
+	// }
+	// else
+	// {
+		// VectorType corrVec = corrParams->GetParamsVec();
+		// corrVec.setZero();
+		// corrParams->SetParamsVec( corrVec );
+	// }
 	params->AddParameters( logVarParams );
 	return params;
 }
 
 void VariableVarianceGaussian::Foreprop()
 {
-	correlations.Foreprop();
+	// correlations.Foreprop();
 }
 
 void VariableVarianceGaussian::Invalidate()
 {
-	correlations.Invalidate();
+	// correlations.Invalidate();
 }
 
 std::string VariableVarianceGaussian::Print() const
@@ -457,7 +460,7 @@ std::string VariableVarianceGaussian::Print() const
 	std::stringstream ss;
 	ss << "Mean regressor: " << std::endl << mean << std::endl;
 	ss << "Var regressor: " << std::endl << logVariances << std::endl;
-	ss << "Corr regressor: " << std::endl << corrParams->GetParamsVec().transpose() << std::endl;
+	// ss << "Corr regressor: " << std::endl << corrParams->GetParamsVec().transpose() << std::endl;
 	return ss.str();
 }
 

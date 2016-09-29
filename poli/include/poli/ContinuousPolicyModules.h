@@ -4,6 +4,7 @@
 #include <modprop/compo/ConstantRegressor.hpp>
 #include <modprop/compo/ExponentialWrapper.hpp>
 #include <modprop/compo/OffsetWrapper.hpp>
+#include <modprop/compo/DiagonalWrapper.hpp>
 #include <modprop/compo/ModifiedCholeskyWrapper.hpp>
 #include <modprop/neural/NetworkTypes.h>
 
@@ -171,15 +172,16 @@ public:
 
 	percepto::PerceptronNet mean;
 	// percepto::PerceptronNet correlations;
-	percepto::ConstantVectorRegressor correlations;
+	// percepto::ConstantVectorRegressor correlations;
 	percepto::PerceptronNet logVariances;
 
 	percepto::ExponentialWrapper variances;
-	percepto::ModifiedCholeskyWrapper psdModule;
+	// percepto::ModifiedCholeskyWrapper psdModule;
+	percepto::DiagonalWrapper psdModule;
 	percepto::OffsetWrapper<MatrixType> information;
 
-	bool useCorrelations;
-	percepto::Parameters::Ptr corrParams;
+	// bool useCorrelations;
+	// percepto::Parameters::Ptr corrParams;
 
 	VariableVarianceGaussian( unsigned int inputDim,
 	                          unsigned int matDim,
