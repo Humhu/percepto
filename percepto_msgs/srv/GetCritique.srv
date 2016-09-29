@@ -3,6 +3,9 @@
 # The time at which feedback is requested
 time time
 
+# Alternatively, the input for which feedback is requested
+float64[] input
+
 ---
 
 # The feedback at the requested times
