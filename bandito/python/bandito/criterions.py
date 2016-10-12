@@ -30,6 +30,11 @@ def ucbv_criterion( history, exp_factor, reward_scale=1.0, c=1.0 ):
         The size of the reward domain, ie. rewards on [0, b] have size b
     exp_: numeric default (1.0)
         Positive tuning constant that adjusts 
+
+    Returns:
+    --------
+    criterion: numeric
+        The selection criterion. Larger criterion correspond to more desirable pulls.
     """
     if len(history) == 0:
         raise ValueError( 'History cannot be empty.' )
@@ -45,3 +50,35 @@ def ucbv_criterion( history, exp_factor, reward_scale=1.0, c=1.0 ):
     s = len( history )
     return emp_mean + math.sqrt( 2 * emp_var * exp_factor / s ) + \
            c * 3.0 * reward_scale * exp_factor / s
+
+def siri_criterion( history, num_arms, beta, reward_scale, d ):
+    """
+    Computes the Simple Regret for Infinitely-many arms (SiRI) criterion from a 
+    history of rewards.
+
+    For more details, refer to Carpentier et al. 2015, "Simple regret for infinitely
+    many armed bandits"
+
+    Parameters:
+    -----------
+    history: iterable
+        Iterable of previous rewards. Must not be empty.
+    num_arms: numeric
+        Number of arms
+    beta: numeric
+        The problem hardness constant
+    reward_scale: numeric
+        Bound on rewards, ie. rewards are in range [0, reward_scale]
+    d: numeric
+        Arm certainty. Final arm regret will be optimal with probability > (1 - d)
+
+    Returns:
+    --------
+    """
+    Kbeta = num_arms ** ( 2.0 / beta )
+    C = reward_scale * 0.5
+    emp_mean = np.mean( history )
+    emp_var = np.var( history )
+    log_term = 4 * C * math.log( Kbeta / d )
+
+    return emp_mean + emp_var * math.sqrt( log_term ) + log_term

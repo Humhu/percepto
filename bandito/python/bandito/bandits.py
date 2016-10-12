@@ -1,10 +1,12 @@
 # TODO Online mean/variance estimator for long-term operation
+# TODO Context interface
 
 import collections, math
 import numpy as np
 
 class BanditInterface:
-    """Interface to a generic bandit algorithm.
+    """
+    Interface to a generic bandit algorithm.
 
     A solver object that uses an ask/tell interface to request arm pulls and
     receive pull results. The behavior can be changed by specifying different
