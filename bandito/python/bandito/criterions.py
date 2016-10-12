@@ -1,15 +1,17 @@
 """
-Various arm selection criteria calculation functions.
+Various arm selection and arm increasing criteria functions.
 
 Contents:
 ---------
 ucb_v_criterion
+ucb_air_criterion
+siri_criterion
 """
 
 import collections, math
 import numpy as np
 
-def ucbv_criterion( history, exp_factor, reward_scale=1.0, c=1.0 ):
+def ucb_v_criterion( history, exp_factor, reward_scale=1.0, c=1.0 ):
     """Computes the Upper Confidence Bound Variance (UCB-V) criterion from a 
     history of rewards.
 
@@ -50,6 +52,42 @@ def ucbv_criterion( history, exp_factor, reward_scale=1.0, c=1.0 ):
     s = len( history )
     return emp_mean + math.sqrt( 2 * emp_var * exp_factor / s ) + \
            c * 3.0 * reward_scale * exp_factor / s
+
+def ucb_air_criterion( num_arms, round_num, beta, max_attainable=False, user_func=None ):
+    """
+    Computes whether to add a new arm from the current number of arms,
+    the round number, and problem properties using the Arm Introducing Rule (AIR).
+
+    For more details, refer to Wang et al. 2008, "Algorithms for infinitely many
+    armed bandits"
+
+    Parameters:
+    -----------
+    num_arms: integer
+        The current number of arms
+    round_num: integer
+        The current round number
+    beta: numeric
+        The problem hardness factor. Must be positive. Smaller corresponds to easier problems
+        where it is more likely to sample a nearly optimal arm.
+    max_attainable: boolean (default False)
+        Whether the maximum reward is attainable, and correspondingly, whether arms with
+        higher means will tend to have less variance.
+
+    Returns:
+    --------
+    new_arm: boolean
+        Whether or not a new arm should be added
+    """
+    
+    # At minimum we should have 2 arms
+    if num_arms < 2:
+        return True
+
+    if max_attainable or beta >= 1.0:
+        return num_arms < round_num ** ( 0.5 * beta )
+    else:
+        return num_arms < round_num ** ( beta / (beta + 1) )
 
 def siri_criterion( history, num_arms, beta, reward_scale, d ):
     """
