@@ -53,7 +53,7 @@ def ucb_v_criterion( history, exp_factor, reward_scale=1.0, c=1.0 ):
     return emp_mean + math.sqrt( 2 * emp_var * exp_factor / s ) + \
            c * 3.0 * reward_scale * exp_factor / s
 
-def ucb_air_criterion( num_arms, round_num, beta, max_attainable=False, user_func=None ):
+def ucb_air_criterion( num_arms, round_num, beta, max_attainable=False ):
     """
     Computes whether to add a new arm from the current number of arms,
     the round number, and problem properties using the Arm Introducing Rule (AIR).
@@ -85,9 +85,9 @@ def ucb_air_criterion( num_arms, round_num, beta, max_attainable=False, user_fun
         return True
 
     if max_attainable or beta >= 1.0:
-        return num_arms < round_num ** ( 0.5 * beta )
-    else:
         return num_arms < round_num ** ( beta / (beta + 1) )
+    else:
+        return num_arms < round_num ** ( 0.5 * beta )
 
 def siri_criterion( history, num_arms, beta, reward_scale, d ):
     """

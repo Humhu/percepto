@@ -89,7 +89,8 @@ class BanditInterface:
         Must specify the exploration parameter eps.
         """
         # See if we need to add an arm
-        if self.arm_func is not None and self.arm_func( self.round_number ):
+        if self.arm_func is not None and \
+           self.arm_func( len(self.histories), self.round_number ):
             self.histories.append( [] )
 
         # First we must make sure every arm is pulled at least once
