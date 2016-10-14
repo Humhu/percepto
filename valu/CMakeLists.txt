@@ -14,6 +14,16 @@ find_package(catkin REQUIRED
              broadcast
              percepto_msgs )
 
+include( ExternalProject )
+ExternalProject_Add( lwpr_external
+  GIT_REPOSITORY git@github.com:Humhu/lwpr.git
+  BUILD_COMMAND cmake --build .
+  INSTALL_COMMAND make install
+  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CATKIN_DEVEL_PREFIX}
+)
+set( lwpr_INCLUDE_DIRS ${CATKIN_DEVEL_PREFIX}/include )
+set( lwpr_LIBRARIES ${CATKIN_DEVEL_PREFIX}/lib/liblwpr.so )
+
 # Use Boost for most utilities, threading
 find_package(Boost REQUIRED COMPONENTS random)
 
@@ -32,8 +42,8 @@ catkin_package(
                broadcast
                percepto_msgs
 
-               DEPENDS 		Boost 
-               system_lib
+               DEPENDS  Boost 
+                        system_lib
                )
 
 add_library( valu
@@ -48,7 +58,7 @@ add_library( valu
             src/ValueFunctionModules.cpp
             src/ValueLearningProblem.cpp
             src/ValueResidualModules.cpp )
-add_dependencies( valu valu_gencfg ${valu_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
+add_dependencies( valu lwpr_external valu_gencfg ${valu_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
 target_link_libraries( valu
                       ${catkin_LIBRARIES} )
 

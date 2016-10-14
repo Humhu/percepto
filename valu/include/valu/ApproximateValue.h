@@ -5,6 +5,8 @@
 
 #include <yaml-cpp/yaml.h>
 
+#include <lwpr.h>
+
 namespace percepto
 {
 
