@@ -16,13 +16,6 @@ class RewardModel(object):
 
     __metaclass__ = abc.ABCMeta
 
-    @abc.abstractproperty
-    def num_arms( self ):
-        """
-        The number of arms this model covers.
-        """
-        return 'Num arms'
-
     @abc.abstractmethod
     def report_sample( self, arm, reward ):
         """
@@ -150,11 +143,6 @@ class GaussianProcessRewardModel(RewardModel):
         self.hp_max_samples = hyperparam_max_samples
         self.hp_init = False
         self.last_ll = None
-
-    # TODO Is this even a useful property to have?
-    @property
-    def num_arms( self ):
-        return float('nan')
 
     def report_sample( self, arm, reward ):
         self.gp.add_data( arm, reward, incremental=True )
