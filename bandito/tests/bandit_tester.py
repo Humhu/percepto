@@ -1,3 +1,5 @@
+#! /usr/bin/env python
+
 """
 Provides an artificial problem to test bandit algorithms against.
 """
@@ -13,6 +15,8 @@ def test_func( x ):
 class TestBanditProblem:
 
     def __init__( self ):
+        query_time = rospy.get_param( '~query_time' )
+        self.query_delay = rospy.Duration( query_time )
         self.query_server = rospy.Service( '~get_critique', 
                                            GetCritique, 
                                            self.critique_callback )
@@ -20,6 +24,7 @@ class TestBanditProblem:
     def critique_callback( self, req ):
         res = GetCritiqueResponse()
         res.critique = test_func( req.input )
+        rospy.sleep( self.query_delay )
         return res
 
 if __name__=='__main__':

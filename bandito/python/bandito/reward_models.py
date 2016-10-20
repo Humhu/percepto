@@ -94,6 +94,15 @@ class EmpiricalRewardModel(RewardModel):
         except KeyError:
             return (self.default_mean, self.default_var)
 
+    def num_samples( self, arm ):
+        """
+        Returns the number of samples held for the specified arm.
+        """
+        if arm not in self.arms:
+            return 0
+        else:
+            return len( self.arms[arm] )
+
 class GaussianProcessRewardModel(RewardModel):
     """
     Models arm rewards with a Gaussian process regressor.
@@ -151,20 +160,23 @@ class GaussianProcessRewardModel(RewardModel):
         if not self.hp_init and num_samples > self.hp_min_samples:
             self.gp.batch_update( num_restarts=self.hp_batch_retries )
             self.hp_init = True
-            self.last_ll = self.gp.log_marginal_likelihood(self.gp.theta)
+            self.last_ll = self.gp.log_marginal_likelihood()
 
         if self.hp_init:
-            current_ll = self.gp.log_marginal_likelihood(self.gp.theta)
+            current_ll = self.gp.log_marginal_likelihood()
+            print 'Last ll: %f current ll: %f' % (self.last_ll, current_ll)
             if current_ll < self.last_ll - self.hp_refine_ll_delta:
+                print 'Delta ll exceeds threshold. Performing batch update...'
                 self.gp.batch_update( num_restarts=1 )
+                self.last_ll = self.gp.log_marginal_likelihood()
 
     def query( self, arm ):
         # Required by the GP
         arm = np.atleast_2d( arm )
         if arm.shape[0] > 1 or len(arm.shape) > 2:
             raise ValueError( 'Input should be 1D' )
-        pred_mean, pred_std = self.gp.predict( arm, return_std=True )
-        pred_mean = pred_mean[0][0]
-        pred_std = pred_std[0]
-        return (pred_mean, pred_std*pred_std)
+        pred_mean, pred_cov = self.gp.predict( arm, return_cov=True )
+        pred_mean = pred_mean[0]
+        pred_cov = np.diag(pred_cov)[0]
+        return (pred_mean, pred_cov)
 

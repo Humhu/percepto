@@ -38,11 +38,14 @@ class JointArmProposal(ArmProposal):
     Combines proposals from two proposal classes.
     """
 
-    def __init__( self, first, second ):
+    def __init__( self, first, second, num_arms ):
         self.first = first
         self.second = second
+        self.num_arms = num_arms
 
-    def propose_arms( self, num_arms ):
+    def propose_arms( self, num_arms=None ):
+        if num_arms is None:
+            num_arms = self.num_arms
         first_arms = self.first.propose_arms( num_arms )
         second_arms = self.second.propose_arms( num_arms )
         return [ tuple(a) + tuple(b) for (a,b) 
@@ -66,7 +69,9 @@ class DiscreteArmProposal(ArmProposal):
     def add_arm( self, arm ):
         self.arms.append( arm )
 
-    def propose_arms( self, num_arms ):
+    def propose_arms( self, num_arms=None ):
+        if num_arms is None:
+            return self.arms
         return random.sample( population=self.arms, k=num_arms )
 
 class UniformArmProposal(ArmProposal):
@@ -79,7 +84,7 @@ class UniformArmProposal(ArmProposal):
         List of (lower,upper) bounds for each dimension.
     """
 
-    def __init__( self, bounds ):
+    def __init__( self, bounds, num_arms=10 ):
         self.bounds = np.atleast_2d(np.asarray(bounds))
         if self.bounds.shape[1] != 2:
             raise ValueError('Bounds must be list of (lower,upper) bounds.')
@@ -87,8 +92,11 @@ class UniformArmProposal(ArmProposal):
             if bound[0] > bound[1]:
                 raise ValueError('Bound %s does not follow (lower,upper) convention'
                                  % str(bound))
+        self.num_arms = num_arms
 
-    def propose_arms( self, num_arms ):
+    def propose_arms( self, num_arms=None ):
+        if num_arms is None:
+            num_arms = self.num_arms
         return [ [ random.uniform(l,u) for (l,u) in self.bounds ] 
                  for i in range(num_arms) ]
 

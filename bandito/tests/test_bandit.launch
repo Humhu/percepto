@@ -1,0 +1,24 @@
+<launch>
+
+    <node pkg="bandito" type="bandit_tester.py" name="test_problem" output="screen">
+        <rosparam>
+            query_time: 0.1
+        </rosparam>
+    </node>
+
+    <node pkg="bandito" type="gpucb_bandit.py" name="test_bandit" output="screen">
+        <rosparam>
+            num_arms: 30
+            beta: 0.5
+            random_seed: 1
+            num_rounds: 1000
+
+            arm_lower_limits: [-1, -1, -1, -1]
+            arm_upper_limits: [1, 1, 1, 1]
+
+            output_log: /home/humphreh/Documents/test_out.log
+            critic_service: test_problem/get_critique
+        </rosparam>
+    </node>
+
+</launch>
