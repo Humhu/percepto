@@ -67,9 +67,6 @@ class CMAOptimizerSelector(ArmSelector):
         self.args = kwargs
 
     def select_arm( self, arms ):
-        u,v = self.reward_model.query( self.init_guess )
-        print 'Mean: %f Var: %f at init: %s' % (u,v, np.array_str(self.init_guess))
-        print 'Criteria at init: %f' % self.criteria( self.init_guess )
         es = cma.CMAEvolutionStrategy( self.init_guess, 1, self.args )
         es.optimize( self.criteria )
         return es.result()[0]
@@ -77,7 +74,7 @@ class CMAOptimizerSelector(ArmSelector):
     def criteria( self, x ):
         u,v = self.reward_model.query( x )
         # Since CMA performs a minimization
-        return -(u + self.beta * v)
+        return -(u + self.beta * math.sqrt(v))
 
 class UCBVSelector(ArmSelector):
     """
