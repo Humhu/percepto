@@ -15,19 +15,20 @@ public:
 
 	AdaptiveTransitionCovarianceEstimator();
 
-	void Initialize( ros::NodeHandle& ph, const std::string& field );
+	void Initialize( ros::NodeHandle& ph );
 
 	MatrixType GetQ() const;
 
 	void ProcessInfo( const argus_msgs::FilterStepInfo& msg );
-
-	bool IsReady() const;
 
 	void Reset();
 
 private:
 
 	unsigned int _windowLength;
+	bool _useDiag;
+
+	VectorType _prodWeights;
 
 	std::deque<MatrixType> _delXOuterProds;
 	MatrixType _lastFSpostFT;
@@ -35,7 +36,8 @@ private:
 	MatrixType _lastF;
 	MatrixType _offset;
 	double _lastDt;
-
+	MatrixType _initCov;
+	
 	void InfoCallback( const argus_msgs::FilterStepInfo::ConstPtr& msg );
 
 };
@@ -46,19 +48,21 @@ public:
 
 	AdaptiveObservationCovarianceEstimator();
 
-	void Initialize( ros::NodeHandle& ph, const std::string& field );
+	void Initialize( ros::NodeHandle& ph );
 
 	MatrixType GetR() const;
-
-	bool IsReady() const;
 
 	void ProcessInfo( const argus_msgs::FilterStepInfo& msg );
 
 	void Reset();
 
 private:
-	std::string _sourceName;
+
 	unsigned int _windowLength;
+	bool _useDiag;
+
+	VectorType _prodWeights;
+
 	std::deque<MatrixType> _innoOuterProds;
 	MatrixType _lastHPHT;
 	MatrixType _initCov;
