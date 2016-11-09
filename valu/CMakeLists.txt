@@ -14,15 +14,15 @@ find_package(catkin REQUIRED
              broadcast
              percepto_msgs )
 
-include( ExternalProject )
-ExternalProject_Add( lwpr_external
-  GIT_REPOSITORY git@github.com:Humhu/lwpr.git
-  BUILD_COMMAND cmake --build .
-  INSTALL_COMMAND make install
-  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CATKIN_DEVEL_PREFIX}
-)
-set( lwpr_INCLUDE_DIRS ${CATKIN_DEVEL_PREFIX}/include )
-set( lwpr_LIBRARIES ${CATKIN_DEVEL_PREFIX}/lib/liblwpr.so )
+#include( ExternalProject )
+#ExternalProject_Add( lwpr_external
+#  GIT_REPOSITORY git@github.com:Humhu/lwpr.git
+#  BUILD_COMMAND cmake --build .
+#  INSTALL_COMMAND make install
+#  CMAKE_ARGS -DCMAKE_INSTALL_PREFIX=${CATKIN_DEVEL_PREFIX}
+#)
+#set( lwpr_INCLUDE_DIRS ${CATKIN_DEVEL_PREFIX}/include )
+#set( lwpr_LIBRARIES ${CATKIN_DEVEL_PREFIX}/lib/liblwpr.so )
 
 # Use Boost for most utilities, threading
 find_package(Boost REQUIRED COMPONENTS random)
