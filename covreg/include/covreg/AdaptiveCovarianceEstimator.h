@@ -14,12 +14,12 @@ class AdaptiveTransitionCovarianceEstimator
 public:
 
 	AdaptiveTransitionCovarianceEstimator();
-
 	void Initialize( ros::NodeHandle& ph );
 
 	MatrixType GetQ() const;
 
-	void ProcessInfo( const argus_msgs::FilterStepInfo& msg );
+	void Update( const argus::PredictInfo& predict, 
+	             const argus::UpdateInfo& update );
 
 	void Reset();
 
@@ -37,9 +37,6 @@ private:
 	MatrixType _offset;
 	double _lastDt;
 	MatrixType _initCov;
-	
-	void InfoCallback( const argus_msgs::FilterStepInfo::ConstPtr& msg );
-
 };
 
 class AdaptiveObservationCovarianceEstimator
@@ -52,7 +49,7 @@ public:
 
 	MatrixType GetR() const;
 
-	void ProcessInfo( const argus_msgs::FilterStepInfo& msg );
+	void Update( const argus::UpdateInfo& update );
 
 	void Reset();
 
@@ -66,7 +63,6 @@ private:
 	std::deque<MatrixType> _innoOuterProds;
 	MatrixType _lastHPHT;
 	MatrixType _initCov;
-
 };
 
 }

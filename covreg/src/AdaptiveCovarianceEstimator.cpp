@@ -75,37 +75,25 @@ MatrixType AdaptiveTransitionCovarianceEstimator::GetQ() const
 	return ret;
 }
 
-void AdaptiveTransitionCovarianceEstimator::ProcessInfo( const FilterStepInfo& msg )
+void AdaptiveTransitionCovarianceEstimator::Update( const PredictInfo& predict,
+                                                    const UpdateInfo& update )
 {
-	// NOTE We should always have a predict first
-	if( msg.isPredict )
+	// TODO This should really be time since last update
+	MatrixType op = update.delta_x * update.delta_x.transpose() / predict.dt;
+	_delXOuterProds.push_front( op );
+	while( _delXOuterProds.size() > _windowLength )
 	{
-		PredictInfo info = MsgToPredict( msg );
-		_lastF = info.F;
-		_lastDt = info.dt;
-	}
-	else
-	{
-		UpdateInfo info = MsgToUpdate( msg );
-		// TODO This should really be time since last update
-		MatrixType op = info.delta_x * info.delta_x.transpose() / _lastDt;
-		_delXOuterProds.push_front( op );
-		while( _delXOuterProds.size() > _windowLength )
-		{
-			_delXOuterProds.pop_back();
-		}
-
-		_lastFSpostFT = _lastF * _currSpost * _lastF.transpose();
-		_currSpost = info.Spost;
+		_delXOuterProds.pop_back();
 	}
 
+	_lastFSpostFT = predict.F * _currSpost * predict.F.transpose();
+	_currSpost = update.Spost;
 }
 
 void AdaptiveTransitionCovarianceEstimator::Reset()
 {
 	_delXOuterProds.clear();
 }
-
 
 AdaptiveObservationCovarianceEstimator::AdaptiveObservationCovarianceEstimator() {}
 
@@ -158,14 +146,14 @@ MatrixType AdaptiveObservationCovarianceEstimator::GetR() const
 	return adaptWeight * adaptR + initWeight * _initCov;
 }
 
-void AdaptiveObservationCovarianceEstimator::ProcessInfo( const argus_msgs::FilterStepInfo& msg )
+void AdaptiveObservationCovarianceEstimator::Update( const UpdateInfo& update )
 {
 	// Update is R = Cv+ + H * P+ * H^
-	UpdateInfo info = MsgToUpdate( msg );
-	_lastHPHT = info.H * info.Spost * info.H.transpose();
-
-	MatrixType op = info.post_innovation * info.post_innovation.transpose();
+	_lastHPHT = update.H * update.Spost * update.H.transpose();
+	MatrixType op = update.post_innovation * update.post_innovation.transpose();
 	_innoOuterProds.push_front( op );
+
+	// Remove old innovations
 	while( _innoOuterProds.size() > _windowLength )
 	{
 		_innoOuterProds.pop_back();
