@@ -17,6 +17,7 @@ find_package(catkin REQUIRED
 					visualization_msgs
 					modprop
 					optim
+					fieldtrack
 )
 include_directories( ${catkin_INCLUDE_DIRS} )
 
@@ -59,6 +60,7 @@ catkin_package(
 					visualization_msgs
 					modprop
 					optim
+					fieldtrack
 					
 	DEPENDS 		Boost 
 					percepto
@@ -106,25 +108,10 @@ target_link_libraries( performance_estimator
                        ${covreg_LIBS}
                        covreg )
 
-add_executable( adaptive_covariance_repeater nodes/adaptive_covariance_repeater.cpp )
-add_dependencies( adaptive_covariance_repeater covreg_gencfg )
-target_link_libraries( adaptive_covariance_repeater
-                       ${catkin_LIBRARIES}
-                       ${covreg_LIBS}
-                       covreg )
-
-add_executable( velocity_visualizer nodes/velocity_visualizer.cpp )
-add_dependencies( velocity_visualizer covreg_gencfg )
-target_link_libraries( velocity_visualizer
-                       ${catkin_LIBRARIES}
-                       ${covreg_LIBS}
-                       covreg )
-
 ## Mark executables and/or libraries for installation
 install(TARGETS covreg 
                 #covariance_repeater 
                 performance_estimator 
-                adaptive_covariance_repeater 
                 #optimizer_node
 	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}

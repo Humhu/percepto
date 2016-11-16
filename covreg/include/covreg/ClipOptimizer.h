@@ -5,7 +5,7 @@
 #include "optim/ModularOptimizer.h"
 
 #include <argus_utils/utils/LinalgTypes.h>
-#include <argus_utils/filters/FilterInfo.h>
+#include <fieldtrack/utils/FilterInfo.h>
 
 #include <memory>
 #include <unordered_map>
