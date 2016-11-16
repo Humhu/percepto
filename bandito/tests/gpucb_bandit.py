@@ -40,17 +40,12 @@ class GPUCBBandit(object):
         if self.out_log is None:
             raise IOError('Could not open output log at: ' + log_path)
 
-        num_arms = rospy.get_param('~num_arms', 0)
-        b = rospy.get_param('~reward_scale', 1.0)
-        c = rospy.get_param('~criteria_c', 1.0)
         beta = rospy.get_param('~beta')
+        init_num_samples = rospy.get_param('~init_hyperparam_samples', 30)
 
         # Print header
         self.out_log.write('Random seed: %s\n' % str(seed))
-        self.out_log.write('Reward scale: %f\n' % b)
-        self.out_log.write('Criteria c: %f\n' % c)
-        self.out_log.write('Hardness beta: %f\n' % beta)
-        self.out_log.write('Init arms: %d\n' % num_arms)
+        self.out_log.write('Exploration beta: %f\n' % beta)
         self.out_log.write('Num rounds: %d\n' % self.num_rounds)
 
         self.arm_lower_lims = np.array(rospy.get_param('~arm_lower_limits'))
@@ -58,22 +53,22 @@ class GPUCBBandit(object):
         if len( self.arm_lower_lims ) != len( self.arm_upper_lims ):
             raise ValueError( 'Lower and upper limits must have save length.' )
         self.arm_proposal = UniformArmProposal( bounds=zip(self.arm_lower_lims, self.arm_upper_lims),
-                                                num_arms=num_arms )
+                                                num_arms=1 )
 
         # TODO Think about how to choose the prototypes in higher dims...
-        #x_values = np.linspace( self.arm_lower_lims[0], self.arm_upper_lims[0], 3 )
-        #y_values = np.linspace( self.arm_lower_lims[1], self.arm_upper_lims[1], 3 )
-        #X,Y = np.meshgrid( x_values, y_values )
-        #prototypes = np.asarray( zip( X.flat, Y.flat ) )        
+        x_values = np.linspace( self.arm_lower_lims[0], self.arm_upper_lims[0], 3 )
+        y_values = np.linspace( self.arm_lower_lims[1], self.arm_upper_lims[1], 3 )
+        X,Y = np.meshgrid( x_values, y_values )
+        prototypes = np.asarray( zip( X.flat, Y.flat ) )        
 
         self.white = WhiteKernel( 1.0, (1e-3, 1e3) )
-        #self.hetero = HeteroscedasticKernel( prototypes, sigma_2=1.0, sigma_2_bounds=(1e-3, 1e3),
+        # self.hetero = HeteroscedasticKernel( prototypes, sigma_2=1.0, sigma_2_bounds=(1e-3, 1e3),
         #                                     gamma=1.0, gamma_bounds="fixed" )
-        self.kernel_base = ConstantKernel( 1.0, (1e-3, 1e1) ) * RBF( 1e-2, (1e-3, 1e-1) )
+        self.kernel_base = ConstantKernel( 1.0, (1e-3, 1e1) ) * RBF( 1.0, (1e-3, 1e-1) )
         self.kernel_noisy = self.kernel_base  + self.white
         self.reward_model = GaussianProcessRewardModel( kernel = self.kernel_noisy,
                                                         kernel_noiseless = self.kernel_base,
-                                                        hyperparam_min_samples = 100,
+                                                        hyperparam_min_samples = init_num_samples,
                                                         hyperparam_refine_ll_delta = 3.0,
                                                         alpha = 0 )
 
@@ -84,7 +79,7 @@ class GPUCBBandit(object):
         #                                 reward_model = self.reward_model )
         self.arm_selector = CMAOptimizerSelector( reward_model = self.reward_model,
                                                   dim = len( self.arm_lower_lims ),
-                                                  beta = 1.0,
+                                                  beta = beta,
                                                   bounds = [-1, 1],
                                                   popsize = 30 )
 
@@ -99,6 +94,7 @@ class GPUCBBandit(object):
 
         # Plotting
         if len( self.arm_lower_lims ) == 2:
+            self.plot_update_period = rospy.get_param('~plot_update_period', 1)
             self.plot_enable = True
 
             self.reward_fig = plt.figure()
@@ -159,7 +155,7 @@ class GPUCBBandit(object):
     def update_plot( self ):
         
         # NOTE We don't redraw the full GP too often since it's slow
-        if self.round_num % 10 == 0 or not hasattr(self, 'reward_means'):
+        if self.round_num % self.plot_update_period == 0 or not hasattr(self, 'reward_means'):
             estimates = [ self.reward_model.query( arm ) for arm in self.plot_arms ]
             self.reward_means = np.reshape( np.asarray([ est[0] for est in estimates ]), self.X_vals.shape )
             self.reward_vars = np.reshape( np.asarray([ est[1] for est in estimates ]), self.X_vals.shape )
@@ -177,7 +173,7 @@ class GPUCBBandit(object):
         else:
             self.pulls_ax_cb.update_bruteforce( pap )
         self.pulls_ax.plot( pull_x[0:-1], pull_y[0:-1], 'k.', markersize=10, mec='w' )
-        self.pulls_ax.plot( pull_x[-1], pull_y[-1], 'kx', markersize=20, mew=4 )
+        self.pulls_ax.plot( pull_x[-1], pull_y[-1], 'k.', markersize=40, mec='w' )
         self.pulls_ax.set_title('Estimated mean reward')
         self.pulls_fig.canvas.draw()
         
@@ -188,7 +184,7 @@ class GPUCBBandit(object):
         else:
             self.vars_ax_cb.update_bruteforce( pap )
         self.vars_ax.plot( pull_x[0:-1], pull_y[0:-1], 'k.', markersize=10, mec='w' )
-        self.vars_ax.plot( pull_x[-1], pull_y[-1], 'kx', markersize=20, mew=4 )
+        self.vars_ax.plot( pull_x[-1], pull_y[-1], 'k.', markersize=40, mec='w' )
         self.vars_ax.set_title('Mean reward estimate SD')
         self.vars_fig.canvas.draw()
 

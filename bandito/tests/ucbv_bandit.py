@@ -46,9 +46,9 @@ class UCBVBandit(object):
         self.out_log.write('Init arms: %d\n' % num_arms)
         self.out_log.write('Num rounds: %d\n' % self.num_rounds)
 
-        self.arm_lower_lims = np.array(rospy.get_param('~arm_lower_limits'))
-        self.arm_upper_lims = np.array(rospy.get_param('~arm_upper_limits'))
-        if len( self.arm_lower_lims ) != len( self.arm_upper_lims ):
+        self.param_lower_lims = np.array(rospy.get_param('~param_lower_limits'))
+        self.param_upper_lims = np.array(rospy.get_param('~param_upper_limits'))
+        if len( self.param_lower_lims ) != len( self.param_upper_lims ):
             raise ValueError( 'Lower and upper limits must have save length.' )
         self.arm_proposal = DiscreteArmProposal()
         for i in range( num_arms ):
@@ -74,7 +74,7 @@ class UCBVBandit(object):
 
     def add_arm( self ):
         arm = tuple( [ random.uniform(low,upp) for (low,upp) 
-                     in izip( self.arm_lower_lims, self.arm_upper_lims ) ] )
+                     in izip( self.param_lower_lims, self.param_upper_lims ) ] )
         self.arm_proposal.add_arm( arm )
         msg = 'Arm: %s\n' % str(arm)
         rospy.loginfo( msg )
@@ -94,14 +94,15 @@ class UCBVBandit(object):
         while not rospy.is_shutdown() and self.round_num < self.num_rounds:
             arm = self.bandit.ask()
             # TODO Arm adding logic
+            arm_ind = self.arm_proposal.get_arm_ind( arm )
 
-            rospy.loginfo( 'Round %d Evaluating arm %s' % (self.round_num,str(arm)) )
+            rospy.loginfo( 'Round %d Evaluating arm %s' % (self.round_num, arm_ind ) )
             reward = self.evaluate_input( arm )
             rospy.loginfo( 'Arm returned reward %f' % reward )
             self.bandit.tell( arm, reward )
             
             self.out_log.write( 'Round: %d Arm: %s Reward: %f\n' % 
-                                (self.round_num, str(arm), reward) )
+                                (self.round_num, arm_ind, reward) )
             self.out_log.flush()
             self.round_num += 1
         self.out_log.close()
