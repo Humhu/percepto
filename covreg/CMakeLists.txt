@@ -69,7 +69,6 @@ catkin_package(
 include_directories( include )
 
 add_library( covreg
-	src/AdaptiveCovarianceEstimator.cpp
 	src/ClipOptimizer.cpp
 	src/CovarianceEstimator.cpp
 	src/CovarianceManager.cpp
