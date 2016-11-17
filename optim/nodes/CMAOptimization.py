@@ -2,12 +2,12 @@
 
 import rospy, sys, cma
 import numpy as np
-import cPickle as pickle
-from threading import Lock
+#import cPickle as pickle
+import pickle
 from percepto_msgs.srv import GetCritique, GetCritiqueRequest, GetCritiqueResponse
 from collections import namedtuple
 
-def get_optional_param( self, ros_key, ref ):
+def get_optional_param( ros_key, ref ):
     if rospy.has_param( ros_key ):
         ref = rospy.get_param( ros_key )
 
@@ -59,14 +59,6 @@ class CMAOptimizer:
 
     def __init__( self ):
 
-        self.lock = Lock()
-
-        # I/O initialization
-        self.output_path = rospy.get_param( '~output_path' )
-        self.output_log = open( self.output_path, 'wb' )
-        if self.output_log is None:
-            raise RuntimeError( 'Could not open output log at path: ' + self.output_path )
-
         # Specify either input dimension and assume zero mean, or full mean
         if rospy.has_param( '~input_dimension' ):
             in_dim = rospy.get_param( '~input_dimension' )
@@ -75,11 +67,11 @@ class CMAOptimizer:
             init_mean = rospy.get_param( '~initial_mean' )
         init_stds = rospy.get_param( '~initial_std_dev', 1.0 )
 
+        cma_options = cma.CMAOptions()
         lower = float( rospy.get_param( '~input_lower_bound', '-Inf' ) )
         upper = float( rospy.get_param( '~input_upper_bound', 'Inf' ) )
         cma_options['bounds'] = [lower, upper]
 
-        cma_options = cma.CMAOptions()
         get_optional_param( ros_key='~random_seed', ref=cma_options['seed'] )
         get_optional_param( ros_key='~population_size', ref=cma_options['popsize'] )
         
@@ -97,59 +89,54 @@ class CMAOptimizer:
         cma_options['verb_disp'] = 1
         cma_options['verb_plot'] = 1
 
+        self.prog_path = rospy.get_param( '~progress_path', None )
+
         self.cma_optimizer = cma.CMAEvolutionStrategy( init_mean, init_stds, cma_options )
-        
-    def __del__( self ):
-        if self.output_log is not None:
-            self.output_log.close()
 
-    def PauseExecution( self ):
-        """Pause execution and save state to a file.
-        """
-        rospy.loginfo('Pausing execution and saving state to ' + self.output_path )
-        with self.lock:
-            pickle.dump( self.exec_state, self.output_log )
+        # Initialize state
+        self.rounds = []
+        self.iter_counter = 0
 
-    def Resume( self, eval_cb ):
+    def Save( self ):
+        if self.prog_path is None:
+            return
+        rospy.loginfo( 'Saving progress at %s...', self.prog_path )
+        out = open( self.prog_path, 'wb' )
+        pickle.dump( self, out )
+        out.close()
+
+    def Resume( self, eval_cb, out_log ):
         """Resumes execution from the current state.
         """
         while not self.cma_optimizer.stop():
 
-            if self.current_inputs is None:
-                self.current_inputs = self.cma_optimizer.ask()
-                self.current_outputs = []
-
+            current_inputs = self.cma_optimizer.ask()
+            current_outputs = []
             # Evaluate all inputs requested by CMA
-            while len( self.current_outputs ) < len( self.current_inputs ):
-                input_ind = len( self.current_outputs )
-                curr_inval = self.current_inputs[ input_ind ]
+            for ind,inval in enumerate(current_inputs):
                 rospy.loginfo( 'Iteration %d input %d/%d', self.iter_counter,
-                                                           input_ind,
-                                                           len( self.current_inputs ) )
+                                                           ind,
+                                                           len( current_inputs ) )
+                curr_outval = evaluate_input( proxy=eval_cb, inval=inval )
+                current_outputs.append( curr_outval )
 
-                with self.lock:
-                    curr_outval = evaluate_input( proxy=eval_cb, inval=curr_inval )
-                    self.current_outputs.append( curr_outval )
+            # CMA feedback and visualization
+            self.cma_optimizer.tell( current_inputs, current_outputs )
+            self.cma_optimizer.logger.add()
+            self.cma_optimizer.disp()
+            cma.show()
+            self.cma_optimizer.logger.plot()
 
-            with self.lock:
-                # CMA feedback and visualization
-                self.cma_optimizer.tell( inputs, outputs )
-                self.cma_optimizer.logger.add()
-                self.cma_optimizer.disp()
-                cma.show()
-                self.cma_optimizer.logger.plot()
-
-                # Record iteration data
-                self.rounds.append( [ self.iter_counter, 
-                                      self.current_inputs, 
-                                      self.current_outputs ] )
-
-                # Reset state for next iteration
-                self.current_inputs = None
-                self.iter_counter += 1
+            # Record iteration data
+            self.rounds.append( [ self.iter_counter, 
+                                  current_inputs, 
+                                  current_outputs ] )
+            self.iter_counter += 1
+            self.Save();
 
         rospy.loginfo( 'Execution completed!' )
-        pickle.dump( self.output_log, self.rounds )
+        pickle.dump( self.rounds, out_log )
+        out_log.close()
 
 def evaluate_input( proxy, inval ):
     """Query the optimization function.
@@ -170,11 +157,12 @@ def evaluate_input( proxy, inval ):
     req = GetCritiqueRequest()
     req.input = inval
 
-    with self.lock:
-        try:
-            res = proxy.call( req )
-        except rospy.ServiceException:
-            raise RuntimeError( 'Could not evaluate item: ' + PrintArray( inval ) )
+    try:
+        print 'Calling service...'
+        res = proxy.call( req )
+        print 'Finished call'
+    except rospy.ServiceException:
+        raise RuntimeError( 'Could not evaluate item: ' + PrintArray( inval ) )
     
     # Critique is a reward so we have to negate it to get a cost
     cost = -res.critique
@@ -187,17 +175,14 @@ if __name__ == '__main__':
     rospy.init_node( 'cma_cma_optimizer' )
 
     # See if we're resuming
-    if rospy.has_param( '~resume_data_path' ):
-        data_path = rospy.get_param( '~resume_data_path' )
+    if rospy.has_param( '~load_path' ):
+        data_path = rospy.get_param( '~load_path' )
         data_log = open( data_path, 'rb' )
-        rospy.loginfo( 'Found resume data at %s...', data_path )
+        rospy.loginfo( 'Found load data at %s...', data_path )
         cmaopt = pickle.load( data_log )
     else:
         rospy.loginfo( 'No resume data specified. Starting new optimization...' )
         cmaopt = CMAOptimizer()
-
-    # Register callback so that the optimizer can save progress
-    rospy.on_shutdown( cmaopt.PauseExecution )
 
     # Create interface to optimization problem
     critique_topic = rospy.get_param( '~critic_service' )
@@ -206,4 +191,10 @@ if __name__ == '__main__':
     rospy.loginfo( 'Connected to service %s.', critique_topic )
     critique_proxy = rospy.ServiceProxy( critique_topic, GetCritique, True )
 
-    cmaopt.Resume( critique_proxy )
+    # Open output file
+    output_path = rospy.get_param( '~output_path' )
+    output_log = open( output_path, 'wb' )
+    rospy.loginfo( 'Opened output log at %s', output_path )
+    
+    # Register callback so that the optimizer can save progress
+    cmaopt.Resume( eval_cb=critique_proxy, out_log=output_log )
