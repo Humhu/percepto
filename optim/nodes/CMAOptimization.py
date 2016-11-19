@@ -87,7 +87,7 @@ class CMAOptimizer:
 
         # TODO Make an option
         cma_options['verb_disp'] = 1
-        cma_options['verb_plot'] = 1
+        cma_options['verb_plot'] = 0 # NOTE Fails to pickle!
 
         self.prog_path = rospy.get_param( '~progress_path', None )
 
@@ -124,8 +124,8 @@ class CMAOptimizer:
             self.cma_optimizer.tell( current_inputs, current_outputs )
             self.cma_optimizer.logger.add()
             self.cma_optimizer.disp()
-            cma.show()
-            self.cma_optimizer.logger.plot()
+            #cma.show()
+            #self.cma_optimizer.logger.plot()
 
             # Record iteration data
             self.rounds.append( [ self.iter_counter, 
@@ -138,7 +138,7 @@ class CMAOptimizer:
         pickle.dump( self.rounds, out_log )
         out_log.close()
 
-def evaluate_input( proxy, inval ):
+def evaluate_input( proxy, inval, num_retries=1 ):
     """Query the optimization function.
 
     Parameters
@@ -157,12 +157,12 @@ def evaluate_input( proxy, inval ):
     req = GetCritiqueRequest()
     req.input = inval
 
-    try:
-        print 'Calling service...'
-        res = proxy.call( req )
-        print 'Finished call'
-    except rospy.ServiceException:
-        raise RuntimeError( 'Could not evaluate item: ' + PrintArray( inval ) )
+    for i in range(num_retries+1):
+        try:
+            res = proxy.call( req )
+            break
+        except rospy.ServiceException:
+            rospy.logerror( 'Could not evaluate item: ' + numpy.array_str( inval ) )
     
     # Critique is a reward so we have to negate it to get a cost
     cost = -res.critique
