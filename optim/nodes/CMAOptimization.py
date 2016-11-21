@@ -7,10 +7,6 @@ import pickle
 from percepto_msgs.srv import GetCritique, GetCritiqueRequest, GetCritiqueResponse
 from collections import namedtuple
 
-def get_optional_param( ros_key, ref ):
-    if rospy.has_param( ros_key ):
-        ref = rospy.get_param( ros_key )
-
 class CMAOptimizer:
     """Covariance Matrix Adaptation (CMA) evolution strategy cma_optimizer. 
 
@@ -72,8 +68,10 @@ class CMAOptimizer:
         upper = float( rospy.get_param( '~input_upper_bound', 'Inf' ) )
         cma_options['bounds'] = [lower, upper]
 
-        get_optional_param( ros_key='~random_seed', ref=cma_options['seed'] )
-        get_optional_param( ros_key='~population_size', ref=cma_options['popsize'] )
+        if rospy.has_param( '~random_seed' ):
+            cma_options['seed'] = rospy.get_param( '~random_seed' )
+        if rospy.has_param( '~population_size' ):
+            cma_options['popsize'] = rospy.get_param( '~population_size' )
         
         diag_only = rospy.get_param( '~diagonal_only', False )
         if diag_only:
@@ -162,7 +160,7 @@ def evaluate_input( proxy, inval, num_retries=1 ):
             res = proxy.call( req )
             break
         except rospy.ServiceException:
-            rospy.logerror( 'Could not evaluate item: ' + numpy.array_str( inval ) )
+            rospy.logerr( 'Could not evaluate item: ' + numpy.array_str( inval ) )
     
     # Critique is a reward so we have to negate it to get a cost
     cost = -res.critique
