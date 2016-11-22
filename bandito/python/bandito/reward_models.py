@@ -7,7 +7,7 @@ import numpy as np
 from collections import deque
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel
-from gp_extras.kernels import HeteroscedasticKernel
+#from gp_extras.kernels import HeteroscedasticKernel
 
 class RewardModel(object):
     """
