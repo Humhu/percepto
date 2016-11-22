@@ -110,13 +110,15 @@ class CMAOptimizer:
 
             current_inputs = self.cma_optimizer.ask()
             current_outputs = []
+            current_feedbacks = []
             # Evaluate all inputs requested by CMA
             for ind,inval in enumerate(current_inputs):
                 rospy.loginfo( 'Iteration %d input %d/%d', self.iter_counter,
                                                            ind,
                                                            len( current_inputs ) )
-                curr_outval = evaluate_input( proxy=eval_cb, inval=inval )
+                (curr_outval, curr_feedback) = evaluate_input( proxy=eval_cb, inval=inval )
                 current_outputs.append( curr_outval )
+                current_feedbacks.append( curr_feedback )
 
             # CMA feedback and visualization
             self.cma_optimizer.tell( current_inputs, current_outputs )
@@ -128,7 +130,8 @@ class CMAOptimizer:
             # Record iteration data
             self.rounds.append( [ self.iter_counter, 
                                   current_inputs, 
-                                  current_outputs ] )
+                                  current_outputs,
+                                  current_feedbacks ] )
             self.iter_counter += 1
             self.Save();
 
@@ -151,6 +154,8 @@ def evaluate_input( proxy, inval, num_retries=1 ):
     ------
     cost : numeric
         The cost of the input values
+    feedback : list
+        List of feedback
     """
     req = GetCritiqueRequest()
     req.input = inval
@@ -164,10 +169,11 @@ def evaluate_input( proxy, inval, num_retries=1 ):
     
     # Critique is a reward so we have to negate it to get a cost
     cost = -res.critique
-    rospy.loginfo( 'Evaluated input: %s output: %f', 
+    rospy.loginfo( 'Evaluated input: %s\noutput: %f\n feedback: %s', 
                    np.array_str( inval, max_line_width=sys.maxint ),
-                   cost )
-    return cost
+                   cost,
+                   str( res.feedback ) )
+    return (cost, res.feedback)
 
 if __name__ == '__main__':
     rospy.init_node( 'cma_cma_optimizer' )
