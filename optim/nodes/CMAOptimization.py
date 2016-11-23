@@ -165,7 +165,7 @@ def evaluate_input( proxy, inval, num_retries=1 ):
             res = proxy.call( req )
             break
         except rospy.ServiceException:
-            rospy.logerr( 'Could not evaluate item: ' + numpy.array_str( inval ) )
+            rospy.logerr( 'Could not evaluate item: ' + np.array_str( inval ) )
     
     # Critique is a reward so we have to negate it to get a cost
     cost = -res.critique
