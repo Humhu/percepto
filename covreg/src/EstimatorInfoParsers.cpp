@@ -1,5 +1,5 @@
 #include "covreg/EstimatorInfoParsers.h"
-#include "argus_utils/utils/YamlUtils.h"
+#include "argus_utils/utils/ParamUtils.h"
 #include "argus_utils/utils/MatrixUtils.h"
 #include <fstream>
 
@@ -13,8 +13,8 @@ template <>
 bool ParseInfo<CovarianceEstimatorInfo>( const YAML::Node& yaml,
                                          CovarianceEstimatorInfo& info )
 {
-	bool ret = GetYamlField( yaml, "parameters", info.parameters )
-	        && GetYamlField( yaml, "source_name", info.source_name );
+	bool ret = GetParam( yaml, "parameters", info.parameters )
+	        && GetParam( yaml, "source_name", info.source_name );
 	return ret;
 }
 
