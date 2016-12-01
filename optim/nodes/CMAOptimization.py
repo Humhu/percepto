@@ -88,6 +88,7 @@ class CMAOptimizer:
         cma_options['verb_plot'] = 0 # NOTE Fails to pickle!
 
         self.prog_path = rospy.get_param( '~progress_path', None )
+        self.out_path = rospy.get_param( '~output_path' )
 
         self.cma_optimizer = cma.CMAEvolutionStrategy( init_mean, init_stds, cma_options )
 
@@ -96,14 +97,18 @@ class CMAOptimizer:
         self.iter_counter = 0
 
     def Save( self ):
-        if self.prog_path is None:
-            return
-        rospy.loginfo( 'Saving progress at %s...', self.prog_path )
-        out = open( self.prog_path, 'wb' )
-        pickle.dump( self, out )
+        if self.prog_path is not None:
+            rospy.loginfo( 'Saving progress at %s...', self.prog_path )
+            prog = open( self.prog_path, 'wb' )
+            pickle.dump( self, prog )
+            prog.close()
+
+        rospy.loginfo( 'Saving output at %s...', self.out_path )
+        out = open( self.out_path, 'wb' )
+        pickle.dump( self.rounds, out )
         out.close()
 
-    def Resume( self, eval_cb, out_log ):
+    def Resume( self, eval_cb ):
         """Resumes execution from the current state.
         """
         while not self.cma_optimizer.stop():
@@ -136,8 +141,7 @@ class CMAOptimizer:
             self.Save();
 
         rospy.loginfo( 'Execution completed!' )
-        pickle.dump( self.rounds, out_log )
-        out_log.close()
+        self.Save()
 
 def evaluate_input( proxy, inval, num_retries=1 ):
     """Query the optimization function.
@@ -195,10 +199,5 @@ if __name__ == '__main__':
     rospy.loginfo( 'Connected to service %s.', critique_topic )
     critique_proxy = rospy.ServiceProxy( critique_topic, GetCritique, True )
 
-    # Open output file
-    output_path = rospy.get_param( '~output_path' )
-    output_log = open( output_path, 'wb' )
-    rospy.loginfo( 'Opened output log at %s', output_path )
-    
     # Register callback so that the optimizer can save progress
-    cmaopt.Resume( eval_cb=critique_proxy, out_log=output_log )
+    cmaopt.Resume( eval_cb=critique_proxy )
