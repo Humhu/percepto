@@ -81,7 +81,9 @@ class CMAOptimizer:
         cma_options['maxfevals'] = float( rospy.get_param( '~convergence/max_evaluations', float('Inf') ) )
         cma_options['maxiter'] = float( rospy.get_param( '~convergence/max_iterations', float('Inf') ) )
         cma_options['tolfun'] = float( rospy.get_param( '~convergence/output_change', -float('Inf') ) )
+        cma_options['tolfunhist'] = float( rospy.get_param( '~convergence/output_history_change', -float('Inf') ) )
         cma_options['tolx'] = float( rospy.get_param( '~convergence/input_change', -float('Inf') ) )
+        cma_options['tolstagnation'] = int( rospy.get_param( '~convergence/stagnation_iters', float('Inf') ) )
 
         # TODO Make an option
         cma_options['verb_disp'] = 1
@@ -96,7 +98,7 @@ class CMAOptimizer:
         self.rounds = []
         self.iter_counter = 0
 
-    def Save( self ):
+    def Save( self, status ):
         if self.prog_path is not None:
             rospy.loginfo( 'Saving progress at %s...', self.prog_path )
             prog = open( self.prog_path, 'wb' )
@@ -105,7 +107,7 @@ class CMAOptimizer:
 
         rospy.loginfo( 'Saving output at %s...', self.out_path )
         out = open( self.out_path, 'wb' )
-        pickle.dump( self.rounds, out )
+        pickle.dump( (status, self.rounds), out )
         out.close()
 
     def Resume( self, eval_cb ):
@@ -138,10 +140,10 @@ class CMAOptimizer:
                                   current_outputs,
                                   current_feedbacks ] )
             self.iter_counter += 1
-            self.Save();
+            self.Save( status='in_progress' );
 
         rospy.loginfo( 'Execution completed!' )
-        self.Save()
+        self.Save( status=self.cma_optimizer.stop() )
 
 def evaluate_input( proxy, inval, num_retries=1 ):
     """Query the optimization function.
