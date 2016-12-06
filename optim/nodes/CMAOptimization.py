@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
+import dill
+import pickle
+#import cPickle as pickle
 import rospy, sys, cma
 import numpy as np
-#import cPickle as pickle
-import pickle
 from percepto_msgs.srv import GetCritique, GetCritiqueRequest, GetCritiqueResponse
-from collections import namedtuple
 
 class CMAOptimizer:
     """Covariance Matrix Adaptation (CMA) evolution strategy cma_optimizer. 
@@ -56,11 +56,12 @@ class CMAOptimizer:
     def __init__( self ):
 
         # Specify either input dimension and assume zero mean, or full mean
+        init_mean = rospy.get_param( '~initial_mean', 0.0 )
         if rospy.has_param( '~input_dimension' ):
             in_dim = rospy.get_param( '~input_dimension' )
-            init_mean = np.zeros( in_dim )
+            init_mean = init_mean * np.ones( in_dim )
         else:
-            init_mean = rospy.get_param( '~initial_mean' )
+            init_mean = np.array( init_mean )
         init_stds = rospy.get_param( '~initial_std_dev', 1.0 )
 
         cma_options = cma.CMAOptions()
@@ -80,10 +81,9 @@ class CMAOptimizer:
         # Set convergence criteria
         cma_options['maxfevals'] = float( rospy.get_param( '~convergence/max_evaluations', float('Inf') ) )
         cma_options['maxiter'] = float( rospy.get_param( '~convergence/max_iterations', float('Inf') ) )
-        cma_options['tolfun'] = float( rospy.get_param( '~convergence/output_change', -float('Inf') ) )
-        cma_options['tolfunhist'] = float( rospy.get_param( '~convergence/output_history_change', -float('Inf') ) )
-        cma_options['tolx'] = float( rospy.get_param( '~convergence/input_change', -float('Inf') ) )
-        cma_options['tolstagnation'] = int( rospy.get_param( '~convergence/stagnation_iters', float('Inf') ) )
+        cma_options['tolfun'] = float( rospy.get_param( '~convergence/output_tolerance', -float('Inf') ) )
+        cma_options['tolfunhist'] = float( rospy.get_param( '~convergence/output_history_tolerance', -float('Inf') ) )
+        cma_options['tolx'] = float( rospy.get_param( '~convergence/input_tolerance', -float('Inf') ) )
 
         # TODO Make an option
         cma_options['verb_disp'] = 1
@@ -113,7 +113,7 @@ class CMAOptimizer:
     def Resume( self, eval_cb ):
         """Resumes execution from the current state.
         """
-        while not self.cma_optimizer.stop():
+        while not rospy.is_shutdown() and not self.cma_optimizer.stop():
 
             current_inputs = self.cma_optimizer.ask()
             current_outputs = []
@@ -123,7 +123,7 @@ class CMAOptimizer:
                 rospy.loginfo( 'Iteration %d input %d/%d', self.iter_counter,
                                                            ind,
                                                            len( current_inputs ) )
-                (curr_outval, curr_feedback) = evaluate_input( proxy=eval_cb, inval=inval )
+                (curr_outval, curr_feedback) = eval_cb( inval )
                 current_outputs.append( curr_outval )
                 current_feedbacks.append( curr_feedback )
 
@@ -182,7 +182,7 @@ def evaluate_input( proxy, inval, num_retries=1 ):
     return (cost, res.feedback)
 
 if __name__ == '__main__':
-    rospy.init_node( 'cma_cma_optimizer' )
+    rospy.init_node( 'cma_optimizer' )
 
     # See if we're resuming
     if rospy.has_param( '~load_path' ):
@@ -200,6 +200,7 @@ if __name__ == '__main__':
     rospy.wait_for_service( critique_topic )
     rospy.loginfo( 'Connected to service %s.', critique_topic )
     critique_proxy = rospy.ServiceProxy( critique_topic, GetCritique, True )
+    eval_cb = lambda x : evaluate_input( critique_proxy, x )
 
     # Register callback so that the optimizer can save progress
-    cmaopt.Resume( eval_cb=critique_proxy )
+    cmaopt.Resume( eval_cb=eval_cb )

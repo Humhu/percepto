@@ -1,0 +1,42 @@
+<launch>
+
+    <node pkg="bandito" type="bandit_tester.py" name="test_problem" output="screen">
+        <rosparam>
+            query_time: 0.1
+        </rosparam>
+    </node>
+
+    <node pkg="optim" type="CrossEntropyOptimization.py" name="test_optimizer" output="screen">
+        <rosparam>
+            critic_service: test_problem/get_critique
+
+            random_seed: 1
+
+            input_dimension: 2
+            initial_mean: 0
+            initial_std_dev: 0.5
+            input_upper_bound: 1
+            input_lower_bound: -1
+
+            population_size: 15
+            elite_size: 5
+
+            inflation_scale: 1.1
+            inflation_offset: 0.025
+            inflation_decay_rate: 0.1
+
+            diagonal_only: true
+            elite_lifespan: 5
+
+            convergence:
+                input_tolerance: 0.001
+                output_tolerance: 0.001
+                output_tolerance_iterations: 10
+
+            <!-- load_path: /home/humphreh/Documents/test_prog.pkl -->
+            progress_path: /home/humphreh/Documents/test_prog.pkl
+            output_path: /home/humphreh/Documents/test_out.pkl
+        </rosparam>
+    </node>
+
+</launch>
