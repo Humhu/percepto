@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 import dill
-import rospy, random, pickle
+import cPickle as pickle
+import rospy, random
 import numpy as np
 from itertools import izip
 
@@ -18,7 +19,7 @@ class UCBVBandit(object):
     """
 
     def __init__( self ):
-        
+    
         # Seed RNG if specified
         seed = rospy.get_param('~random_seed', None)
         if seed is None:
