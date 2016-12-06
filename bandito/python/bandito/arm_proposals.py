@@ -74,11 +74,14 @@ class DiscreteArmProposal(ArmProposal):
             return self.arms
         return random.sample( population=self.arms, k=num_arms )
 
-    def get_arm_ind( self, arm ):
+    def get_arm_by_ind( self, arm ):
         """
         Returns the arm index, if it is in the set.
         """
         return self.arms.index( arm )
+
+    def get_arms( self ):
+        return self.arms
 
 class UniformArmProposal(ArmProposal):
     """
