@@ -1,6 +1,6 @@
 #! /usr/bin/env python
 import dill
-import cPickle as pickle
+import pickle
 import rospy, random
 import numpy as np
 from itertools import izip

@@ -127,7 +127,10 @@ class CrossEntropyOptimizer:
             current_inputs = self.ask()
             current_outputs = []
             current_round = []
-            for x in current_inputs:
+            for (ind,x) in enumerate(current_inputs):
+                rospy.loginfo('Iteration %d input %d/%d', self.iter_counter,
+                                                          ind,
+                                                          len( current_inputs) )
                 (reward, feedback) = eval_cb( x )
                 current_round.append( (x,reward,feedback) )
                 current_outputs.append(reward)
@@ -212,7 +215,7 @@ def evaluate_input( proxy, inval, num_retries=1 ):
             rospy.logerr( 'Could not evaluate item: ' + np.array_str( inval ) )
     
     reward = res.critique
-    rospy.loginfo( 'Evaluated input: %s\noutput: %f\n feedback: %s', 
+    rospy.loginfo( 'Evaluated input: %s\noutput: %f\nfeedback: %s', 
                    np.array_str( inval, max_line_width=sys.maxint ),
                    reward,
                    str( res.feedback ) )
