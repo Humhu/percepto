@@ -21,7 +21,6 @@
             population_size: 15
 
             diagonal_only: true
-            elite_lifespan: 5
 
             convergence:
                 input_tolerance: 0.001
