@@ -158,7 +158,7 @@ class CrossEntropyOptimizer:
 
             # Apply offsets
             # Both the offset and the scale decay towards 0 and 1, respectively, over root t
-            inflation_factor = math.exp( -(self.iter_counter - 1) * self.inflation_decay_rate );
+            inflation_factor = math.exp( -self.iter_counter * self.inflation_decay_rate );
             scale = 1.0 + inflation_factor * ( self.inflation_scale - 1.0 )
             offset = inflation_factor * self.inflation_offset
 
