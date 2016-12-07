@@ -33,6 +33,16 @@ class ArmProposal(object):
     def __radd__(self, b):
         return JointArmProposal( b, self )
 
+class NullArmProposal(ArmProposal):
+    """
+    Dummy arm proposal
+    """
+    def __init__( self ):
+        pass
+
+    def propose_arms( self, num_arms=None ):
+        return None
+
 class JointArmProposal(ArmProposal):
     """
     Combines proposals from two proposal classes.

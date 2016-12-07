@@ -4,14 +4,13 @@ import numpy as np
 from itertools import izip, product
 
 from bandito.bandits import BanditInterface
-from bandito.arm_proposals import *
+from bandito.arm_proposals import NullArmProposal
 from bandito.arm_selectors import *
 from bandito.reward_models import GaussianProcessRewardModel
 
 from percepto_msgs.srv import GetCritique, GetCritiqueRequest
 
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel, WhiteKernel
-from gp_extras.kernels import HeteroscedasticKernel
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -30,7 +29,7 @@ class GPUCBBandit(object):
             rospy.loginfo('No random seed specified. Using system time.')
         else:
             rospy.loginfo('Initializing with random seed: ' + str(seed) )
-        random.seed( seed )
+            random.seed( seed )
 
         self.num_rounds = rospy.get_param('~num_rounds', float('Inf'))
         
@@ -48,22 +47,11 @@ class GPUCBBandit(object):
         self.out_log.write('Exploration beta: %f\n' % beta)
         self.out_log.write('Num rounds: %d\n' % self.num_rounds)
 
-        self.arm_lower_lims = np.array(rospy.get_param('~arm_lower_limits'))
-        self.arm_upper_lims = np.array(rospy.get_param('~arm_upper_limits'))
-        if len( self.arm_lower_lims ) != len( self.arm_upper_lims ):
-            raise ValueError( 'Lower and upper limits must have save length.' )
-        self.arm_proposal = UniformArmProposal( bounds=zip(self.arm_lower_lims, self.arm_upper_lims),
-                                                num_arms=1 )
-
-        # TODO Think about how to choose the prototypes in higher dims...
-        x_values = np.linspace( self.arm_lower_lims[0], self.arm_upper_lims[0], 3 )
-        y_values = np.linspace( self.arm_lower_lims[1], self.arm_upper_lims[1], 3 )
-        X,Y = np.meshgrid( x_values, y_values )
-        prototypes = np.asarray( zip( X.flat, Y.flat ) )        
+        x_lower = rospy.get_param('~arm_lower_limit')
+        x_upper = rospy.get_param('~arm_upper_limit')
+        arm_dim = rospy.get_param( '~arm_dim' )
 
         self.white = WhiteKernel( 1.0, (1e-3, 1e3) )
-        # self.hetero = HeteroscedasticKernel( prototypes, sigma_2=1.0, sigma_2_bounds=(1e-3, 1e3),
-        #                                     gamma=1.0, gamma_bounds="fixed" )
         self.kernel_base = ConstantKernel( 1.0, (1e-3, 1e1) ) * RBF( 1.0, (1e-3, 1e-1) )
         self.kernel_noisy = self.kernel_base  + self.white
         self.reward_model = GaussianProcessRewardModel( kernel = self.kernel_noisy,
@@ -74,15 +62,14 @@ class GPUCBBandit(object):
 
         self.round_num = 1
         self.pulls = []
-        # self.beta_func = lambda : UCBSelector.finite_beta_func( self.round_num, num_arms, 1e-2 )
-        # self.arm_selector = UCBSelector( beta_func = self.beta_func,
-        #                                 reward_model = self.reward_model )
+
         self.arm_selector = CMAOptimizerSelector( reward_model = self.reward_model,
-                                                  dim = len( self.arm_lower_lims ),
+                                                  dim = arm_dim,
                                                   beta = beta,
-                                                  bounds = [-1, 1],
+                                                  bounds = [ x_lower, x_upper ],
                                                   popsize = 30 )
 
+        self.arm_proposal = NullArmProposal()
         self.bandit = BanditInterface( arm_proposal = self.arm_proposal,
                                        reward_model = self.reward_model,
                                        arm_selector = self.arm_selector )
@@ -92,34 +79,34 @@ class GPUCBBandit(object):
         rospy.wait_for_service( critique_topic )
         self.critique_service = rospy.ServiceProxy( critique_topic, GetCritique, True )
 
-        # Plotting
-        if len( self.arm_lower_lims ) == 2:
-            self.plot_update_period = rospy.get_param('~plot_update_period', 1)
-            self.plot_enable = True
+        # # Plotting
+        # if len( self.x_lower_lim ) == 2:
+        #     self.plot_update_period = rospy.get_param('~plot_update_period', 1)
+        #     self.plot_enable = True
 
-            self.reward_fig = plt.figure()
-            self.reward_ax = self.reward_fig.gca(projection='3d')
-            self.reward_fig.show()
+        #     self.reward_fig = plt.figure()
+        #     self.reward_ax = self.reward_fig.gca(projection='3d')
+        #     self.reward_fig.show()
 
-            self.pulls_fig = plt.figure()
-            self.pulls_ax = self.pulls_fig.gca()
-            self.pulls_ax.set_aspect('equal')
-            self.pulls_ax_cb = None
-            self.pulls_fig.show()
+        #     self.pulls_fig = plt.figure()
+        #     self.pulls_ax = self.pulls_fig.gca()
+        #     self.pulls_ax.set_aspect('equal')
+        #     self.pulls_ax_cb = None
+        #     self.pulls_fig.show()
 
-            self.vars_fig = plt.figure()
-            self.vars_ax = self.vars_fig.gca()
-            self.vars_ax.set_aspect('equal')
-            self.vars_ax_cb = None
-            self.vars_fig.show()
+        #     self.vars_fig = plt.figure()
+        #     self.vars_ax = self.vars_fig.gca()
+        #     self.vars_ax.set_aspect('equal')
+        #     self.vars_ax_cb = None
+        #     self.vars_fig.show()
 
-            x_values = np.linspace( self.arm_lower_lims[0], self.arm_upper_lims[0], 20 )
-            y_values = np.linspace( self.arm_lower_lims[1], self.arm_upper_lims[1], 20 )
-            self.X_vals, self.Y_vals = np.meshgrid( x_values, y_values )
-            self.plot_arms = zip( self.X_vals.flat, self.Y_vals.flat )
-        else:
-            print 'Can only plot reward function for 2D arms.'
-            self.plot_enable = False
+        #     x_values = np.linspace( self.x_lower_lim[0], self.x_upper_lim[0], 20 )
+        #     y_values = np.linspace( self.x_lower_lim[1], self.x_upper_lim[1], 20 )
+        #     self.X_vals, self.Y_vals = np.meshgrid( x_values, y_values )
+        #     self.plot_arms = zip( self.X_vals.flat, self.Y_vals.flat )
+        # else:
+        #     print 'Can only plot reward function for 2D arms.'
+        #     self.plot_enable = False
 
     def evaluate_input( self, inval ):
         req = GetCritiqueRequest()
@@ -134,7 +121,6 @@ class GPUCBBandit(object):
     def execute( self ):
         while not rospy.is_shutdown() and self.round_num < self.num_rounds:
             arm = self.bandit.ask()
-            # TODO Arm adding logic
 
             rospy.loginfo( 'Round %d Evaluating arm %s' % (self.round_num,str(arm)) )
             reward = self.evaluate_input( arm )
@@ -147,8 +133,8 @@ class GPUCBBandit(object):
             self.round_num += 1
 
             print 'Theta: ' + str(self.reward_model.gp.theta)
-            if self.plot_enable:
-                self.update_plot()
+            # if self.plot_enable:
+                # self.update_plot()
 
         self.out_log.close()
 
