@@ -48,7 +48,7 @@ class BanditInterface:
             raise TypeError( 'arm_selector must implement ArmSelector.' )
         self.arm_selector = arm_selector
 
-    def ask( self ):
+    def ask( self, **kwargs ):
         """
         Request the next arm index to pull.
 
@@ -58,7 +58,7 @@ class BanditInterface:
             An arm from arm_proposal to pull.
         """
         arms = self.arm_proposal.propose_arms()
-        return self.arm_selector.select_arm( arms )
+        return self.arm_selector.select_arm( arms, **kwargs )
 
     def tell( self, arm, reward ):
         """

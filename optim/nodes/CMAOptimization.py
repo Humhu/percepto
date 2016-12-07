@@ -145,37 +145,19 @@ class CMAOptimizer:
         rospy.loginfo( 'Execution completed!' )
         self.Save( status=self.cma_optimizer.stop() )
 
-def evaluate_input( proxy, inval, num_retries=1 ):
-    """Query the optimization function.
+def evaluate_input( proxy, inval):
 
-    Parameters
-    ----------
-    proxy : rospy.ServiceProxy
-        Service proxy to call the GetCritique service for evaluation.
-
-    inval : numeric array
-        Input values to evaluate.
-
-    Return
-    ------
-    cost : numeric
-        The cost of the input values
-    feedback : list
-        List of feedback
-    """
     req = GetCritiqueRequest()
     req.input = inval
 
-    for i in range(num_retries+1):
-        try:
-            res = proxy.call( req )
-            break
-        except rospy.ServiceException:
-            rospy.logerr( 'Could not evaluate item: ' + np.array_str( inval ) )
+    try:
+        res = proxy.call( req )
+    except rospy.ServiceException:
+        rospy.logerr( 'Could not evaluate item: ' + np.array_str( inval ) )
     
     # Critique is a reward so we have to negate it to get a cost
     cost = -res.critique
-    rospy.loginfo( 'Evaluated input: %s\noutput: %f\n feedback: %s', 
+    rospy.loginfo( 'Evaluated input: %s\noutput: %f\nfeedback: %s', 
                    np.array_str( inval, max_line_width=sys.maxint ),
                    cost,
                    str( res.feedback ) )

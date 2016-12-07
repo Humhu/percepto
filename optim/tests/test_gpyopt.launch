@@ -1,0 +1,31 @@
+<launch>
+
+    <node pkg="bandito" type="bandit_tester.py" name="test_problem" output="screen">
+        <rosparam>
+            query_time: 0.1
+        </rosparam>
+    </node>
+
+    <node pkg="optim" type="GPyOptimization.py" name="test_optimizer" output="screen">
+        <rosparam>
+            critic_service: test_problem/get_critique
+
+            random_seed: 1
+
+            input_dimension: 2
+            input_upper_bound: 1
+            input_lower_bound: -1
+
+            optimizer:
+                initial_samples: 30
+
+            convergence:
+                input_tolerance: 0.001
+
+            <!-- load_path: /home/humphreh/Documents/test_prog.pkl -->
+            progress_path: /home/humphreh/Documents/test_prog.pkl
+            output_path: /home/humphreh/Documents/test_out.pkl
+        </rosparam>
+    </node>
+
+</launch>

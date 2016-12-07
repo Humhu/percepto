@@ -1,0 +1,38 @@
+<launch>
+
+    <node pkg="bandito" type="bandit_tester.py" name="test_problem" output="screen">
+        <rosparam>
+            query_time: 0.1
+        </rosparam>
+    </node>
+
+    <node pkg="optim" type="BayesianOptimization.py" name="test_optimizer" output="screen" required="true">
+        <rosparam>
+            critic_service: test_problem/get_critique
+
+            random_seed: 1
+
+            input_dimension: 2
+            input_upper_bound: 1
+            input_lower_bound: -1
+
+            optimizer:
+                initial_samples: 30
+                hyperparam_refine_ll_delta: 3.0
+                init_noise: 1.0
+                noise_bounds: [1e-2, 1e2]
+                init_scale: 1.0
+                scale_bounds: [1e-2, 1e2]
+                init_kernel_length: 1.0
+                kernel_length_bounds: [1e-2, 1e2]
+
+            convergence:
+                max_evaluations: 500
+
+            load_path: /home/humphreh/Documents/test_prog.pkl
+            progress_path: /home/humphreh/Documents/test_prog.pkl
+            output_path: /home/humphreh/Documents/test_out.pkl
+        </rosparam>
+    </node>
+
+</launch>

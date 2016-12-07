@@ -116,15 +116,16 @@ class GPUCBBandit(object):
         except rospy.ServiceException:
             raise RuntimeError( 'Could not evaluate item: ' + str( inval ) )
         self.pulls.append( inval )
-        return res.critique
+        return res.critique, res.feedback
 
     def execute( self ):
         while not rospy.is_shutdown() and self.round_num < self.num_rounds:
             arm = self.bandit.ask()
 
             rospy.loginfo( 'Round %d Evaluating arm %s' % (self.round_num,str(arm)) )
-            reward = self.evaluate_input( arm )
-            rospy.loginfo( 'Arm returned reward %f' % reward )
+            reward, feedback = self.evaluate_input( arm )
+            rospy.loginfo( 'Arm returned reward: %f feedback: %s',
+                           reward, str(feedback) )
             self.bandit.tell( arm, reward )
             
             self.out_log.write( 'Round: %d Arm: %s Reward: %f\n' % 

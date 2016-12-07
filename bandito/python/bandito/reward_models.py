@@ -139,7 +139,8 @@ class GaussianProcessRewardModel(RewardModel):
     Refer to sklearn.gaussian_process.GaussianProcessRegressor's __init__
     """
 
-    def __init__( self, kernel, 
+    def __init__( self, 
+                  kernel, 
                   hyperparam_min_samples=100, 
                   hyperparam_batch_retries=20,
                   hyperparam_refine_ll_delta=1.0,
@@ -165,7 +166,11 @@ class GaussianProcessRewardModel(RewardModel):
         if self.hp_init:
             current_ll = self.gp.log_marginal_likelihood()
             print 'Last ll: %f current ll: %f' % (self.last_ll, current_ll)
-            if current_ll < self.last_ll - self.hp_refine_ll_delta:
+            
+            if current_ll > self.last_ll:
+                self.last_ll = current_ll
+
+            elif current_ll < self.last_ll - self.hp_refine_ll_delta:
                 print 'Delta ll exceeds threshold. Performing batch update...'
                 self.gp.batch_update( num_restarts=1 )
                 self.last_ll = self.gp.log_marginal_likelihood()

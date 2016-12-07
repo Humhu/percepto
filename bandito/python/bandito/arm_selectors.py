@@ -58,15 +58,15 @@ class CMAOptimizerSelector(ArmSelector):
     Selects arms by optimizing an acquisition function.
     """
 
-    def __init__( self, reward_model, dim, beta, **kwargs ):
+    def __init__( self, reward_model, dim, **kwargs ):
         self.reward_model = reward_model
         self.dim = dim
         self.init_guess = np.zeros( dim )
         self.init_cov = 0.3 * np.identity( dim )
-        self.beta = beta
         self.args = kwargs
 
-    def select_arm( self, arms ):
+    def select_arm( self, arms, beta ):
+        self.beta = beta
         es = cma.CMAEvolutionStrategy( self.init_guess, 1, self.args )
         es.optimize( self.criteria )
         return es.result()[0]
