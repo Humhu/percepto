@@ -156,6 +156,12 @@ class GaussianProcessRewardModel(RewardModel):
         self.hp_init = False
         self.last_ll = None
 
+    def batch_initialize( self, X, Y ):
+        self.gp.fit( X, Y, num_restarts = self.hp_batch_retries, 
+                     optimize_hyperparams= True )
+        self.last_ll = self.gp.log_marginal_likelihood()
+        self.hp_init = True
+
     def report_sample( self, arm, reward ):
         self.gp.add_data( arm, reward, incremental=True )
         
@@ -184,7 +190,7 @@ class GaussianProcessRewardModel(RewardModel):
         if arm.shape[0] > 1 or len(arm.shape) > 2:
             raise ValueError( 'Input should be 1D' )
         pred_mean, pred_cov = self.gp.predict( arm, return_cov=True )
-        pred_mean = pred_mean[0]
-        pred_cov = np.diag(pred_cov)[0]
+        pred_mean = pred_mean.flat[0]
+        pred_cov = pred_cov.flat[0]
         return (pred_mean, pred_cov)
 

@@ -44,77 +44,17 @@ class BayesianOptimizer:
 
         # Reward model and bandit
         init_samples = rospy.get_param( '~model/initial_samples', 30 )
-        hyper_ll_delta = rospy.get_param( '~model/hyperparam_refine_ll_delta', 3.0 )
-        hyper_refine_retries = rospy.get_param( '~model/hyperparam_refine_retries', 1 )
-        init_noise = rospy.get_param( '~model/init_noise', 1.0 )
-        noise_bounds = farr( rospy.get_param( '~model/noise_bounds', (1e-3, 1e3) ) )
-        init_scale = rospy.get_param( '~model/init_scale', 1.0 )
-        scale_bounds = farr( rospy.get_param( '~model/scale_bounds', (1e-3, 1e3) ) )
-        init_length = rospy.get_param( '~model/init_kernel_length', 1.0 )
-        length_bounds = farr( rospy.get_param( '~model/kernel_length_bounds', (1e-3, 1e3) ) )
-        nu = rospy.get_param( '~model/kernel_roughness', 1.5 )
-        if nu != 0.5 and nu != 1.5 and nu != 2.5 and nu != float('inf'):
-            rospy.logwarn( 'Note: kernel_roughness not set to 0.5, 1.5, 2.5, or inf results ' +\
-                           'in high computational cost!' )
+        self.input_dim = rospy.get_param( '~input_dimension' )
+        self.input_lower = rospy.get_param( '~input_lower_bound' )
+        self.input_upper = rospy.get_param( '~input_upper_bound' )
 
-        self.white = WhiteKernel( init_noise, noise_bounds )
-        self.kernel_base = ConstantKernel( init_scale, scale_bounds ) * \
-                           Matern( init_length, length_bounds, nu )
-        self.kernel_noisy = self.kernel_base  + self.white
-        rospy.loginfo( 'Using kernel: %s', str(self.kernel_noisy) )
-
-        self.model_logs = rospy.get_param( '~model/model_log_reward', False )
-        prior_mean = float( rospy.get_param( '~model/prior_mean', 0 ) )
-        if self.negative_rewards:
-            prior_mean = -prior_mean
-        if self.model_logs:
-            prior_mean = math.log( prior_mean )
-        print 'Initializing model with prior mean %f' % prior_mean
-
-        self.reward_model = GPRewardModel( kernel = self.kernel_noisy,
-                                           prior_mean = prior_mean,
-                                           kernel_noiseless = self.kernel_base,
-                                           hyperparam_min_samples = init_samples,
-                                           hyperparam_refine_ll_delta = hyper_ll_delta,
-                                           hyperparam_refine_retries = hyper_refine_retries )
-
-        input_dim = rospy.get_param( '~input_dimension' )
-        input_lower = rospy.get_param( '~input_lower_bound' )
-        input_upper = rospy.get_param( '~input_upper_bound' )
-
-        self.init_tests = np.random.uniform( low=input_lower, high=input_upper,
-                                             size=(init_samples, input_dim ) )
-        self.init_counter = 0
-
-        self.init_beta = rospy.get_param( '~model/init_beta', 1.0 )
-        self.beta_scale = rospy.get_param( '~model/beta_scale', 1.0 )
-
-        acq_tol = float( rospy.get_param( '~model/acquisition_tolerance' ) )
-        if self.mode == 'min' and not self.negative_rewards:
-            acq_mode = 'min'
-        elif self.mode == 'min' and self.negative_rewards:
-            acq_mode = 'max'
-        elif self.mode == 'max' and not self.negative_rewards:
-            acq_mode = 'max'
-        elif self.mode == 'max' and self.negative_rewards:
-            acq_mode = 'min'
-        else:
-            raise RuntimeError( 'Logic error in determining acquisition mode!' )
-        self.arm_selector = CMAOptimizerSelector( reward_model = self.reward_model,
-                                                  dim = input_dim,
-                                                  mode = acq_mode,
-                                                  bounds = [ input_lower, input_upper ],
-                                                  popsize = 30,
-                                                  tolfun = acq_tol,
-                                                  tolx = acq_tol,
-                                                  verbose= -9 )
-
-        self.arm_proposal = NullArmProposal()
-        self.bandit = BanditInterface( arm_proposal = self.arm_proposal,
-                                       reward_model = self.reward_model,
-                                       arm_selector = self.arm_selector )
+        self.init_tests = np.random.uniform( low=self.input_lower, high=self.input_upper,
+                                             size=(init_samples, self.input_dim ) )
+        self.init_Y = []
 
         # Convergence and state
+        self.init_beta = rospy.get_param( '~model/init_beta', 1.0 )
+        self.beta_scale = rospy.get_param( '~model/beta_scale', 1.0 )
         self.x_tol = float( rospy.get_param( '~convergence/input_tolerance', -float('inf') ) )
         self.max_evals = float( rospy.get_param( '~convergence/max_evaluations', float('inf') ) )
         self.evals = 0
@@ -145,14 +85,6 @@ class BayesianOptimizer:
             reward = -reward
         return (reward, feedback)
 
-    def update_model( self, x, y ):
-        if self.negative_rewards:
-           y = -y 
-        if self.model_logs:
-            y = math.log( y )
-        # NOTE The model always predicts positive reward values
-        self.bandit.tell( x, y )
-
     def predict_reward( self, x ):
         pred_y, pred_var = self.reward_model.query( x )
         pred_std = math.sqrt( pred_var )
@@ -167,22 +99,105 @@ class BayesianOptimizer:
             pred_bound = -pred_bound
         return pred_y, pred_bound
 
-    def execute( self, eval_cb ):
+    def model_to_raw( self, y ):
+        if self.model_logs:
+            y = math.exp( y )
+        if self.negative_rewards:
+            y = -y
+        return y
 
-        # TODO Initialize prior mean from data?
+    def raw_to_model( self, y ):
+        if self.negative_rewards:
+            y = -y 
+        if self.model_logs:
+            y = math.log( y )
+        return y
+
+    def initialize( self, eval_cb ):
         # Run initial tests 
-        while self.init_counter < len(self.init_tests):
+        while len( self.init_Y ) < len(self.init_tests):
             rospy.loginfo( 'Initial exploration %d/%d', 
-                           self.init_counter, 
+                           len( self.init_Y ), 
                            len(self.init_tests) )
-            x = self.init_tests[ self.init_counter ]
+            x = self.init_tests[ len( self.init_Y ) ]
             (reward, feedback) = eval_cb( x )
-            self.update_model( x, reward )
+            self.init_Y.append( [reward] )
             
             self.rounds.append( (x, reward, feedback ) )
-            self.evals += 1
-            self.init_counter += 1
             self.save( 'initializing' )
+
+        # Create optimizer
+        hyper_ll_delta = rospy.get_param( '~model/hyperparam_refine_ll_delta', 3.0 )
+        hyper_refine_retries = rospy.get_param( '~model/hyperparam_refine_retries', 1 )
+        init_noise = rospy.get_param( '~model/init_noise', 1.0 )
+        noise_bounds = farr( rospy.get_param( '~model/noise_bounds', (1e-3, 1e3) ) )
+        init_scale = rospy.get_param( '~model/init_scale', 1.0 )
+        scale_bounds = farr( rospy.get_param( '~model/scale_bounds', (1e-3, 1e3) ) )
+        init_length = rospy.get_param( '~model/init_kernel_length', 1.0 )
+        length_bounds = farr( rospy.get_param( '~model/kernel_length_bounds', (1e-3, 1e3) ) )
+        nu = rospy.get_param( '~model/kernel_roughness', 1.5 )
+        if nu != 0.5 and nu != 1.5 and nu != 2.5 and nu != float('inf'):
+            rospy.logwarn( 'Note: kernel_roughness not set to 0.5, 1.5, 2.5, or inf results ' +\
+                           'in high computational cost!' )
+
+        self.white = WhiteKernel( init_noise, noise_bounds )
+        self.kernel_base = ConstantKernel( init_scale, scale_bounds ) * \
+                           Matern( init_length, length_bounds, nu )
+        self.kernel_noisy = self.kernel_base  + self.white
+        rospy.loginfo( 'Using kernel: %s', str(self.kernel_noisy) )
+
+        self.model_logs = rospy.get_param( '~model/model_log_reward', False )
+        # prior_mean = float( rospy.get_param( '~model/prior_mean', 0 ) )
+        # if self.negative_rewards:
+        #     prior_mean = -prior_mean
+        # if self.model_logs:
+        #     prior_mean = math.log( prior_mean )
+        # print 'Initializing model with prior mean %f' % prior_mean
+        
+        normalize_y = rospy.get_param( '~model/normalize_output', False )
+        self.reward_model = GPRewardModel( kernel = self.kernel_noisy,
+                                           kernel_noiseless = self.kernel_base,
+                                           hyperparam_min_samples = len( self.init_tests ),
+                                           hyperparam_refine_ll_delta = hyper_ll_delta,
+                                           hyperparam_refine_retries = hyper_refine_retries,
+                                           normalize_y = normalize_y )
+
+        raw_mean = np.mean( self.init_Y )
+        self.init_Y = [ [self.raw_to_model( y[0] )] for y in self.init_Y ]
+        rospy.loginfo( 'Initial reward mean raw: %f model: %f', 
+                       raw_mean,
+                       np.mean( self.init_Y ) )
+        self.reward_model.batch_initialize( np.atleast_2d( self.init_tests ), 
+                                            np.atleast_2d( self.init_Y ) )
+
+        acq_tol = float( rospy.get_param( '~model/acquisition_tolerance' ) )
+        if self.mode == 'min' and not self.negative_rewards:
+            acq_mode = 'min'
+        elif self.mode == 'min' and self.negative_rewards:
+            acq_mode = 'max'
+        elif self.mode == 'max' and not self.negative_rewards:
+            acq_mode = 'max'
+        elif self.mode == 'max' and self.negative_rewards:
+            acq_mode = 'min'
+        else:
+            raise RuntimeError( 'Logic error in determining acquisition mode!' )
+        self.arm_selector = CMAOptimizerSelector( reward_model = self.reward_model,
+                                                  dim = self.input_dim,
+                                                  mode = acq_mode,
+                                                  bounds = [ self.input_lower, self.input_upper ],
+                                                  popsize = 30,
+                                                  tolfun = acq_tol,
+                                                  tolx = acq_tol,
+                                                  verbose= -9 )
+
+        self.arm_proposal = NullArmProposal()
+        self.bandit = BanditInterface( arm_proposal = self.arm_proposal,
+                                       reward_model = self.reward_model,
+                                       arm_selector = self.arm_selector )
+
+    def execute( self, eval_cb ):
+        if len( self.init_Y ) < len( self.init_tests ):
+            self.initialize( eval_cb )
 
         while not rospy.is_shutdown() and not self.is_done():
             beta = self.compute_beta()
@@ -198,7 +213,7 @@ class BayesianOptimizer:
 
             # Perform evaluation and give feedback
             (reward, feedback) = eval_cb( x )
-            self.update_model( x, reward )
+            self.bandit.tell( x, self.raw_to_model( reward ) )
 
             self.rounds.append( (x, reward, feedback ) )
             self.evals += 1
