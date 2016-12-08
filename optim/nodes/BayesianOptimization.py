@@ -2,7 +2,6 @@
 
 import dill
 import pickle
-import GPy, GPyOpt
 import rospy, sys, math
 import numpy as np
 from collections import deque
