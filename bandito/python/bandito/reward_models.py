@@ -176,6 +176,7 @@ class GaussianProcessRewardModel(RewardModel):
                 print 'Delta ll exceeds threshold. Performing batch update...'
                 self.gp.batch_update( num_restarts=self.hp_refine_retries )
                 self.last_ll = self.gp.log_marginal_likelihood()
+                print self.gp.kernel
 
     def query( self, arm ):
         # Required by the GP
