@@ -144,12 +144,14 @@ class GaussianProcessRewardModel(RewardModel):
                   hyperparam_min_samples=100, 
                   hyperparam_batch_retries=20,
                   hyperparam_refine_ll_delta=1.0,
+                  hyperparam_refine_retries=1,
                   hyperparam_max_samples=1000,
                   **kwargs ):
         self.gp = GaussianProcessRegressor( kernel=kernel, **kwargs )
         self.hp_min_samples = hyperparam_min_samples
         self.hp_batch_retries = hyperparam_batch_retries
         self.hp_refine_ll_delta = hyperparam_refine_ll_delta
+        self.hp_refine_retries = hyperparam_refine_retries
         self.hp_max_samples = hyperparam_max_samples
         self.hp_init = False
         self.last_ll = None
@@ -172,7 +174,7 @@ class GaussianProcessRewardModel(RewardModel):
 
             elif current_ll < self.last_ll - self.hp_refine_ll_delta:
                 print 'Delta ll exceeds threshold. Performing batch update...'
-                self.gp.batch_update( num_restarts=1 )
+                self.gp.batch_update( num_restarts=self.hp_refine_retries )
                 self.last_ll = self.gp.log_marginal_likelihood()
 
     def query( self, arm ):

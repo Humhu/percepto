@@ -85,9 +85,10 @@ class CMAOptimizer:
         cma_options['tolfunhist'] = float( rospy.get_param( '~convergence/output_history_tolerance', -float('Inf') ) )
         cma_options['tolx'] = float( rospy.get_param( '~convergence/input_tolerance', -float('Inf') ) )
 
-        # TODO Make an option
-        cma_options['verb_disp'] = 1
-        cma_options['verb_plot'] = 0 # NOTE Fails to pickle!
+        if not rospy.get_param( '~verbose' ):
+            cma_options['verbose'] = -9
+        #cma_options['verb_disp'] = 1
+        #cma_options['verb_plot'] = 0 # NOTE Fails to pickle!
 
         self.prog_path = rospy.get_param( '~progress_path', None )
         self.out_path = rospy.get_param( '~output_path' )
@@ -128,7 +129,8 @@ class CMAOptimizer:
                 current_feedbacks.append( curr_feedback )
 
             # CMA feedback and visualization
-            self.cma_optimizer.tell( current_inputs, current_outputs )
+            # cma performs minimization, so we have to report the negated rewards
+            self.cma_optimizer.tell( current_inputs, -np.array( current_outputs ) )
             self.cma_optimizer.logger.add()
             self.cma_optimizer.disp()
             #cma.show()
@@ -145,7 +147,7 @@ class CMAOptimizer:
         rospy.loginfo( 'Execution completed!' )
         self.Save( status=self.cma_optimizer.stop() )
 
-def evaluate_input( proxy, inval):
+def evaluate_input( proxy, inval ):
 
     req = GetCritiqueRequest()
     req.input = inval
@@ -155,13 +157,11 @@ def evaluate_input( proxy, inval):
     except rospy.ServiceException:
         rospy.logerr( 'Could not evaluate item: ' + np.array_str( inval ) )
     
-    # Critique is a reward so we have to negate it to get a cost
-    cost = -res.critique
     rospy.loginfo( 'Evaluated input: %s\noutput: %f\nfeedback: %s', 
                    np.array_str( inval, max_line_width=sys.maxint ),
-                   cost,
+                   res.critique,
                    str( res.feedback ) )
-    return (cost, res.feedback)
+    return (res.critique, res.feedback)
 
 if __name__ == '__main__':
     rospy.init_node( 'cma_optimizer' )

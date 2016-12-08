@@ -58,7 +58,10 @@ class CMAOptimizerSelector(ArmSelector):
     Selects arms by optimizing an acquisition function.
     """
 
-    def __init__( self, reward_model, dim, **kwargs ):
+    def __init__( self, reward_model, dim, mode, **kwargs ):
+        if mode != 'min' and mode != 'max':
+            raise ValueError( 'mode must be min or max!' )
+        self.mode = mode
         self.reward_model = reward_model
         self.dim = dim
         self.init_guess = np.zeros( dim )
@@ -73,8 +76,13 @@ class CMAOptimizerSelector(ArmSelector):
 
     def criteria( self, x ):
         u,v = self.reward_model.query( x )
-        # Since CMA performs a minimization
-        return -(u + self.beta * math.sqrt(v))
+        # crit is a lower bound estimate of the reward
+        crit = u - self.beta * math.sqrt(v)
+        if self.mode == 'min':
+            return crit
+        # Since cma is a minimizer, we have to negate to maximize
+        else: # self.mode == 'max'
+            return -crit
 
 class UCBVSelector(ArmSelector):
     """

@@ -15,6 +15,10 @@ class CrossEntropyOptimizer:
 
     def __init__( self ):
 
+        self.mode = rospy.get_param( '~mode' )
+        if self.mode != 'minimization' and self.mode != 'maximization':
+            raise ValueError( '~mode must be minimization or maximization' )
+
         # Seed RNG if specified
         seed = rospy.get_param('~random_seed', None)
         if seed is None:
@@ -146,11 +150,14 @@ class CrossEntropyOptimizer:
             for generation in self.rounds[-self.elite_lifespan:]:
                 live_population += generation
 
-            # Sort to find elites
-            # Note: we want the largest, python sort is default ascending order 
-            sort_key = lambda x : x[1]
 
-            live_population.sort( key=sort_key, reverse=True )
+            # Sort to find elites
+            # Note: python sort is default ascending order 
+            sort_key = lambda x : x[1]
+            if self.mode == 'minimization':
+                live_population.sort( key=sort_key, reverse=False )
+            else: # maximization
+                live_population.sort( key=sort_key, reverse=True )
             elite_inputs = [ sample[0] for sample in live_population[0:self.elite_size] ]
 
             elite_mean = np.mean( elite_inputs, axis=0 )
