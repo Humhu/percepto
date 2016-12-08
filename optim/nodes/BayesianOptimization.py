@@ -41,6 +41,8 @@ class BayesianOptimizer:
             rospy.loginfo( 'Initializing with random seed: ' + str(seed) )
             np.random.seed( seed )
 
+        self.save_period = rospy.get_param( '~save_period', 1 )
+
         # Reward model and bandit
         init_samples = rospy.get_param( '~model/initial_samples', 30 )
         hyper_ll_delta = rospy.get_param( '~model/hyperparam_refine_ll_delta', 3.0 )
@@ -154,8 +156,10 @@ class BayesianOptimizer:
 
     def predict_reward( self, x ):
         pred_y, pred_var = self.reward_model.query( x )
-        print 'mean: %f var: %f' %(pred_y, pred_var)
-        pred_bound = np.array( [ pred_y - pred_var, pred_y + pred_var ] )
+        pred_std = math.sqrt( pred_var )
+        rospy.loginfo( 'raw mean: %f std: %f', pred_y, pred_std )
+
+        pred_bound = np.array( [ pred_y - pred_std, pred_y + pred_std ] )
         if self.model_logs:
             pred_y = math.exp( pred_y )
             pred_bound = np.exp( pred_bound )
@@ -182,12 +186,14 @@ class BayesianOptimizer:
             self.save( 'initializing' )
 
         while not rospy.is_shutdown() and not self.is_done():
-            x = self.bandit.ask( beta = self.compute_beta() )
+            beta = self.compute_beta()
+            x = self.bandit.ask( beta = beta )
 
             # Report predictions
             pred_y, pred_bound = self.predict_reward( x )
-            rospy.loginfo( 'Evaluation %d with predicted value %f in %s', 
+            rospy.loginfo( 'Evaluation %d with beta %f and predicted value %f in %s', 
                            self.evals,
+                           beta,
                            pred_y,
                            np.array_str(pred_bound) )
 
@@ -199,14 +205,21 @@ class BayesianOptimizer:
             self.evals += 1
             self.save( 'in_progress' )
 
-        opt = self.bandit.ask( beta = 0 )
+        opt_x = self.bandit.ask( beta = 0 )
+        opt_mean, opt_bound = self.predict_reward( opt_x )
+        opt = (opt_x, opt_mean, opt_bound)
         crit = self.is_done()
-        rospy.loginfo( 'Completed with optima at: %s due to %s',
-                       np.array_str(opt), 
-                       str(crit) )
-        self.save( (crit, opt) )
+        rospy.loginfo( 'Completed due to %s\noptimal x: %s\n pred y: %f in %s',
+                       str(crit),
+                       np.array_str(opt_x), 
+                       opt_mean,
+                       str(opt_bound) )
+        self.save( opt )
 
     def save( self, status ):
+        if self.evals % self.save_period != 0:
+            return
+
         if self.prog_path is not None:
             rospy.loginfo( 'Saving progress at %s...', self.prog_path )
             prog = open( self.prog_path, 'wb' )
