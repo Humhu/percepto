@@ -3,18 +3,14 @@
 namespace percepto
 {
 
-KalmanFilterPredictModule::KalmanFilterPredictModule( percepto::Source<VectorType>* xPrev,
-	                                                  percepto::Source<MatrixType>* sprev,
+KalmanFilterPredictModule::KalmanFilterPredictModule( percepto::Source<MatrixType>* sprev,
 	                                                  const CovarianceEstimator::ModuleType& q,
 	                                                  // const MatrixType& q,
 	                                                  double dt,
 	                                                  const VectorType& input,
 	                                                  const MatrixType& F )
-: Q( q ), xprev( xPrev ), Sprev( sprev )
+: Q( q ), Sprev( sprev )
 {
-	xminus.SetSource( xprev );
-	xminus.SetTransform( F );
-
 	qInput.SetOutput( input );
 	Q.SetSource( &qInput );
 	// Q.SetOutput( q );
@@ -24,12 +20,6 @@ KalmanFilterPredictModule::KalmanFilterPredictModule( percepto::Source<VectorTyp
 	FSFT.SetTransform( F );
 	Sminus.SetSourceA( &Qdt );
 	Sminus.SetSourceB( &FSFT );
-}
-
-percepto::Source<VectorType>*
-KalmanFilterPredictModule::GetTailState()
-{
-	return &xminus;
 }
 
 percepto::Source<MatrixType>* 
@@ -69,28 +59,18 @@ std::ostream& operator<<( std::ostream& os, const KalmanFilterPredictModule& mod
 	return os;
 }
 
-KalmanFilterUpdateModule::KalmanFilterUpdateModule( percepto::Source<VectorType>* xPrev,
-	                                                percepto::Source<MatrixType>* sPrev,
+KalmanFilterUpdateModule::KalmanFilterUpdateModule( percepto::Source<MatrixType>* sPrev,
 	                                                const CovarianceEstimator::ModuleType& r,
 	                                                const VectorType& input,
-	                                                const VectorType& obs,
 	                                                const MatrixType& H,
 	                                                const VectorType& inno )
-: R( r ), xprev( xPrev ), Sprev( sPrev ), active( false )
+: R( r ), Sprev( sPrev ), active( false )
 {
-	HTVinvv.SetTransform( H.transpose() );
-
-	y.SetOutput( obs );
-	ypred.SetSource( xPrev );
-	ypred.SetTransform( H );
-	innov.SetPlusSource( &y );
-	innov.SetMinusSource( &ypred );
+	innov.SetOutput( inno );
 
 	R.SetSource( &rInput );
 	// Rinv.SetSource( &rInput );
 	// R.SetSource( &Rinv );
-
-	// finnov.SetOutput( inno );
 
 	rInput.SetOutput( input );
 	// R.SetSource( &rInput );
@@ -111,14 +91,6 @@ void KalmanFilterUpdateModule::Activate()
 {
 	if( !active )
 	{
-		Vinvv.SetMatSource( &Vinv );
-		Vinvv.SetVecSource( &innov );
-		HTVinvv.SetSource( &Vinvv );
-		xcorr.SetMatSource( Sprev );
-		xcorr.SetVecSource( &HTVinvv );
-		xplus.SetSourceA( xprev );
-		xplus.SetSourceB( &xcorr );
-
 		HTVinvH.SetSource( &Vinv );
 		SHTVinvH.SetLeftSource( Sprev );
 		SHTVinvH.SetRightSource( &HTVinvH );
@@ -128,16 +100,6 @@ void KalmanFilterUpdateModule::Activate()
 		Splus.SetPlusSource( Sprev );
 		active = true;
 	}
-}
-
-percepto::Source<VectorType>*
-KalmanFilterUpdateModule::GetTailState()
-{
-	if( !active )
-	{
-		Activate();
-	}
-	return &xplus;
 }
 
 percepto::Source<MatrixType>* 
@@ -153,14 +115,12 @@ KalmanFilterUpdateModule::GetTailCov()
 void KalmanFilterUpdateModule::Invalidate() 
 { 
 	rInput.Invalidate(); 
-	y.Invalidate();
 	// finnov.Invalidate();
 }
 
 void KalmanFilterUpdateModule::Foreprop() 
 { 
 	rInput.Foreprop(); 
-	y.Foreprop();
 	// finnov.Foreprop();
 }
 

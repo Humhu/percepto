@@ -3,39 +3,16 @@
 namespace percepto
 {
 
-KalmanFilterEpisode::KalmanFilterEpisode( const VectorType& xinit,
-                                          const MatrixType& Sinit,
+KalmanFilterEpisode::KalmanFilterEpisode( const MatrixType& Sinit,
                                           const ros::Time& t )
 : tailType( CLIP_TYPE_NONE ), startTime( t )
 {
-	initState.SetOutput( xinit );
 	initCov.SetOutput( Sinit );
 	sumInnoLL.AddSource( &offsetInnoLL );
 	offsetInnoLL.SetOutput( 0.0 );
 }
 
 size_t KalmanFilterEpisode::NumUpdates() const { return updates.size(); }
-
-percepto::Source<VectorType>* 
-KalmanFilterEpisode::GetTailState()
-{
-	if( tailType == CLIP_TYPE_NONE )
-	{
-		return &initState;
-	}
-	else if( tailType == CLIP_TYPE_PREDICT )
-	{
-		return predicts.back().GetTailState();
-	}
-	else if( tailType == CLIP_TYPE_UPDATE )
-	{
-		return updates.back().GetTailState();
-	}
-	else
-	{
-		throw std::runtime_error( "Invalid tail type." );
-	}
-}
 
 percepto::Source<MatrixType>* 
 KalmanFilterEpisode::GetTailCov()
@@ -69,7 +46,6 @@ percepto::Source<double>* KalmanFilterEpisode::GetLL()
 void KalmanFilterEpisode::Invalidate()
 {
 	// NOTE Shouldn't have to invalidate initCov, but to be safe...
-	initState.Invalidate();
 	initCov.Invalidate();
 	offsetInnoLL.Invalidate();
 	BOOST_FOREACH( KalmanFilterPredictModule& pred, predicts )
@@ -84,7 +60,6 @@ void KalmanFilterEpisode::Invalidate()
 
 void KalmanFilterEpisode::Foreprop()
 {
-	initState.Foreprop();
 	initCov.Foreprop();
 	offsetInnoLL.Foreprop();
 

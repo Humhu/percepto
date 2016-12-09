@@ -77,7 +77,7 @@ bool InnovationClipOptimizer::AddUpdate( const UpdateInfo& info,
 	{
 		std::pair<PredictInfo,VectorType>& item = _predBuffer.front();
 		PredictInfo& info = item.first;
-		_problem.EmplaceEpisode( info.xpre, info.Spre, stamp );
+		_problem.EmplaceEpisode( info.prior_state_cov, stamp );
 		_currentEpisode = _problem.GetCurrentEpisode();
 	}
 
@@ -86,25 +86,22 @@ bool InnovationClipOptimizer::AddUpdate( const UpdateInfo& info,
 		std::pair<PredictInfo,VectorType>& item = _predBuffer[i];
 		PredictInfo& info = item.first;
 		VectorType& input = item.second;
-		_currentEpisode->EmplacePredict( _currentEpisode->GetTailState(),
-		                                _currentEpisode->GetTailCov(), 
+		_currentEpisode->EmplacePredict( _currentEpisode->GetTailCov(), 
 		                                _transReg.GetModule(),
 		                                // info.Q / info.dt,
-		                                info.dt,
+		                                info.step_dt,
 		                                input,
-		                                info.F );
+		                                info.trans_jacobian );
 	}
 	_predBuffer.clear();
 
 	_currentEpisode->EmplaceUpdate( name,
 	                               scale,
-	                               _currentEpisode->GetTailState(),
 	                               _currentEpisode->GetTailCov(), 
 	                               est.GetModule(),
 	                               input,
-	                               info.observation,
-	                               info.H ,
-	                               info.innovation );
+	                               info.obs_jacobian,
+	                               info.prior_obs_error );
 	return true;
 }
 
