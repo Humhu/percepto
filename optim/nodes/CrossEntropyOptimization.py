@@ -177,7 +177,7 @@ class CrossEntropyOptimizer:
 
             # Print updates
             new_stds = np.sqrt( np.diag( self.cov ) )
-            rospy.loginfo( 'Iteration: %d Inflation factor:%f\nMean: %s\nSD:%s' % 
+            rospy.loginfo( 'Iteration: %d Inflation factor: %f\nMean: %s\nSD:%s' % 
                            ( self.iter_counter,
                              inflation_factor,
                              np.array_str( self.mean, max_line_width=sys.maxint ),
