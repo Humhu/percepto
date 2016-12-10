@@ -1,13 +1,19 @@
 # Service to request critiques
+#
+# Request Fields
+# --------------
+# time            : The time at which the critique should occur (may not be used)
+# input           : The input for which the critique is requested (may not be used)
+#
+# Response Fields
+# ---------------
+# critique        : The critique evaluation (reward by convention)
+# feedback_values : Optional extra information values
+# feedback_names  : Descriptions for extra information values in corresponding order
 
-# The time at which feedback is requested
 time time
-
-# Alternatively, the input for which feedback is requested
 float64[] input
-
 ---
-
-# The feedback at the requested times
 float64 critique
-float64[] feedback
+string[] feedback_names
+float64[] feedback_values

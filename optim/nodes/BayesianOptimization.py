@@ -5,6 +5,8 @@ import pickle
 import rospy, sys, math
 import numpy as np
 from collections import deque
+from itertools import izip
+
 from percepto_msgs.srv import GetCritique, GetCritiqueRequest, GetCritiqueResponse
 
 from sklearn.gaussian_process.kernels import Matern, ConstantKernel, WhiteKernel
@@ -255,11 +257,16 @@ def evaluate_input( proxy, inval):
     except rospy.ServiceException:
         rospy.logerr( 'Could not evaluate item: ' + np.array_str( inval ) )
     
-    rospy.loginfo( 'Evaluated input: %s\noutput: %f\nfeedback: %s', 
-                   np.array_str( inval, max_line_width=sys.maxint ),
-                   res.critique,
-                   str( res.feedback ) )
-    return (res.critique, res.feedback)
+    msg = 'Evaluated input: %s\n' % np.array_str( inval, max_line_width=sys.maxint )
+    msg += 'Critique: %f\n' % res.critique
+    msg += 'Feedback:\n'
+    feedback = {}
+    for (name,value) in izip( res.feedback_names, res.feedback_values ):
+        msg += '\t%s: %f\n' % ( name, value )
+        feedback[name] = value
+    rospy.loginfo( msg )
+
+    return (res.critique, feedback)
 
 if __name__ == '__main__':
 
