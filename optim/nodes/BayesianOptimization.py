@@ -64,6 +64,7 @@ class BayesianOptimizer:
 
         self.rounds = []
         self.bests = []
+        self.bandit = None
         self.prog_path = rospy.get_param( '~progress_path', None )
         self.out_path = rospy.get_param( '~output_path' )
 
@@ -165,9 +166,10 @@ class BayesianOptimizer:
                                            hyperparam_refine_retries = hyper_refine_retries,
                                            normalize_y = normalize_y )
 
-        raw_mean = np.mean( self.init_Y )
+        # NOTE Using median now!
+        raw_mean = np.median( self.init_Y )
         self.init_Y = [ [self.raw_to_model( y[0] )] for y in self.init_Y ]
-        rospy.loginfo( 'Initial reward mean raw: %f model: %f', 
+        rospy.loginfo( 'Initial reward median raw: %f model: %f', 
                        raw_mean,
                        np.mean( self.init_Y ) )
         self.reward_model.batch_initialize( np.atleast_2d( self.init_tests ), 
@@ -243,10 +245,11 @@ class BayesianOptimizer:
             pickle.dump( self, prog )
             prog.close()
 
-        rospy.loginfo( 'Finding current best...' )
-        opt_x = self.bandit.ask( beta = 0 )
-        opt_mean, opt_bound = self.predict_reward( opt_x )
-        self.bests.append( (self.evals, opt_x, opt_mean, opt_bound) )
+        if self.bandit is not None:
+            rospy.loginfo( 'Finding current best...' )
+            opt_x = self.bandit.ask( beta = 0 )
+            opt_mean, opt_bound = self.predict_reward( opt_x )
+            self.bests.append( (self.evals, opt_x, opt_mean, opt_bound) )
 
         rospy.loginfo( 'Saving output at %s...', self.out_path )
         out = open( self.out_path, 'wb' )
