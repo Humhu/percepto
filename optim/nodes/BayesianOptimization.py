@@ -256,6 +256,7 @@ def evaluate_input( proxy, inval):
         res = proxy.call( req )
     except rospy.ServiceException:
         rospy.logerr( 'Could not evaluate item: ' + np.array_str( inval ) )
+        return None
     
     msg = 'Evaluated input: %s\n' % np.array_str( inval, max_line_width=sys.maxint )
     msg += 'Critique: %f\n' % res.critique

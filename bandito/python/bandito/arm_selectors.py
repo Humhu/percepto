@@ -76,13 +76,11 @@ class CMAOptimizerSelector(ArmSelector):
 
     def criteria( self, x ):
         u,v = self.reward_model.query( x )
-        # crit is a lower bound estimate of the reward
-        crit = u - self.beta * math.sqrt(v)
         if self.mode == 'min':
-            return crit
+            return u - self.beta * math.sqrt(v)
         # Since cma is a minimizer, we have to negate to maximize
         else: # self.mode == 'max'
-            return -crit
+            return -u - self.beta * math.sqrt(v)
 
 class UCBVSelector(ArmSelector):
     """
