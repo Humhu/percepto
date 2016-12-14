@@ -63,6 +63,7 @@ class BayesianOptimizer:
         self.last_inputs = deque()
 
         self.rounds = []
+        self.bests = []
         self.prog_path = rospy.get_param( '~progress_path', None )
         self.out_path = rospy.get_param( '~output_path' )
 
@@ -242,9 +243,14 @@ class BayesianOptimizer:
             pickle.dump( self, prog )
             prog.close()
 
+        rospy.loginfo( 'Finding current best...' )
+        opt_x = self.bandit.ask( beta = 0 )
+        opt_mean, opt_bound = self.predict_reward( opt_x )
+        self.bests.append( (self.evals, opt_x, opt_mean, opt_bound) )
+
         rospy.loginfo( 'Saving output at %s...', self.out_path )
         out = open( self.out_path, 'wb' )
-        pickle.dump( (status, self.rounds), out )
+        pickle.dump( (status, self.rounds, self.bests), out )
         out.close()
 
 def evaluate_input( proxy, inval):
