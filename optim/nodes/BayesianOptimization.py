@@ -28,9 +28,13 @@ class BayesianOptimizer:
 
     def __init__( self ):
 
-        self.mode = rospy.get_param( '~optimization_mode' )
-        if self.mode != 'min' and self.mode != 'max':
-            raise ValueError( '~optimization_mode must be min or max!' )
+        self.opt_mode = rospy.get_param( '~optimization_mode' )
+        if self.opt_mode not in ['min', 'max']:
+            raise ValueError( '~opt_mode must be min or max!' )
+
+        self.init_mode = rospy.get_param( '~initialization_mode', 'mean' )
+        if self.init_mode not in ['median', 'mean']:
+            raise ValueError( '~init_mode must be mean or median!' )
 
         self.negative_rewards = rospy.get_param( '~negative_rewards', False )
 
@@ -49,6 +53,10 @@ class BayesianOptimizer:
         self.input_dim = rospy.get_param( '~input_dimension' )
         self.input_lower = rospy.get_param( '~input_lower_bound' )
         self.input_upper = rospy.get_param( '~input_upper_bound' )
+
+        self.output_lower = float( rospy.get_param( '~output_lower_bound', '-inf' ) )
+        self.output_upper = float( rospy.get_param( '~output_upper_bound', 'inf' ) )
+        self.max_output_retries = rospy.get_param( '~max_output_retries', 10 )
 
         self.init_tests = np.random.uniform( low=self.input_lower, high=self.input_upper,
                                              size=(init_samples, self.input_dim ) )
@@ -83,10 +91,11 @@ class BayesianOptimizer:
         # TODO Different beta schedules
         return self.init_beta / math.sqrt( self.beta_scale * (self.evals + 1) )
 
-    def objective( self, eval_cb, x ):
-        (reward, feedback) = eval_cb( x )
-        if self.negative_rewards:
-            reward = -reward
+    def evaluate( self, eval_cb, x ):
+        for i in range( self.max_output_retries ):
+            (reward, feedback) = eval_cb( x )
+            if reward >= self.output_lower and reward <= self.output_upper:
+                break
         return (reward, feedback)
 
     def predict_reward( self, x ):
@@ -95,7 +104,7 @@ class BayesianOptimizer:
         rospy.loginfo( 'raw mean: %f std: %f', pred_y, pred_std )
 
         pred_bound = np.array( [ pred_y - pred_std, pred_y + pred_std ] )
-        if self.model_logs:
+        if self.opt_model_logs:
             pred_y = math.exp( pred_y )
             pred_bound = np.exp( pred_bound )
         if self.negative_rewards:
@@ -104,7 +113,7 @@ class BayesianOptimizer:
         return pred_y, pred_bound
 
     def model_to_raw( self, y ):
-        if self.model_logs:
+        if self.opt_model_logs:
             y = math.exp( y )
         if self.negative_rewards:
             y = -y
@@ -113,7 +122,7 @@ class BayesianOptimizer:
     def raw_to_model( self, y ):
         if self.negative_rewards:
             y = -y 
-        if self.model_logs:
+        if self.opt_model_logs:
             y = math.log( y )
         return y
 
@@ -124,7 +133,7 @@ class BayesianOptimizer:
                            len( self.init_Y ), 
                            len(self.init_tests) )
             x = self.init_tests[ len( self.init_Y ) ]
-            (reward, feedback) = eval_cb( x )
+            (reward, feedback) = self.evaluate( eval_cb, x )
             self.init_Y.append( [reward] )
             
             self.rounds.append( (x, reward, feedback ) )
@@ -150,11 +159,11 @@ class BayesianOptimizer:
         self.kernel_noisy = self.kernel_base  + self.white
         rospy.loginfo( 'Using kernel: %s', str(self.kernel_noisy) )
 
-        self.model_logs = rospy.get_param( '~model/model_log_reward', False )
+        self.opt_model_logs = rospy.get_param( '~model/model_log_reward', False )
         # prior_mean = float( rospy.get_param( '~model/prior_mean', 0 ) )
         # if self.negative_rewards:
         #     prior_mean = -prior_mean
-        # if self.model_logs:
+        # if self.opt_model_logs:
         #     prior_mean = math.log( prior_mean )
         # print 'Initializing model with prior mean %f' % prior_mean
         
@@ -166,23 +175,28 @@ class BayesianOptimizer:
                                            hyperparam_refine_retries = hyper_refine_retries,
                                            normalize_y = normalize_y )
 
-        # NOTE Using median now!
-        raw_mean = np.median( self.init_Y )
+        raw_Y = self.init_Y
         self.init_Y = [ [self.raw_to_model( y[0] )] for y in self.init_Y ]
-        rospy.loginfo( 'Initial reward median raw: %f model: %f', 
-                       raw_mean,
-                       np.mean( self.init_Y ) )
+        if self.init_mode == 'mean':
+            raw_mean = np.mean( raw_Y )
+            model_mean = np.mean( self.init_Y )
+        elif self.init_mode == 'median':
+            raw_mean = np.median( raw_Y )
+            model_mean = np.median( self.init_Y )
+            
+        rospy.loginfo( 'Initial reward %s raw: %f model: %f', 
+                       self.init_mode, raw_mean, model_mean )
         self.reward_model.batch_initialize( np.atleast_2d( self.init_tests ), 
                                             np.atleast_2d( self.init_Y ) )
 
         acq_tol = float( rospy.get_param( '~model/acquisition_tolerance' ) )
-        if self.mode == 'min' and not self.negative_rewards:
+        if self.opt_mode == 'min' and not self.negative_rewards:
             acq_mode = 'min'
-        elif self.mode == 'min' and self.negative_rewards:
+        elif self.opt_mode == 'min' and self.negative_rewards:
             acq_mode = 'max'
-        elif self.mode == 'max' and not self.negative_rewards:
+        elif self.opt_mode == 'max' and not self.negative_rewards:
             acq_mode = 'max'
-        elif self.mode == 'max' and self.negative_rewards:
+        elif self.opt_mode == 'max' and self.negative_rewards:
             acq_mode = 'min'
         else:
             raise RuntimeError( 'Logic error in determining acquisition mode!' )
@@ -217,7 +231,7 @@ class BayesianOptimizer:
                            np.array_str(pred_bound) )
 
             # Perform evaluation and give feedback
-            (reward, feedback) = eval_cb( x )
+            (reward, feedback) = self.evaluate( eval_cb, x )
             self.bandit.tell( x, self.raw_to_model( reward ) )
 
             self.rounds.append( (x, reward, feedback ) )
