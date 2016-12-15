@@ -49,7 +49,6 @@ class BayesianOptimizer:
         self.save_period = rospy.get_param( '~save_period', 1 )
 
         # Reward model and bandit
-        init_samples = rospy.get_param( '~model/initial_samples', 30 )
         self.input_dim = rospy.get_param( '~input_dimension' )
         self.input_lower = rospy.get_param( '~input_lower_bound' )
         self.input_upper = rospy.get_param( '~input_upper_bound' )
@@ -58,8 +57,9 @@ class BayesianOptimizer:
         self.output_upper = float( rospy.get_param( '~output_upper_bound', 'inf' ) )
         self.max_output_retries = rospy.get_param( '~max_output_retries', 10 )
 
+        init_samples = rospy.get_param( '~model/initial_samples', 30 )
         self.init_tests = np.random.uniform( low=self.input_lower, high=self.input_upper,
-                                             size=(init_samples, self.input_dim ) )
+                                                      size=(init_samples, self.input_dim ) )
         self.init_Y = []
 
         # Convergence and state
@@ -154,8 +154,9 @@ class BayesianOptimizer:
                            'in high computational cost!' )
 
         self.white = WhiteKernel( init_noise, noise_bounds )
-        self.kernel_base = ConstantKernel( init_scale, scale_bounds ) * \
-                           Matern( init_length, length_bounds, nu )
+        # self.kernel_base = ConstantKernel( init_scale, scale_bounds ) * \
+        #                    Matern( init_length, length_bounds, nu )
+        self.kernel_base = Matern( init_length, length_bounds, nu )
         self.kernel_noisy = self.kernel_base  + self.white
         rospy.loginfo( 'Using kernel: %s', str(self.kernel_noisy) )
 

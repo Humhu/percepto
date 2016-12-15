@@ -170,6 +170,8 @@ class GaussianProcessRewardModel(RewardModel):
             self.gp.batch_update( num_restarts=self.hp_batch_retries )
             self.hp_init = True
             self.last_ll = self.gp.log_marginal_likelihood()
+            print self.gp.kernel
+            print self.gp.kernel.theta
 
         if self.hp_init:
             current_ll = self.gp.log_marginal_likelihood()
@@ -183,6 +185,7 @@ class GaussianProcessRewardModel(RewardModel):
                 self.gp.batch_update( num_restarts=self.hp_refine_retries )
                 self.last_ll = self.gp.log_marginal_likelihood()
                 print self.gp.kernel
+                print self.gp.kernel.theta
 
     def query( self, arm ):
         # Required by the GP
