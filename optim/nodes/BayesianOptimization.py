@@ -116,28 +116,28 @@ class BayesianOptimizer:
 
     def model_to_raw( self, y ):
         """Convert a model reward to a raw reward.
-        Order is: log, negate, scale.
+        Order is: scale, log, negate
         """
+        if self.normalize_scale:
+            y = y * self.raw_scale
         if self.opt_model_logs:
             y = math.exp( y )
         if self.negative_rewards:
             y = -y
-        if self.normalize_scale:
-            y = y * self.raw_scale
         return y
 
     def raw_to_model( self, y ):
         """Convert a raw reward to model reward.
-        Order is: scale, negate, log
+        Order is: negate, log, scale
         """
         if math.isnan( y ):
             y = self.constraint_value
-        if self.normalize_scale:
-            y = y / self.raw_scale
         if self.negative_rewards:
             y = -y 
         if self.opt_model_logs:
             y = math.log( y )
+        if self.normalize_scale:
+            y = y / self.raw_scale
         return y
 
     def initialize( self, eval_cb ):
@@ -180,7 +180,9 @@ class BayesianOptimizer:
         # Determine mean and scale
         raw_Y = [ y for y in self.init_Y if not np.isnan(y) ]
         self.constraint_value = min( raw_Y )
-        self.raw_scale = ( max( raw_Y ) - min( raw_Y ) ) * 0.5
+        self.raw_scale = 1
+        unscaled_Y = [ self.raw_to_model( y ) for y in raw_Y ]
+        self.raw_scale = ( max( unscaled_Y ) - min( unscaled_Y ) ) * 0.5
         rospy.loginfo( 'Constraint violations will be assigned raw value %f', self.constraint_value )
         rospy.loginfo( 'Raw value scale is %f', self.raw_scale )
 
