@@ -59,12 +59,13 @@ class BayesianOptimizer:
 
         init_samples = rospy.get_param( '~model/initial_samples', 30 )
         self.init_tests = np.random.uniform( low=self.input_lower, high=self.input_upper,
-                                                      size=(init_samples, self.input_dim ) )
+                                             size=(init_samples, self.input_dim ) )
         self.init_Y = []
 
         # Convergence and state
         self.init_beta = rospy.get_param( '~model/init_beta', 1.0 )
         self.beta_scale = rospy.get_param( '~model/beta_scale', 1.0 )
+
         self.x_tol = float( rospy.get_param( '~convergence/input_tolerance', -float('inf') ) )
         self.max_evals = float( rospy.get_param( '~convergence/max_evaluations', float('inf') ) )
         self.evals = 0
@@ -80,7 +81,6 @@ class BayesianOptimizer:
         if self.evals >= self.max_evals:
             return {'max_evaluations' : self.evals}
 
-        # TODO Something is up with np.linalg.norm...
         if len( self.rounds ) >= 2:
             delta_input = self.rounds[-1][0] - self.rounds[-2][0]
             if np.linalg.norm( delta_input ) < self.x_tol:
@@ -101,33 +101,39 @@ class BayesianOptimizer:
         return (reward, feedback)
 
     def predict_reward( self, x ):
-        pred_y, pred_var = self.reward_model.query( x )
-        pred_std = math.sqrt( pred_var )
-        rospy.loginfo( 'raw mean: %f std: %f', pred_y, pred_std )
-
-        randx = np.random.rand( x.shape[0] )
+        randx = np.random.uniform( low=self.input_lower, high=self.input_upper, size=x.shape )
         rpred_y, rpred_var = self.reward_model.query( randx ) 
-        rospy.loginfo( 'random x: %s mean: %f std: %f', np.array_str( randx ), rpred_y, rpred_var )
+        rospy.loginfo( 'random x: %s\n mean: %f std: %f', np.array_str( randx ), rpred_y, rpred_var )
 
-        pred_bound = np.array( [ pred_y - pred_std, pred_y + pred_std ] )
-        if self.opt_model_logs:
-            pred_y = math.exp( pred_y )
-            pred_bound = np.exp( pred_bound )
-        if self.negative_rewards:
-            pred_y = -pred_y
-            pred_bound = -pred_bound
-        return pred_y, pred_bound
+        raw_y, raw_var = self.reward_model.query( x )
+        raw_std = math.sqrt( raw_var )
+        pred_y = self.model_to_raw( raw_y )
+        extrema = [ self.model_to_raw( raw_y - raw_std ), self.model_to_raw( raw_y + raw_std ) ]
+        pred_lower = min( extrema )
+        pred_upper = max( extrema )
+        rospy.loginfo( 'raw mean: %f std: %f', raw_y, raw_std )
+        return pred_y, (pred_lower, pred_upper)
 
     def model_to_raw( self, y ):
+        """Convert a model reward to a raw reward.
+        Order is: log, negate, scale.
+        """
         if self.opt_model_logs:
             y = math.exp( y )
         if self.negative_rewards:
             y = -y
+        if self.normalize_scale:
+            y = y * self.raw_scale
         return y
 
     def raw_to_model( self, y ):
+        """Convert a raw reward to model reward.
+        Order is: scale, negate, log
+        """
         if math.isnan( y ):
             y = self.constraint_value
+        if self.normalize_scale:
+            y = y / self.raw_scale
         if self.negative_rewards:
             y = -y 
         if self.opt_model_logs:
@@ -169,10 +175,15 @@ class BayesianOptimizer:
         rospy.loginfo( 'Using kernel: %s', str(self.kernel_noisy) )
 
         self.opt_model_logs = rospy.get_param( '~model/model_log_reward', False )
+        self.normalize_scale = rospy.get_param( '~model/normalize_raw_scale', False )
 
+        # Determine mean and scale
         raw_Y = [ y for y in self.init_Y if not np.isnan(y) ]
         self.constraint_value = min( raw_Y )
-        rospy.loginfo( 'Constraint violations will be assigned value %f', self.constraint_value )
+        self.raw_scale = max( np.abs( raw_Y ) )
+        rospy.loginfo( 'Constraint violations will be assigned raw value %f', self.constraint_value )
+        rospy.loginfo( 'Raw value scale is %f', self.raw_scale )
+
         valid_Y = [ self.raw_to_model( y ) for y in raw_Y ]
         # NOTE Need init_Y to end up 2D for the GP
         self.init_Y = [ [self.raw_to_model( y )] for y in self.init_Y ]
@@ -188,13 +199,11 @@ class BayesianOptimizer:
         rospy.loginfo( 'Initial reward %s valid raw: %f valid model: %f all model: %f', 
                        self.init_mode, raw_mean, valid_mean, model_mean )
         
-        normalize_y = rospy.get_param( '~model/normalize_output', False )
         self.reward_model = GPRewardModel( kernel = self.kernel_noisy,
                                            kernel_noiseless = self.kernel_base,
                                            hyperparam_min_samples = len( self.init_tests ),
                                            hyperparam_refine_ll_delta = hyper_ll_delta,
                                            hyperparam_refine_retries = hyper_refine_retries,
-                                           normalize_y = normalize_y,
                                            prior_mean = valid_mean )
 
         self.reward_model.batch_initialize( np.atleast_2d( self.init_tests ), 
@@ -235,11 +244,8 @@ class BayesianOptimizer:
 
             # Report predictions
             pred_y, pred_bound = self.predict_reward( x )
-            rospy.loginfo( 'Evaluation %d with beta %f and predicted value %f in %s', 
-                           self.evals,
-                           beta,
-                           pred_y,
-                           np.array_str(pred_bound) )
+            rospy.loginfo( 'Evaluation %d with beta %f predicted value %f in %s', 
+                           self.evals, beta, pred_y, str(pred_bound) )
 
             # Perform evaluation and give feedback
             (reward, feedback) = self.evaluate( eval_cb, x )
