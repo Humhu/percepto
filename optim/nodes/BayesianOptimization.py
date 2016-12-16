@@ -37,7 +37,6 @@ class BayesianOptimizer:
             raise ValueError( '~init_mode must be mean or median!' )
 
         self.negative_rewards = rospy.get_param( '~negative_rewards', False )
-        self.constraint_value = float( rospy.get_param( '~constraint_value' ) )
 
         # Seed RNG if specified
         seed = rospy.get_param('~random_seed', None)
@@ -106,6 +105,10 @@ class BayesianOptimizer:
         pred_std = math.sqrt( pred_var )
         rospy.loginfo( 'raw mean: %f std: %f', pred_y, pred_std )
 
+        randx = np.random.rand( x.shape[0] )
+        rpred_y, rpred_var = self.reward_model.query( randx ) 
+        rospy.loginfo( 'random x: %s mean: %f std: %f', np.array_str( randx ), rpred_y, rpred_var )
+
         pred_bound = np.array( [ pred_y - pred_std, pred_y + pred_std ] )
         if self.opt_model_logs:
             pred_y = math.exp( pred_y )
@@ -166,6 +169,24 @@ class BayesianOptimizer:
         rospy.loginfo( 'Using kernel: %s', str(self.kernel_noisy) )
 
         self.opt_model_logs = rospy.get_param( '~model/model_log_reward', False )
+
+        raw_Y = [ y for y in self.init_Y if not np.isnan(y) ]
+        self.constraint_value = min( raw_Y )
+        rospy.loginfo( 'Constraint violations will be assigned value %f', self.constraint_value )
+        valid_Y = [ self.raw_to_model( y ) for y in raw_Y ]
+        # NOTE Need init_Y to end up 2D for the GP
+        self.init_Y = [ [self.raw_to_model( y )] for y in self.init_Y ]
+        if self.init_mode == 'mean':
+            raw_mean = np.mean( raw_Y )
+            valid_mean = np.mean( valid_Y )
+            model_mean = np.mean( self.init_Y )
+        elif self.init_mode == 'median':
+            raw_mean = np.median( raw_Y )
+            valid_mean = np.median( raw_Y )
+            model_mean = np.median( self.init_Y )
+            
+        rospy.loginfo( 'Initial reward %s valid raw: %f valid model: %f all model: %f', 
+                       self.init_mode, raw_mean, valid_mean, model_mean )
         
         normalize_y = rospy.get_param( '~model/normalize_output', False )
         self.reward_model = GPRewardModel( kernel = self.kernel_noisy,
@@ -173,20 +194,9 @@ class BayesianOptimizer:
                                            hyperparam_min_samples = len( self.init_tests ),
                                            hyperparam_refine_ll_delta = hyper_ll_delta,
                                            hyperparam_refine_retries = hyper_refine_retries,
-                                           normalize_y = normalize_y )
+                                           normalize_y = normalize_y,
+                                           prior_mean = valid_mean )
 
-        raw_Y = [ y for y in self.init_Y if not np.isnan(y) ]
-        # NOTE Need init_Y to end up 2D for the GP
-        self.init_Y = [ [self.raw_to_model( y )] for y in self.init_Y ]
-        if self.init_mode == 'mean':
-            raw_mean = np.mean( raw_Y )
-            model_mean = np.mean( self.init_Y )
-        elif self.init_mode == 'median':
-            raw_mean = np.median( raw_Y )
-            model_mean = np.median( self.init_Y )
-            
-        rospy.loginfo( 'Initial reward %s raw: %f model: %f', 
-                       self.init_mode, raw_mean, model_mean )
         self.reward_model.batch_initialize( np.atleast_2d( self.init_tests ), 
                                             np.atleast_2d( self.init_Y ) )
 
