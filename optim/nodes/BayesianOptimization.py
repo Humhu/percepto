@@ -162,9 +162,9 @@ class BayesianOptimizer:
                            'in high computational cost!' )
 
         self.white = WhiteKernel( init_noise, noise_bounds )
-        # self.kernel_base = ConstantKernel( init_scale, scale_bounds ) * \
-        #                    Matern( init_length, length_bounds, nu )
-        self.kernel_base = Matern( init_length, length_bounds, nu )
+        self.kernel_base = ConstantKernel( init_scale, scale_bounds ) * \
+                            Matern( init_length, length_bounds, nu )
+        #self.kernel_base = Matern( init_length, length_bounds, nu )
         self.kernel_noisy = self.kernel_base  + self.white
         rospy.loginfo( 'Using kernel: %s', str(self.kernel_noisy) )
 
