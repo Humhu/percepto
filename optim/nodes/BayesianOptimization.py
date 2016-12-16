@@ -37,6 +37,7 @@ class BayesianOptimizer:
             raise ValueError( '~init_mode must be mean or median!' )
 
         self.negative_rewards = rospy.get_param( '~negative_rewards', False )
+        self.constraint_value = float( rospy.get_param( '~constraint_value' ) )
 
         # Seed RNG if specified
         seed = rospy.get_param('~random_seed', None)
@@ -120,6 +121,8 @@ class BayesianOptimizer:
         return y
 
     def raw_to_model( self, y ):
+        if math.isnan( y ):
+            y = self.constraint_value
         if self.negative_rewards:
             y = -y 
         if self.opt_model_logs:
@@ -176,7 +179,7 @@ class BayesianOptimizer:
                                            hyperparam_refine_retries = hyper_refine_retries,
                                            normalize_y = normalize_y )
 
-        raw_Y = self.init_Y
+        raw_Y = self.init_Y[ ~np.isnan( self.init_Y ) ]
         self.init_Y = [ [self.raw_to_model( y[0] )] for y in self.init_Y ]
         if self.init_mode == 'mean':
             raw_mean = np.mean( raw_Y )
