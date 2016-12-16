@@ -180,7 +180,7 @@ class BayesianOptimizer:
         # Determine mean and scale
         raw_Y = [ y for y in self.init_Y if not np.isnan(y) ]
         self.constraint_value = min( raw_Y )
-        self.raw_scale = max( np.abs( raw_Y ) )
+        self.raw_scale = ( max( raw_Y ) - min( raw_Y ) ) * 0.5
         rospy.loginfo( 'Constraint violations will be assigned raw value %f', self.constraint_value )
         rospy.loginfo( 'Raw value scale is %f', self.raw_scale )
 
