@@ -95,6 +95,8 @@ class BayesianOptimizer:
     def evaluate( self, eval_cb, x ):
         for i in range( self.max_output_retries ):
             (reward, feedback) = eval_cb( x )
+            if math.isnan( reward ):
+                break
             if reward >= self.output_lower and reward <= self.output_upper:
                 break
         return (reward, feedback)
@@ -137,7 +139,7 @@ class BayesianOptimizer:
                            len(self.init_tests) )
             x = self.init_tests[ len( self.init_Y ) ]
             (reward, feedback) = self.evaluate( eval_cb, x )
-            self.init_Y.append( [reward] )
+            self.init_Y.append( reward )
             
             self.rounds.append( (x, reward, feedback ) )
             self.save( 'initializing' )
@@ -164,12 +166,6 @@ class BayesianOptimizer:
         rospy.loginfo( 'Using kernel: %s', str(self.kernel_noisy) )
 
         self.opt_model_logs = rospy.get_param( '~model/model_log_reward', False )
-        # prior_mean = float( rospy.get_param( '~model/prior_mean', 0 ) )
-        # if self.negative_rewards:
-        #     prior_mean = -prior_mean
-        # if self.opt_model_logs:
-        #     prior_mean = math.log( prior_mean )
-        # print 'Initializing model with prior mean %f' % prior_mean
         
         normalize_y = rospy.get_param( '~model/normalize_output', False )
         self.reward_model = GPRewardModel( kernel = self.kernel_noisy,
@@ -179,8 +175,9 @@ class BayesianOptimizer:
                                            hyperparam_refine_retries = hyper_refine_retries,
                                            normalize_y = normalize_y )
 
-        raw_Y = self.init_Y[ ~np.isnan( self.init_Y ) ]
-        self.init_Y = [ [self.raw_to_model( y[0] )] for y in self.init_Y ]
+        raw_Y = [ y for y in self.init_Y if not np.isnan(y) ]
+        # NOTE Need init_Y to end up 2D for the GP
+        self.init_Y = [ [self.raw_to_model( y )] for y in self.init_Y ]
         if self.init_mode == 'mean':
             raw_mean = np.mean( raw_Y )
             model_mean = np.mean( self.init_Y )
