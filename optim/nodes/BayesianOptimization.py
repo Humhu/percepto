@@ -33,9 +33,11 @@ class BayesianOptimizer:
             raise ValueError( '~opt_mode must be min or max!' )
 
         self.init_mode = rospy.get_param( '~initialization_mode', 'mean' )
-        if self.init_mode not in ['median', 'mean']:
-            raise ValueError( '~init_mode must be mean or median!' )
+        if self.init_mode not in ['median', 'mean', 'max']:
+            raise ValueError( '~init_mode must be mean or median or max!' )
 
+        self.num_final_samples = rospy.get_param( '~final_samples', 10 )
+        self.batch_period = rospy.get_param( '~batch_period', 10 )
         self.negative_rewards = rospy.get_param( '~negative_rewards', False )
 
         # Seed RNG if specified
@@ -58,7 +60,7 @@ class BayesianOptimizer:
         self.max_output_retries = rospy.get_param( '~max_output_retries', 10 )
 
         init_samples = rospy.get_param( '~model/initial_samples', 30 )
-        self.init_tests = np.random.uniform( low=self.input_lower, high=self.input_upper,
+        self.init_x = np.random.uniform( low=self.input_lower, high=self.input_upper,
                                              size=(init_samples, self.input_dim ) )
         self.init_Y = []
 
@@ -71,7 +73,8 @@ class BayesianOptimizer:
         self.evals = 0
         self.last_inputs = deque()
 
-        self.rounds = []
+        self.init_rounds = []
+        self.test_rounds = []
         self.bests = []
         self.bandit = None
         self.prog_path = rospy.get_param( '~progress_path', None )
@@ -81,8 +84,8 @@ class BayesianOptimizer:
         if self.evals >= self.max_evals:
             return {'max_evaluations' : self.evals}
 
-        if len( self.rounds ) >= 2:
-            delta_input = self.rounds[-1][0] - self.rounds[-2][0]
+        if len( self.test_rounds ) >= 2:
+            delta_input = self.test_rounds[-1][0] - self.test_rounds[-2][0]
             if np.linalg.norm( delta_input ) < self.x_tol:
                 return {'input_tolerance' : self.x_tol}
         return {}
@@ -142,15 +145,14 @@ class BayesianOptimizer:
 
     def initialize( self, eval_cb ):
         # Run initial tests 
-        while len( self.init_Y ) < len(self.init_tests):
+        while len( self.init_Y ) < len(self.init_x):
             rospy.loginfo( 'Initial exploration %d/%d', 
-                           len( self.init_Y ), 
-                           len(self.init_tests) )
-            x = self.init_tests[ len( self.init_Y ) ]
+                           len( self.init_Y )+1, 
+                           len(self.init_x) )
+            x = self.init_x[ len( self.init_Y ) ]
             (reward, feedback) = self.evaluate( eval_cb, x )
             self.init_Y.append( reward )
-            
-            self.rounds.append( (x, reward, feedback ) )
+            self.init_rounds.append( (x, reward, feedback ) )
             self.save( 'initializing' )
 
         # Create optimizer
@@ -197,18 +199,22 @@ class BayesianOptimizer:
             raw_mean = np.median( raw_Y )
             valid_mean = np.median( raw_Y )
             model_mean = np.median( self.init_Y )
+        elif self.init_mode == 'max':
+            raw_mean = np.max( raw_Y )
+            valid_mean = np.max( valid_Y )
+            model_mean = np.max( self.init_Y )
             
         rospy.loginfo( 'Initial reward %s valid raw: %f valid model: %f all model: %f', 
                        self.init_mode, raw_mean, valid_mean, model_mean )
         
         self.reward_model = GPRewardModel( kernel = self.kernel_noisy,
                                            kernel_noiseless = self.kernel_base,
-                                           hyperparam_min_samples = len( self.init_tests ),
+                                           hyperparam_min_samples = len( self.init_x ),
                                            hyperparam_refine_ll_delta = hyper_ll_delta,
                                            hyperparam_refine_retries = hyper_refine_retries,
                                            prior_mean = valid_mean )
 
-        self.reward_model.batch_initialize( np.atleast_2d( self.init_tests ), 
+        self.reward_model.batch_initialize( np.atleast_2d( self.init_x ), 
                                             np.atleast_2d( self.init_Y ) )
 
         acq_tol = float( rospy.get_param( '~model/acquisition_tolerance' ) )
@@ -237,7 +243,7 @@ class BayesianOptimizer:
                                        arm_selector = self.arm_selector )
 
     def execute( self, eval_cb ):
-        if len( self.init_Y ) < len( self.init_tests ):
+        if len( self.init_Y ) < len( self.init_x ):
             self.initialize( eval_cb )
 
         while not rospy.is_shutdown() and not self.is_done():
@@ -247,19 +253,28 @@ class BayesianOptimizer:
             # Report predictions
             pred_y, pred_bound = self.predict_reward( x )
             rospy.loginfo( 'Evaluation %d with beta %f predicted value %f in %s', 
-                           self.evals, beta, pred_y, str(pred_bound) )
+                           self.evals+1, beta, pred_y, str(pred_bound) )
 
             # Perform evaluation and give feedback
             (reward, feedback) = self.evaluate( eval_cb, x )
             self.bandit.tell( x, self.raw_to_model( reward ) )
 
-            self.rounds.append( (x, reward, feedback ) )
+            self.test_rounds.append( (x, reward, feedback ) )
             self.evals += 1
             self.save( 'in_progress' )
 
+            if self.evals % self.batch_period == 0:
+                self.init_x = [r[0] for r in self.init_rounds] + [ r[0] for r in self.test_rounds ]
+                self.init_Y = [r[1] for r in self.init_rounds] + [ r[1] for r in self.test_rounds ]
+                self.initialize( eval_cb )
+
         opt_x = self.bandit.ask( beta = 0 )
         opt_mean, opt_bound = self.predict_reward( opt_x )
-        opt = (opt_x, opt_mean, opt_bound)
+        opt_samples = []
+        for i in range( self.num_final_samples ):
+            rospy.loginfo( 'Optima sample %d/%d', i+1, self.num_final_samples )
+            opt_samples.append( self.evaluate( eval_cb, opt_x ) )
+        opt = (opt_x, opt_mean, opt_bound, opt_samples)
         crit = self.is_done()
         rospy.loginfo( 'Completed due to %s\noptimal x: %s\n pred y: %f in %s',
                        str(crit),
@@ -286,7 +301,7 @@ class BayesianOptimizer:
 
         rospy.loginfo( 'Saving output at %s...', self.out_path )
         out = open( self.out_path, 'wb' )
-        pickle.dump( (status, self.rounds, self.bests), out )
+        pickle.dump( (status, self.init_rounds, self.test_rounds, self.bests), out )
         out.close()
 
 def evaluate_input( proxy, inval):
