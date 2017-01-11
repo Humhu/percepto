@@ -194,18 +194,23 @@ class BayesianOptimizer:
         if self.init_mode == 'mean':
             raw_mean = np.mean( raw_Y )
             valid_mean = np.mean( valid_Y )
-            model_mean = np.mean( self.init_Y )
+            all_mean = np.mean( self.init_Y )
         elif self.init_mode == 'median':
             raw_mean = np.median( raw_Y )
             valid_mean = np.median( raw_Y )
-            model_mean = np.median( self.init_Y )
+            all_mean = np.median( self.init_Y )
         elif self.init_mode == 'max':
             raw_mean = np.max( raw_Y )
-            valid_mean = np.max( valid_Y )
-            model_mean = np.max( self.init_Y )
+            if self.negative_rewards:
+                valid_mean = np.min( valid_Y )
+                all_mean = np.min( self.init_Y )
+            else:
+                valid_mean = np.max( valid_Y )
+                all_mean = np.max( self.init_Y )
+
             
         rospy.loginfo( 'Initial reward %s valid raw: %f valid model: %f all model: %f', 
-                       self.init_mode, raw_mean, valid_mean, model_mean )
+                       self.init_mode, raw_mean, valid_mean, all_mean )
         
         self.reward_model = GPRewardModel( kernel = self.kernel_noisy,
                                            kernel_noiseless = self.kernel_base,
