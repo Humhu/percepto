@@ -40,6 +40,10 @@ class BayesianOptimizer:
         self.batch_period = rospy.get_param( '~batch_period', 10 )
         self.negative_rewards = rospy.get_param( '~negative_rewards', False )
 
+        self.test_x = rospy.get_param( '~query_x', None )
+        if self.test_x is not None:
+            self.test_x = np.array( self.test_x )
+
         # Seed RNG if specified
         seed = rospy.get_param('~random_seed', None)
         if seed is None:
@@ -95,18 +99,16 @@ class BayesianOptimizer:
         return self.init_beta / math.sqrt( self.beta_scale * (self.evals + 1) )
 
     def evaluate( self, eval_cb, x ):
-        for i in range( self.max_output_retries ):
-            (reward, feedback) = eval_cb( x )
-            if math.isnan( reward ):
-                break
-            if reward >= self.output_lower and reward <= self.output_upper:
-                break
+        (reward, feedback) = eval_cb( x )
         return (reward, feedback)
 
     def predict_reward( self, x ):
-        randx = np.random.uniform( low=self.input_lower, high=self.input_upper, size=x.shape )
+        if self.test_x is None:
+            randx = np.random.uniform( low=self.input_lower, high=self.input_upper, size=x.shape )
+        else:
+            randx = self.test_x
         rpred_y, rpred_var = self.reward_model.query( randx ) 
-        rospy.loginfo( 'random x: %s\n mean: %f std: %f', np.array_str( randx ), rpred_y, rpred_var )
+        rospy.loginfo( 'test x: %s\n mean: %f std: %f', np.array_str( randx ), rpred_y, rpred_var )
 
         raw_y, raw_var = self.reward_model.query( x )
         raw_std = math.sqrt( raw_var )
@@ -135,6 +137,10 @@ class BayesianOptimizer:
         """
         if math.isnan( y ):
             y = self.constraint_value
+        if y < self.output_lower:
+            y = self.output_lower
+        if y > self.output_upper:
+            y = self.output_upper
         if self.negative_rewards:
             y = -y 
         if self.opt_model_logs:
@@ -233,11 +239,12 @@ class BayesianOptimizer:
             acq_mode = 'min'
         else:
             raise RuntimeError( 'Logic error in determining acquisition mode!' )
+        popsize = rospy.get_param( '~cma_popsize', 100 )
         self.arm_selector = CMAOptimizerSelector( reward_model = self.reward_model,
                                                   dim = self.input_dim,
                                                   mode = acq_mode,
                                                   bounds = [ self.input_lower, self.input_upper ],
-                                                  popsize = 30,
+                                                  popsize = popsize,
                                                   tolfun = acq_tol,
                                                   tolx = acq_tol,
                                                   verbose= -9 )

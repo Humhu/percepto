@@ -161,6 +161,8 @@ class GaussianProcessRewardModel(RewardModel):
                      optimize_hyperparams= True )
         self.last_ll = self.gp.log_marginal_likelihood()
         self.hp_init = True
+        print self.gp.kernel
+        print self.gp.kernel.theta
 
     def report_sample( self, arm, reward ):
         self.gp.add_data( arm, reward, incremental=True )
