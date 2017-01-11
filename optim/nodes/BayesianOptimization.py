@@ -96,7 +96,10 @@ class BayesianOptimizer:
 
     def compute_beta( self ):
         # TODO Different beta schedules
-        return self.init_beta / math.sqrt( self.beta_scale * (self.evals + 1) )
+        #return self.init_beta / math.sqrt( self.beta_scale * (self.evals + 1) )
+        t = self.evals + 1
+        beta = self.init_beta * self.input_dim * math.log( self.beta_scale * t**2  )
+        return math.sqrt( beta )
 
     def evaluate( self, eval_cb, x ):
         (reward, feedback) = eval_cb( x )
