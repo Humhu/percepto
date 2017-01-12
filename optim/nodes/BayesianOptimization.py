@@ -63,10 +63,15 @@ class BayesianOptimizer:
         self.output_upper = float( rospy.get_param( '~output_upper_bound', 'inf' ) )
         self.max_output_retries = rospy.get_param( '~max_output_retries', 10 )
 
-        init_samples = rospy.get_param( '~model/initial_samples', 30 )
-        self.init_x = np.random.uniform( low=self.input_lower, high=self.input_upper,
+        init_samples = rospy.get_param( '~model/initial_samples', None )
+        if init_samples is not None:
+            self.init_x = np.random.uniform( low=self.input_lower, high=self.input_upper,
                                              size=(init_samples, self.input_dim ) )
-        self.init_Y = []
+            self.init_y = []
+        else:
+            init_path = rospy.get_param( '~model/initial_path' )
+            self.init_x, self.init_y = pickle.load( open( init_path ) )
+        self.initialized = False
 
         # Convergence and state
         self.init_beta = rospy.get_param( '~model/init_beta', 1.0 )
@@ -152,17 +157,18 @@ class BayesianOptimizer:
             y = y / self.raw_scale
         return y
 
-    def initialize( self, eval_cb ):
-        # Run initial tests 
-        while len( self.init_Y ) < len(self.init_x):
+    def collect_initial( self, eval_cb ):
+        while len( self.init_y ) < len(self.init_x):
             rospy.loginfo( 'Initial exploration %d/%d', 
-                           len( self.init_Y )+1, 
+                           len( self.init_y )+1, 
                            len(self.init_x) )
-            x = self.init_x[ len( self.init_Y ) ]
+            x = self.init_x[ len( self.init_y ) ]
             (reward, feedback) = self.evaluate( eval_cb, x )
-            self.init_Y.append( reward )
+            self.init_y.append( reward )
             self.init_rounds.append( (x, reward, feedback ) )
             self.save( 'initializing' )
+
+    def initialize( self, X, Y ):
 
         # Create optimizer
         hyper_ll_delta = rospy.get_param( '~model/hyperparam_refine_ll_delta', 3.0 )
@@ -181,7 +187,6 @@ class BayesianOptimizer:
         self.white = WhiteKernel( init_noise, noise_bounds )
         self.kernel_base = ConstantKernel( init_scale, scale_bounds ) * \
                             Matern( init_length, length_bounds, nu )
-        #self.kernel_base = Matern( init_length, length_bounds, nu )
         self.kernel_noisy = self.kernel_base  + self.white
         rospy.loginfo( 'Using kernel: %s', str(self.kernel_noisy) )
 
@@ -189,7 +194,7 @@ class BayesianOptimizer:
         self.normalize_scale = rospy.get_param( '~model/normalize_raw_scale', False )
 
         # Determine mean and scale
-        raw_Y = [ y for y in self.init_Y if not np.isnan(y) ]
+        raw_Y = [ y for y in Y if not np.isnan(y) ]
         self.constraint_value = min( raw_Y )
         self.raw_scale = 1
         unscaled_Y = [ self.raw_to_model( y ) for y in raw_Y ]
@@ -198,24 +203,24 @@ class BayesianOptimizer:
         rospy.loginfo( 'Raw value scale is %f', self.raw_scale )
 
         valid_Y = [ self.raw_to_model( y ) for y in raw_Y ]
-        # NOTE Need init_Y to end up 2D for the GP
-        self.init_Y = [ [self.raw_to_model( y )] for y in self.init_Y ]
+        # NOTE Need init_y to end up 2D for the GP
+        Y = [ [self.raw_to_model( y )] for y in Y ]
         if self.init_mode == 'mean':
             raw_mean = np.mean( raw_Y )
             valid_mean = np.mean( valid_Y )
-            all_mean = np.mean( self.init_Y )
+            all_mean = np.mean( Y )
         elif self.init_mode == 'median':
             raw_mean = np.median( raw_Y )
             valid_mean = np.median( raw_Y )
-            all_mean = np.median( self.init_Y )
+            all_mean = np.median( Y )
         elif self.init_mode == 'max':
             raw_mean = np.max( raw_Y )
             if self.negative_rewards:
                 valid_mean = np.min( valid_Y )
-                all_mean = np.min( self.init_Y )
+                all_mean = np.min( Y )
             else:
                 valid_mean = np.max( valid_Y )
-                all_mean = np.max( self.init_Y )
+                all_mean = np.max( Y )
 
             
         rospy.loginfo( 'Initial reward %s valid raw: %f valid model: %f all model: %f', 
@@ -223,13 +228,13 @@ class BayesianOptimizer:
         
         self.reward_model = GPRewardModel( kernel = self.kernel_noisy,
                                            kernel_noiseless = self.kernel_base,
-                                           hyperparam_min_samples = len( self.init_x ),
+                                           hyperparam_min_samples = len( X ),
                                            hyperparam_refine_ll_delta = hyper_ll_delta,
                                            hyperparam_refine_retries = hyper_refine_retries,
                                            prior_mean = valid_mean )
 
-        self.reward_model.batch_initialize( np.atleast_2d( self.init_x ), 
-                                            np.atleast_2d( self.init_Y ) )
+        self.reward_model.batch_initialize( np.atleast_2d( X ), 
+                                            np.atleast_2d( Y ) )
 
         acq_tol = float( rospy.get_param( '~model/acquisition_tolerance' ) )
         if self.opt_mode == 'min' and not self.negative_rewards:
@@ -260,8 +265,11 @@ class BayesianOptimizer:
                                        arm_selector = self.arm_selector )
 
     def execute( self, eval_cb ):
-        if len( self.init_Y ) < len( self.init_x ):
-            self.initialize( eval_cb )
+        # NOTE Only collects if needed
+        self.collect_initial( eval_cb )
+
+        if not self.initialized:
+            self.initialize( self.init_x, self.init_y )
 
         while not rospy.is_shutdown() and not self.is_done():
             beta = self.compute_beta()
@@ -286,9 +294,12 @@ class BayesianOptimizer:
             self.save( 'in_progress' )
 
             if self.evals % self.batch_period == 0:
-                self.init_x = [r[0] for r in self.init_rounds] + [ r[0] for r in self.test_rounds ]
-                self.init_Y = [r[1] for r in self.init_rounds] + [ r[1] for r in self.test_rounds ]
-                self.initialize( eval_cb )
+                rospy.loginfo( 'Running batch re-initialization...' )
+                test_x = [ r[0] for r in self.test_rounds ]
+                test_y = [ r[1] for r in self.test_rounds ]
+                batch_x = np.
+                self.initialize( X=np.concatenate((self.init_x, test_x)),
+                                 Y=np.concatenate((self.init_y, test_y)) )
 
         self.arm_selector.set_num_restarts( 100 )
         opt_x = self.bandit.ask( beta = 0 )
