@@ -68,9 +68,12 @@ class CMAOptimizerSelector(ArmSelector):
         self.init_cov = 0.3 * np.identity( dim )
         self.args = kwargs
 
+    def set_popsize( self, n ):
+        self.args['popsize'] = n
+
     def select_arm( self, arms, beta ):
         self.beta = beta
-        es = cma.CMAEvolutionStrategy( self.init_guess, 1, self.args )
+        es = cma.CMAEvolutionStrategy( self.init_guess, 0.5, self.args )
         es.optimize( self.criteria )
         return es.result()[0]
 

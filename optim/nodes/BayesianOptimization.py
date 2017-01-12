@@ -106,12 +106,12 @@ class BayesianOptimizer:
         return (reward, feedback)
 
     def predict_reward( self, x ):
-        if self.test_x is None:
-            randx = np.random.uniform( low=self.input_lower, high=self.input_upper, size=x.shape )
-        else:
-            randx = self.test_x
-        rpred_y, rpred_var = self.reward_model.query( randx ) 
-        rospy.loginfo( 'test x: %s\n mean: %f std: %f', np.array_str( randx ), rpred_y, rpred_var )
+        #if self.test_x is None:
+        #    randx = np.random.uniform( low=self.input_lower, high=self.input_upper, size=x.shape )
+        #else:
+        #    randx = self.test_x
+        #rpred_y, rpred_var = self.reward_model.query( randx ) 
+        #rospy.loginfo( 'test x: %s\n mean: %f std: %f', np.array_str( randx ), rpred_y, rpred_var )
 
         raw_y, raw_var = self.reward_model.query( x )
         raw_std = math.sqrt( raw_var )
@@ -274,6 +274,11 @@ class BayesianOptimizer:
             (reward, feedback) = self.evaluate( eval_cb, x )
             self.bandit.tell( x, self.raw_to_model( reward ) )
 
+            # Report update
+            pred_y, pred_bound = self.predict_reward( x )
+            rospy.loginfo( 'After update: predicted value %f in %s', 
+                           pred_y, str(pred_bound) )
+
             self.test_rounds.append( (x, reward, feedback ) )
             self.evals += 1
             self.save( 'in_progress' )
@@ -283,6 +288,7 @@ class BayesianOptimizer:
                 self.init_Y = [r[1] for r in self.init_rounds] + [ r[1] for r in self.test_rounds ]
                 self.initialize( eval_cb )
 
+        self.arm_selector.set_popsize( 100 )
         opt_x = self.bandit.ask( beta = 0 )
         opt_mean, opt_bound = self.predict_reward( opt_x )
         opt_samples = []
@@ -351,6 +357,8 @@ if __name__ == '__main__':
         data_log = open( data_path, 'rb' )
         rospy.loginfo( 'Found load data at %s...', data_path )
         bopt = pickle.load( data_log )
+        # HACK to allow continuing
+        bopt.max_evals = float( rospy.get_param( '~convergence/max_evaluations', float('inf') ) )
     else:
         rospy.loginfo( 'No resume data specified. Starting new optimization...' )
         bopt = BayesianOptimizer()
