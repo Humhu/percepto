@@ -58,7 +58,7 @@ class CMAOptimizerSelector(ArmSelector):
     Selects arms by optimizing an acquisition function.
     """
 
-    def __init__( self, reward_model, dim, mode, **kwargs ):
+    def __init__( self, reward_model, dim, mode, num_restarts=0, **kwargs ):
         if mode != 'min' and mode != 'max':
             raise ValueError( 'mode must be min or max!' )
         self.mode = mode
@@ -66,16 +66,24 @@ class CMAOptimizerSelector(ArmSelector):
         self.dim = dim
         self.init_guess = np.zeros( dim )
         self.init_cov = 0.3 * np.identity( dim )
+        self.num_restarts = num_restarts
         self.args = kwargs
 
     def set_popsize( self, n ):
         self.args['popsize'] = n
 
+    def set_num_restarts( self, n ):
+        self.num_restarts = n
+
     def select_arm( self, arms, beta ):
         self.beta = beta
-        es = cma.CMAEvolutionStrategy( self.init_guess, 0.5, self.args )
-        es.optimize( self.criteria )
-        return es.result()[0]
+        bestever = cma.BestSolution()
+        
+        for i in range( self.num_restarts+1 ):
+            es = cma.CMAEvolutionStrategy( self.init_guess, 0.5, self.args )
+            es.optimize( self.criteria )
+            bestever.update(es.best)
+        return bestever.x
 
     def criteria( self, x ):
         u,v = self.reward_model.query( x )

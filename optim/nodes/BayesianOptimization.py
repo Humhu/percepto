@@ -243,11 +243,13 @@ class BayesianOptimizer:
         else:
             raise RuntimeError( 'Logic error in determining acquisition mode!' )
         popsize = rospy.get_param( '~cma_popsize', 100 )
+        n_restarts = rospy.get_param( '~cma_restarts', 0 )
         self.arm_selector = CMAOptimizerSelector( reward_model = self.reward_model,
                                                   dim = self.input_dim,
                                                   mode = acq_mode,
                                                   bounds = [ self.input_lower, self.input_upper ],
                                                   popsize = popsize,
+                                                  num_restarts = n_restarts,
                                                   tolfun = acq_tol,
                                                   tolx = acq_tol,
                                                   verbose= -9 )
@@ -288,7 +290,7 @@ class BayesianOptimizer:
                 self.init_Y = [r[1] for r in self.init_rounds] + [ r[1] for r in self.test_rounds ]
                 self.initialize( eval_cb )
 
-        self.arm_selector.set_popsize( 100 )
+        self.arm_selector.set_num_restarts( 100 )
         opt_x = self.bandit.ask( beta = 0 )
         opt_mean, opt_bound = self.predict_reward( opt_x )
         opt_samples = []
