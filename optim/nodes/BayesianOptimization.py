@@ -297,11 +297,10 @@ class BayesianOptimizer:
                 rospy.loginfo( 'Running batch re-initialization...' )
                 test_x = [ r[0] for r in self.test_rounds ]
                 test_y = [ r[1] for r in self.test_rounds ]
-                batch_x = np.
                 self.initialize( X=np.concatenate((self.init_x, test_x)),
                                  Y=np.concatenate((self.init_y, test_y)) )
 
-        self.arm_selector.set_num_restarts( 100 )
+        self.arm_selector.set_num_restarts( 10 )
         opt_x = self.bandit.ask( beta = 0 )
         opt_mean, opt_bound = self.predict_reward( opt_x )
         opt_samples = []
@@ -315,9 +314,9 @@ class BayesianOptimizer:
                        np.array_str(opt_x), 
                        opt_mean,
                        str(opt_bound) )
-        self.save( opt )
+        self.save( opt, save_best = False )
 
-    def save( self, status ):
+    def save( self, status, save_best=True ):
         if self.evals % self.save_period != 0:
             return
 
@@ -327,7 +326,7 @@ class BayesianOptimizer:
             pickle.dump( self, prog )
             prog.close()
 
-        if self.bandit is not None:
+        if save_best and self.bandit is not None:
             rospy.loginfo( 'Finding current best...' )
             opt_x = self.bandit.ask( beta = 0 )
             opt_mean, opt_bound = self.predict_reward( opt_x )
