@@ -263,6 +263,7 @@ class BayesianOptimizer:
         self.bandit = BanditInterface( arm_proposal = self.arm_proposal,
                                        reward_model = self.reward_model,
                                        arm_selector = self.arm_selector )
+        self.initialized = True
 
     def execute( self, eval_cb ):
         # NOTE Only collects if needed
