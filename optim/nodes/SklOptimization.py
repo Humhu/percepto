@@ -184,11 +184,11 @@ class BayesianOptimizer:
             rospy.logwarn( 'Note: kernel_roughness not set to 0.5, 1.5, 2.5, or inf results ' +\
                            'in high computational cost!' )
 
-        self.white = WhiteKernel( init_noise, noise_bounds )
-        self.kernel_base = ConstantKernel( init_scale, scale_bounds ) * \
-                            Matern( init_length, length_bounds, nu )
-        self.kernel_noisy = self.kernel_base  + self.white
-        rospy.loginfo( 'Using kernel: %s', str(self.kernel_noisy) )
+        # self.white = WhiteKernel( init_noise, noise_bounds )
+        # self.kernel_base = ConstantKernel( init_scale, scale_bounds ) * \
+        #                     Matern( init_length, length_bounds, nu )
+        # self.kernel_noisy = self.kernel_base  + self.white
+        # rospy.loginfo( 'Using kernel: %s', str(self.kernel_noisy) )
 
         self.opt_model_logs = rospy.get_param( '~model/model_log_reward', False )
         self.normalize_scale = rospy.get_param( '~model/normalize_raw_scale', False )

@@ -67,6 +67,8 @@ catkin_package(
                     Eigen3
 )
 
+catkin_python_setup()
+
 include_directories( ${optim_INCLUDES} ${catkin_INCLUDE_DIRS} include )
 
 add_library( optim 

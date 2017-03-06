@@ -1,5 +1,4 @@
-"""
-Various arm selection and arm increasing criteria functions.
+"""Various arm selection and arm increasing criteria functions.
 
 Contents:
 ---------
