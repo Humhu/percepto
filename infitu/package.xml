@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<package>
+  <name>infitu</name>
+  <version>0.1.0</version>
+  <description>Software in-field perception parameter tuning.</description>
+  
+  <maintainer email="humhu@cmu.edu">Humphrey Hu</maintainer>
+  
+  <license>AFLv3</license>
+  
+  <buildtool_depend>catkin</buildtool_depend>
+  
+  <build_depend>roscpp</build_depend>
+  <build_depend>message_generation</build_depend>
+  <build_depend>argus_utils</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>relearn</build_depend>
+  <build_depend>paraset</build_depend>
+  <build_depend>poli</build_depend>
+
+  <run_depend>roscpp</run_depend>
+  <run_depend>message_runtime</run_depend>
+  <run_depend>argus_utils</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>relearn</run_depend>
+  <run_depend>paraset</run_depend>
+  <run_depend>poli</run_depend>
+  
+</package>
+
