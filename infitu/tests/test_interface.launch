@@ -1,0 +1,6 @@
+<launch>
+
+    <node pkg="infitu" type="test_interface_getter.py" name="test_getter" output="screen"/>
+    <node pkg="infitu" type="test_interface_setter.py" name="test_setter" output="screen"/>
+
+</launch>

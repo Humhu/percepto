@@ -21,6 +21,8 @@ add_service_files( FILES
                    SetRecording.srv
 )
 
+catkin_python_setup()
+
 generate_messages()
 
 # Use Boost for most utilities, threading
@@ -45,6 +47,7 @@ catkin_package( INCLUDE_DIRS    include
                                 system_lib
                                 Eigen3
 )
+
 
 include_directories(   include
                        ${EIGEN3_INCLUDE_DIR}
