@@ -85,7 +85,9 @@ if __name__ == '__main__':
     B = np.zeros((adim, xdim))
     B[:, -1] = -1
 
-    poli = pp.LinearPolicy(A, B)
+    poli = pp.LinearPolicy(input_dim=xdim, output_dim=adim)
+    poli.A = A
+    poli.B = B
     init_params = poli.get_theta()
 
     poli.set_theta(init_params)

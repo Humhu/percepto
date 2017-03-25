@@ -42,6 +42,8 @@ class BanditPolicyGradientLearner(object):
         Whether or not to use the natural policy gradient
     inv_fisher_offset    : float (default 1E-9)
         Offset added to the diagonal of the inverse Fisher matrix for conditioning
+    seed                 : int (default None)
+        Seed for the random number generator
     """
 
     def __init__(self, policy, batch_size=0, buffer_size=0, use_log_probs=True,
@@ -53,21 +55,15 @@ class BanditPolicyGradientLearner(object):
         self._policy = policy
 
         # TODO Do we need to wrap random so its repeatable with threading?
+        seed = int(seed)
         if seed is not None:
             random.seed(seed)
 
-        if batch_size < 0:
-            raise ValueError('Batch size must be non-negative.')
-        self._batch_size = batch_size
-
-        if buffer_size < 0:
-            raise ValueError('Buffer size must be non-negative.')
-        self._buffer_size = buffer_size
-
-        # Store importance sampling parameters
-        self._use_log_probs = use_log_probs
-        self._use_nat_grad = use_natural_gradient
-        self._inv_fish_off = inv_fisher_offset
+        self._batch_size = int(batch_size)
+        self._buffer_size = int(buffer_size)
+        self._use_log_probs = bool(use_log_probs)
+        self._use_nat_grad = bool(use_natural_gradient)
+        self._inv_fish_off = float(inv_fisher_offset)
 
         self.reset()
 
@@ -76,6 +72,7 @@ class BanditPolicyGradientLearner(object):
         """
         self._buffer = deque()
 
+    @property
     def num_samples(self):
         """Returns the number of buffered SAR samples.
         """
@@ -96,7 +93,7 @@ class BanditPolicyGradientLearner(object):
         self._buffer.append((state, action, reward, prob))
 
         if self._buffer_size != 0:
-            while self.num_samples() > self._buffer_size:
+            while self.num_samples > self._buffer_size:
                 self._buffer.popleft()
 
     def estimate_reward(self, sample=True):
@@ -111,6 +108,13 @@ class BanditPolicyGradientLearner(object):
         samples = self.__sample_buffer(sample)
         return self.__estimate(samples, est_reward=False, est_grad=True)[1]
 
+    def estimate_reward_and_gradient(self, sample=True):
+        """Estimate both the expected reward and policy gradient.
+        """
+        samples = self.__sample_buffer(sample)
+        return self.__estimate(samples, est_reward=True, est_grad=True)
+
+    # TODO Remove and require use of an optimization object externally instead?
     def step(self, sample=True):
         """Perform one iteration of optimization on the policy.
         """
@@ -131,11 +135,11 @@ class BanditPolicyGradientLearner(object):
 
         Returns None if there are not enough samples (num samples < batch size)
         """
-        if self.num_samples() < self._batch_size:
+        if self.num_samples < self._batch_size:
             return None
 
         if self._batch_size != 0:
-            inds = random.sample(range(self.num_samples()), self._batch_size)
+            inds = random.sample(range(self.num_samples), self._batch_size)
             samples = [self._buffer[i] for i in inds]
         else:
             samples = self._buffer

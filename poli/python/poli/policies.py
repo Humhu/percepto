@@ -1,15 +1,22 @@
 """This module contains common stochastic policy classes.
 """
 import abc
-import numpy as np
 import math
-from modprop.core.modules_core import *
-from modprop.core.backprop import *
-from modprop.modules.basic_modules import *
-from modprop.modules.math_modules import *
-from modprop.modules.reshape_modules import *
-from modprop.modules.cost_modules import LogLikelihoodModule
+import numpy as np
+import modprop
 
+def parse_policy(spec):
+    """Parses a policy specification dict.
+    """
+    if 'type' not in spec:
+        raise ValueError('Specification must include type!')
+
+    policy_type = spec.pop('type')
+    lookup = {'linear' : LinearPolicy}
+    if policy_type not in lookup:
+        raise ValueError('Policy type %s not valid type: %s' %
+                         (policy_type, str(lookup.keys())))
+    return lookup[policy_type](**spec)
 
 class StochasticPolicy(object):
     """Base class for all stochastic policies.
@@ -38,12 +45,14 @@ class StochasticPolicy(object):
 
     @abc.abstractmethod
     def logprob(self, state, action):
-        """Computes the log-prob of an action given the state.
+        """Computes the log-probability of an action given the state.
         """
         return None
 
     def prob(self, state, action):
-        return math.exp(self.action_logprob(state, action))
+        """Computes the probability of an action given the state.
+        """
+        return math.exp(self.logprob(state, action))
 
     def get_theta(self):
         """Return this policy's parameters. If it has no parameters, return None.
@@ -59,60 +68,56 @@ class StochasticPolicy(object):
 class LinearPolicy(StochasticPolicy):
     """A policy class that computes a mean and covariance from linear products.
 
-    Parameters:
-    -----------
-    A : numpy ND-array mapping state to output mean
-    B : numpy ND-array mapping state to log variances
+    The output is Gaussian-distributed with mean = A*x and covariance = np.diag(B*x)
+    for vector state x
+
+    Parameters
+    ----------
+    input_dim  : integer
+        The input vector dimension
+    output_dim : integer
+        The output vector dimension
+    
+    Properties
+    ----------
+    A : numpy 2D-array 
+        Maps state to output mean
+    B : numpy 2D-array 
+        Maps state to log variances
     """
+    def __init__(self, input_dim, output_dim):
+        A = np.zeros((output_dim, input_dim))
+        B = np.zeros((output_dim, input_dim))
 
-    def __init__(self, A, B, dim=None):
-        if dim is None:
-            if A is not None:
-                dim = A.shape[0]
-            elif B is not None:
-                dim = B.shape[0]
-            else:
-                raise ValueError('Must specify A and B, or dim')
+        self._Amod = modprop.ConstantModule(A)
+        self._Bmod = modprop.ConstantModule(B)
+        self._state = modprop.ConstantModule(None)
 
-        if A is None:
-            A = np.identity(dim)
-        if B is None:
-            B = np.identity(dim)
+        self._Ax = modprop.MatrixProductModule()
+        modprop.link_ports(in_port=self._Ax.left_port, out_port=self._Amod.out_port)
+        modprop.link_ports(in_port=self._Ax.right_port, out_port=self._state.out_port)
 
-        if A.shape[0] != dim:
-            raise ValueError('A matrix dimension mismatch.')
-        if B.shape[0] != dim:
-            raise ValueError('B matrix dimension mismatch.')
+        self._Bx = modprop.MatrixProductModule()
+        modprop.link_ports(in_port=self._Bx.left_port, out_port=self._Bmod.out_port)
+        modprop.link_ports(in_port=self._Bx.right_port, out_port=self._state.out_port)
 
-        self._Amod = ConstantModule(A)
-        self._Bmod = ConstantModule(B)
-        self._state = ConstantModule(None)
+        self._expBx = modprop.ExponentialModule()
+        modprop.link_ports(in_port=self._expBx.in_port, out_port=self._Bx.out_port)
 
-        self._Ax = MatrixProductModule()
-        link_ports(in_port=self._Ax.left_port, out_port=self._Amod.out_port)
-        link_ports(in_port=self._Ax.right_port, out_port=self._state.out_port)
+        self._expBxd = modprop.DiagonalReshapeModule()
+        modprop.link_ports(in_port=self._expBxd.vec_in, out_port=self._expBx.out_port)
 
-        self._Bx = MatrixProductModule()
-        link_ports(in_port=self._Bx.left_port, out_port=self._Bmod.out_port)
-        link_ports(in_port=self._Bx.right_port, out_port=self._state.out_port)
+        self._act = modprop.ConstantModule(None)
+        self._delAct = modprop.DifferenceModule()
+        modprop.link_ports(in_port=self._delAct.left_port, out_port=self._act.out_port)
+        modprop.link_ports(in_port=self._delAct.right_port, out_port=self._Ax.out_port)
 
-        self._expBx = ExponentialModule()
-        link_ports(in_port=self._expBx.in_port, out_port=self._Bx.out_port)
+        self._ll = modprop.LogLikelihoodModule()
+        modprop.link_ports(in_port=self._ll.x_in, out_port=self._delAct.out_port)
+        modprop.link_ports(in_port=self._ll.S_in, out_port=self._expBxd.diag_out)
 
-        self._expBxd = DiagonalReshapeModule()
-        link_ports(in_port=self._expBxd.vec_in, out_port=self._expBx.out_port)
-
-        self._act = ConstantModule(None)
-        self._delAct = DifferenceModule()
-        link_ports(in_port=self._delAct.left_port, out_port=self._act.out_port)
-        link_ports(in_port=self._delAct.right_port, out_port=self._Ax.out_port)
-
-        self._ll = LogLikelihoodModule()
-        link_ports(in_port=self._ll.x_in, out_port=self._delAct.out_port)
-        link_ports(in_port=self._ll.S_in, out_port=self._expBxd.diag_out)
-
-        self._llSink = SinkModule()
-        link_ports(in_port=self._llSink.in_port, out_port=self._ll.ll_out)
+        self._llSink = modprop.SinkModule()
+        modprop.link_ports(in_port=self._llSink.in_port, out_port=self._ll.ll_out)
 
     def sample_action(self, state):
         self.__invalidate()
@@ -128,9 +133,9 @@ class LinearPolicy(StochasticPolicy):
     def gradient(self, state, action):
         self.__invalidate()
         self.__foreprop(state=state, action=action)
-        acc = AccumulatedBackprop(do_dx=np.identity(1))
+        acc = modprop.AccumulatedBackprop(do_dx=np.identity(1))
         self._llSink.backprop_value = acc
-        iterative_backprop(self._llSink)
+        modprop.iterative_backprop(self._llSink)
 
         return np.hstack((self._Amod.backprop_value[0],
                           self._Bmod.backprop_value[0]))
@@ -138,17 +143,17 @@ class LinearPolicy(StochasticPolicy):
     def __foreprop(self, state, action):
         self._act.value = np.atleast_1d(action)
         self._state.value = np.atleast_1d(state)
-        iterative_foreprop(self._state)
+        modprop.iterative_foreprop(self._state)
         if action is not None:
-            iterative_foreprop(self._act)
-        iterative_foreprop(self._Amod)
-        iterative_foreprop(self._Bmod)
+            modprop.iterative_foreprop(self._act)
+        modprop.iterative_foreprop(self._Amod)
+        modprop.iterative_foreprop(self._Bmod)
 
     def __invalidate(self):
-        iterative_invalidate(self._state)
-        iterative_invalidate(self._act)
-        iterative_invalidate(self._Amod)
-        iterative_invalidate(self._Bmod)
+        modprop.iterative_invalidate(self._state)
+        modprop.iterative_invalidate(self._act)
+        modprop.iterative_invalidate(self._Amod)
+        modprop.iterative_invalidate(self._Bmod)
 
     def get_theta(self):
         return np.hstack((self._Amod.value.flatten('F'),
@@ -168,9 +173,17 @@ class LinearPolicy(StochasticPolicy):
     def A(self):
         return self._Amod.value
 
+    @A.setter
+    def A(self, a):
+        self._Amod.value = a
+
     @property
     def B(self):
         return self._Bmod.value
+
+    @B.setter
+    def B(self, b):
+        self._Bmod.value = b
 
     @property
     def mean(self):

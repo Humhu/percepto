@@ -1,4 +1,5 @@
-"""This module contains classes and functions for computing likelihood ratio policy gradients.
+"""This module contains implementations of algorithms for computing likelihood ratio
+policy gradients.
 """
 import numpy as np
 import poli.importance_sampling as isamp
