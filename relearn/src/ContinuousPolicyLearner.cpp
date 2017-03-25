@@ -1,5 +1,4 @@
 #include "relearn/ContinuousPolicyLearner.h"
-#include "argus_msgs/FloatVectorStamped.h"
 
 #include "optim/OptimizerParser.h"
 
