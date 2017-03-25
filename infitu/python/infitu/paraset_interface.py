@@ -7,7 +7,7 @@ import paraset
 from itertools import izip
 
 
-def parse_parameter_interface(info):
+def parse_interface(info):
     """Parses a dictionary to produce a NumericParameterInterface.
     """
     interface = NumericParameterInterface()
@@ -61,3 +61,9 @@ class NumericParameterInterface(object):
             out += '\n\t%s: %f (%f)' % (name, vi, vscaled)
             setter.set_value(vscaled)
         rospy.loginfo(out)
+
+    @property
+    def num_parameters(self):
+        """The number of parameters wrapped in this interface.
+        """
+        return len(self._setters)
