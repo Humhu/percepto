@@ -53,6 +53,8 @@ set( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/"
 #list( APPEND optim_LIBRARIES ${NLOPT_LIBRARY} )
 #list( APPEND optim_INCLUDES ${NLOPT_INCLUDE_DIR} )
 
+catkin_python_setup()
+
 catkin_package(
     INCLUDE_DIRS    include
 
@@ -66,8 +68,6 @@ catkin_package(
                     system_lib
                     Eigen3
 )
-
-catkin_python_setup()
 
 include_directories( ${optim_INCLUDES} ${catkin_INCLUDE_DIRS} include )
 

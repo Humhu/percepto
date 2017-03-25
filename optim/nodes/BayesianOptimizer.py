@@ -8,11 +8,13 @@ import optim.optimization as opt
 import optim.arm_selectors as oas
 import optim.ros_interface as opt_ros
 
+
 class BayesianOptimizer(object):
     """Iteratively samples and updates a reward model (response surface) to optimize a function.
 
     Uses the GetCritique service to interface with optimization problems.
     """
+
     def __init__(self):
 
         # Parse reward model
@@ -32,7 +34,8 @@ class BayesianOptimizer(object):
         dim = rospy.get_param('~dim')
         self.lower_bounds = farr(rospy.get_param('~lower_bounds'), dim)
         self.upper_bounds = farr(rospy.get_param('~upper_bounds'), dim)
-        self.aux_optimizer.opts['bounds'] = [self.lower_bounds, self.upper_bounds]
+        self.aux_optimizer.opts['bounds'] = [
+            self.lower_bounds, self.upper_bounds]
         self.aux_x_init = 0.5 * (self.lower_bounds + self.upper_bounds)
         self.aux_x_init[np.logical_not(np.isfinite(self.aux_x_init))] = 0
         #self.aux_x_init = np.zeros(dim)
@@ -46,10 +49,12 @@ class BayesianOptimizer(object):
         self.num_init = init_info['num_samples']
         init_method = init_info['method']
         if init_method == 'uniform':
-            self.init_sample_func = lambda: np.random.uniform(self.lower_bounds, self.upper_bounds)
+            self.init_sample_func = lambda: np.random.uniform(
+                self.lower_bounds, self.upper_bounds)
         # TODO Support for latin hypercubes, other approaches?
         else:
-            raise ValueError('Invalid initial distribution method %s', init_method)
+            raise ValueError(
+                'Invalid initial distribution method %s', init_method)
 
     @property
     def is_initialized(self):
@@ -64,7 +69,8 @@ class BayesianOptimizer(object):
     def pick_next_sample(self):
         """Selects the next sample to explore by optimizing the acquisition function.
         """
-        x, acq = self.aux_optimizer.optimize(x0=self.aux_x_init, func=self.acq_func)
+        x, acq = self.aux_optimizer.optimize(
+            x0=self.aux_x_init, func=self.acq_func)
         rospy.loginfo('Next sample %s with acquisition value %f', str(x), acq)
         return x
 
@@ -85,12 +91,15 @@ class BayesianOptimizer(object):
                 rospy.loginfo('Initializing with %s', str(next_sample))
             else:
                 next_sample = self.pick_next_sample()
-                pred_mean, pred_sd = self.reward_model.predict_reward(next_sample)
-                rospy.loginfo('Picked sample %s with predicted mean %f +- %f', str(next_sample), pred_mean, pred_sd)
+                pred_mean, pred_sd = self.reward_model.predict_reward(
+                    next_sample)
+                rospy.loginfo('Picked sample %s with predicted mean %f +- %f',
+                              str(next_sample), pred_mean, pred_sd)
 
             reward, feedback = interface(next_sample)
             self.reward_model.report_sample(x=next_sample, reward=reward)
             self.rounds.append((next_sample, reward, feedback))
+
 
 if __name__ == '__main__':
     rospy.init_node('bayesian_optimizer')
@@ -101,4 +110,3 @@ if __name__ == '__main__':
     # TODO implement progress saving and resuming
     optimizer = BayesianOptimizer()
     optimizer.execute(interface)
-    

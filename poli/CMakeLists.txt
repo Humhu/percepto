@@ -7,12 +7,12 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/cmake/")
 set(CMAKE_BUILD_TYPE Release)
 
 find_package(catkin REQUIRED 
-	COMPONENTS	roscpp
+	COMPONENTS		roscpp
 					argus_utils
 					broadcast
-          modprop
-          lookup
-          percepto_msgs
+					modprop
+					lookup
+					percepto_msgs
 )
 
 # Use Boost for most utilities, threading
@@ -29,26 +29,28 @@ catkin_package(
 	CATKIN_DEPENDS 	roscpp 
 					argus_utils
 					broadcast
-          modprop
-          lookup
-          percepto_msgs
-          
+					modprop
+					lookup
+					percepto_msgs
+		  
 					
 	DEPENDS 		Boost 
 					system_lib
 )
 
+catkin_python_setup()
+
 add_library( poli
-            src/ContinuousPolicy.cpp
-            src/ContinuousPolicyManager.cpp
-            src/ContinuousPolicyModules.cpp
-            #src/DiscretePolicyManager.cpp
-            #src/DiscretePolicyModules.cpp
-            src/PoliCommon.cpp
-            src/PolicyInfoManager.cpp )
+			src/ContinuousPolicy.cpp
+			src/ContinuousPolicyManager.cpp
+			src/ContinuousPolicyModules.cpp
+			#src/DiscretePolicyManager.cpp
+			#src/DiscretePolicyModules.cpp
+			src/PoliCommon.cpp
+			src/PolicyInfoManager.cpp )
 add_dependencies( poli poli_gencfg ${poli_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
 target_link_libraries( poli
-                       ${catkin_LIBRARIES} )
+					   ${catkin_LIBRARIES} )
 
 include_directories( include
 ${EIGEN3_INCLUDE_DIR}

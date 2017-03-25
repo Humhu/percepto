@@ -1,8 +1,12 @@
+# RewardStamped
+#
 # A timestamped reward signal
+#
+# Fields
+# ------
+# header/stamp    : input/reward timestep
+# header/frame_id : currently unused
+# reward          : the instantaneous reward at this time
 
-# stamp - input/reward timestep
-# frame_id - currently unused
 std_msgs/Header header
-
-# The reward received at this time step
 float64 reward

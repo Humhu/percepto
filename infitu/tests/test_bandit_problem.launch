@@ -1,0 +1,44 @@
+<launch>
+    <node pkg="infitu" type="ParameterPolicyNode.py" name="bandit" output="screen"
+    launch-prefix="xterm -hold -e">
+        <rosparam>
+            interface:
+                param0:
+                    base_namespace: /test_problem
+                    lower_limit: -1
+                    upper_limit: 1
+                param1:
+                    base_namespace: /test_problem
+                    lower_limit: -1
+                    upper_limit: 1
+            policy:
+                type: linear
+                input_stream: test_bandit_state
+            gradient_estimation:
+                type: bandit_gradient
+                batch_size: 100
+                buffer_size: 1000
+                use_log_probs: true
+                use_natural_gradient: true
+                inv_fisher_offset: 1E-9
+                seed: 1
+            optimizer:
+                type: gradient_descent
+                step_size: 1E-1
+                max_linf_norm: 0.1
+            evaluator:
+                integration_mode: traps
+                reward_topic: /reward
+            policy_rate: 2.0
+            learn_rate: 5.0
+        </rosparam>
+    </node>
+
+    <node pkg="infitu" type="test_bandit_problem.py" name="test_problem" output="screen">
+        <rosparam>
+            dim: 2
+            err_cutoff: 0.5
+            update_rate: 10.0
+        </rosparam>
+    </node>
+</launch>
