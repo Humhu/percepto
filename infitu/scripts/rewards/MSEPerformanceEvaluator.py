@@ -2,7 +2,7 @@
 
 import rospy
 import numpy as np
-from math import sqrt
+from math import sqrt, log
 from nav_msgs.msg import Odometry
 from percepto_msgs.msg import RewardStamped
 
@@ -22,6 +22,8 @@ class MSEPerformanceEvaluator:
         if self.vel_sum == 0.0:
             self.vel_sum = 1.0
 
+        self.log_rewards = rospy.get_param('~log_rewards')
+
         self.reward_pub = rospy.Publisher( '~reward', RewardStamped, queue_size=0 )
         self.odom_sub = rospy.Subscriber( 'odom', Odometry, self.OdomCallback )
 
@@ -37,7 +39,10 @@ class MSEPerformanceEvaluator:
         vel_vars = vel_cov.diagonal()
         vel_mse = ( self.vel_weights * vel_vars ).sum()
 
-        out.reward = -( pose_mse + vel_mse )
+        cost = pose_mse + vel_mse
+        if self.log_rewards:
+            cost = log(cost)
+        out.reward = -cost
         self.reward_pub.publish( out )
 
 if __name__ == '__main__':

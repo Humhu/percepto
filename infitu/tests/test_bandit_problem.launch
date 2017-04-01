@@ -4,10 +4,12 @@
         <rosparam>
             interface:
                 param0:
+                    param_name: param0
                     base_namespace: /test_problem
                     lower_limit: -1
                     upper_limit: 1
                 param1:
+                    param_name: param0
                     base_namespace: /test_problem
                     lower_limit: -1
                     upper_limit: 1

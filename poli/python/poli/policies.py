@@ -5,6 +5,7 @@ import math
 import numpy as np
 import modprop
 
+
 def parse_policy(spec):
     """Parses a policy specification dict.
     """
@@ -12,16 +13,21 @@ def parse_policy(spec):
         raise ValueError('Specification must include type!')
 
     policy_type = spec.pop('type')
-    lookup = {'linear' : LinearPolicy}
+    lookup = {'linear': LinearPolicy}
     if policy_type not in lookup:
         raise ValueError('Policy type %s not valid type: %s' %
                          (policy_type, str(lookup.keys())))
     return lookup[policy_type](**spec)
 
+
 class StochasticPolicy(object):
     """Base class for all stochastic policies.
     """
     __metaclass__ = abc.ABCMeta
+
+    def __init__(self, indim, outdim):
+        self._input_dim = indim
+        self._output_dim = outdim
 
     @abc.abstractmethod
     def sample_action(self, state):
@@ -65,6 +71,15 @@ class StochasticPolicy(object):
         if t is not None:
             raise ValueError('This policy has no parameters!')
 
+    @property
+    def input_dim(self):
+        return self._input_dim
+
+    @property
+    def output_dim(self):
+        return self._output_dim
+
+
 class LinearPolicy(StochasticPolicy):
     """A policy class that computes a mean and covariance from linear products.
 
@@ -77,53 +92,79 @@ class LinearPolicy(StochasticPolicy):
         The input vector dimension
     output_dim : integer
         The output vector dimension
-    
+
     Properties
     ----------
     A : numpy 2D-array 
         Maps state to output mean
     B : numpy 2D-array 
         Maps state to log variances
+    offset : float or numpy 2D-array
+        Offset to add to the covariance
     """
-    def __init__(self, input_dim, output_dim):
+
+    def __init__(self, input_dim, output_dim, offset=1E-9):
+        super(LinearPolicy, self).__init__(input_dim, output_dim)
+
         A = np.zeros((output_dim, input_dim))
         B = np.zeros((output_dim, input_dim))
 
         self._Amod = modprop.ConstantModule(A)
         self._Bmod = modprop.ConstantModule(B)
         self._state = modprop.ConstantModule(None)
+        offset = np.atleast_2d(offset)
+        if offset.shape != (output_dim, output_dim):
+            offset = offset[0, 0] * np.identity(output_dim)
+        self._covOffset = modprop.ConstantModule(offset)
 
         self._Ax = modprop.MatrixProductModule()
-        modprop.link_ports(in_port=self._Ax.left_port, out_port=self._Amod.out_port)
-        modprop.link_ports(in_port=self._Ax.right_port, out_port=self._state.out_port)
+        modprop.link_ports(in_port=self._Ax.left_port,
+                           out_port=self._Amod.out_port)
+        modprop.link_ports(in_port=self._Ax.right_port,
+                           out_port=self._state.out_port)
 
         self._Bx = modprop.MatrixProductModule()
-        modprop.link_ports(in_port=self._Bx.left_port, out_port=self._Bmod.out_port)
-        modprop.link_ports(in_port=self._Bx.right_port, out_port=self._state.out_port)
+        modprop.link_ports(in_port=self._Bx.left_port,
+                           out_port=self._Bmod.out_port)
+        modprop.link_ports(in_port=self._Bx.right_port,
+                           out_port=self._state.out_port)
 
         self._expBx = modprop.ExponentialModule()
-        modprop.link_ports(in_port=self._expBx.in_port, out_port=self._Bx.out_port)
+        modprop.link_ports(in_port=self._expBx.in_port,
+                           out_port=self._Bx.out_port)
 
         self._expBxd = modprop.DiagonalReshapeModule()
-        modprop.link_ports(in_port=self._expBxd.vec_in, out_port=self._expBx.out_port)
+        modprop.link_ports(in_port=self._expBxd.vec_in,
+                           out_port=self._expBx.out_port)
+
+        self._expBxd_off = modprop.AdditionModule()
+        modprop.link_ports(in_port=self._expBxd_off.left_port,
+                           out_port=self._expBxd.diag_out)
+        modprop.link_ports(in_port=self._expBxd_off.right_port,
+                           out_port=self._covOffset.out_port)
 
         self._act = modprop.ConstantModule(None)
         self._delAct = modprop.DifferenceModule()
-        modprop.link_ports(in_port=self._delAct.left_port, out_port=self._act.out_port)
-        modprop.link_ports(in_port=self._delAct.right_port, out_port=self._Ax.out_port)
+        modprop.link_ports(in_port=self._delAct.left_port,
+                           out_port=self._act.out_port)
+        modprop.link_ports(in_port=self._delAct.right_port,
+                           out_port=self._Ax.out_port)
 
         self._ll = modprop.LogLikelihoodModule()
-        modprop.link_ports(in_port=self._ll.x_in, out_port=self._delAct.out_port)
-        modprop.link_ports(in_port=self._ll.S_in, out_port=self._expBxd.diag_out)
+        modprop.link_ports(in_port=self._ll.x_in,
+                           out_port=self._delAct.out_port)
+        modprop.link_ports(in_port=self._ll.S_in,
+                           out_port=self._expBxd_off.out_port)
 
         self._llSink = modprop.SinkModule()
-        modprop.link_ports(in_port=self._llSink.in_port, out_port=self._ll.ll_out)
+        modprop.link_ports(in_port=self._llSink.in_port,
+                           out_port=self._ll.ll_out)
 
     def sample_action(self, state):
         self.__invalidate()
         self.__foreprop(state=state, action=None)
-        return np.random.multivariate_normal(mean=self._Ax.out_port.value,
-                                             cov=self._expBxd.diag_out.value)
+        return np.random.multivariate_normal(mean=self.mean,
+                                             cov=self.cov)
 
     def logprob(self, state, action):
         self.__invalidate()
@@ -148,12 +189,14 @@ class LinearPolicy(StochasticPolicy):
             modprop.iterative_foreprop(self._act)
         modprop.iterative_foreprop(self._Amod)
         modprop.iterative_foreprop(self._Bmod)
+        modprop.iterative_foreprop(self._covOffset)
 
     def __invalidate(self):
         modprop.iterative_invalidate(self._state)
         modprop.iterative_invalidate(self._act)
         modprop.iterative_invalidate(self._Amod)
         modprop.iterative_invalidate(self._Bmod)
+        modprop.iterative_invalidate(self._covOffset)
 
     def get_theta(self):
         return np.hstack((self._Amod.value.flatten('F'),
@@ -191,4 +234,4 @@ class LinearPolicy(StochasticPolicy):
 
     @property
     def cov(self):
-        return self._expBxd.diag_out.value
+        return self._expBxd_off.out_port.value

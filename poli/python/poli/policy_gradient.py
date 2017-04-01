@@ -2,11 +2,11 @@
 policy gradients.
 """
 import numpy as np
-import poli.importance_sampling as isamp
+import poli.sampling as isamp
 
 def bandit_importance(rewards, gradients, curr_probs, past_probs, log_prob,
                       est_reward=True, est_grad=True, use_natural_grad=True,
-                      inv_fisher_offset=1E-9):
+                      inv_fisher_offset=1E-9, inv_fisher_diag=False):
     """Compute a bandit policy expected rewards and gradient using importance
     sampling.
 
@@ -35,6 +35,8 @@ def bandit_importance(rewards, gradients, curr_probs, past_probs, log_prob,
         Whether to estimate the natural gradient
     inv_fisher_offset : double (default 1E-9)
         Value to add to diagonal of inverse Fisher matrix for conditioning
+    inv_fisher_diag   : boolean (default False)
+        Whether to use only the diagonal of the inverse Fisher matrix
 
     Returns
     -------
@@ -56,10 +58,12 @@ def bandit_importance(rewards, gradients, curr_probs, past_probs, log_prob,
     # the natural policy gradient
     grad_ops = np.asarray([np.outer(g, g) for g in gradients])
     inv_fisher = isamp.importance_sample(grad_ops,
-                                         p_old=past_probs,
-                                         p_new=curr_probs,
+                                         p_gen=past_probs,
+                                         p_tar=curr_probs,
                                          log_prob=log_prob,
                                          normalize=True)
+    if inv_fisher_diag:
+        inv_fisher = np.diag(np.diag(inv_fisher))
     inv_fisher += inv_fisher_offset * np.identity(inv_fisher.shape[0])
 
     # Estimate the expected reward
@@ -67,15 +71,15 @@ def bandit_importance(rewards, gradients, curr_probs, past_probs, log_prob,
     if est_reward:
         rew_baseline_ests = (rewards * gradients.T).T
         rew_baseline_acc = isamp.importance_sample(rew_baseline_ests,
-                                                   p_old=past_probs,
-                                                   p_new=curr_probs,
+                                                   p_gen=past_probs,
+                                                   p_tar=curr_probs,
                                                    log_prob=log_prob,
                                                    normalize=True)
         rew_baseline = np.linalg.solve(inv_fisher, rew_baseline_acc)
         rew_ests = rewards - np.dot(gradients, rew_baseline)
         rew_val = isamp.importance_sample(rew_ests,
-                                          p_old=past_probs,
-                                          p_new=curr_probs,
+                                          p_gen=past_probs,
+                                          p_tar=curr_probs,
                                           log_prob=log_prob,
                                           normalize=True)
 
@@ -84,16 +88,16 @@ def bandit_importance(rewards, gradients, curr_probs, past_probs, log_prob,
     if est_grad:
         grad_baseline_ests = (rewards * grad_ops.T).T
         grad_baseline_acc = isamp.importance_sample(grad_baseline_ests,
-                                                    p_old=past_probs,
-                                                    p_new=curr_probs,
+                                                    p_gen=past_probs,
+                                                    p_tar=curr_probs,
                                                     log_prob=log_prob,
                                                     normalize=True)
         grad_baseline = np.linalg.solve(inv_fisher, grad_baseline_acc)
         grad_ests = (rewards * gradients.T).T - \
             np.dot(gradients, grad_baseline)
         grad_val = isamp.importance_sample(grad_ests,
-                                           p_old=past_probs,
-                                           p_new=curr_probs,
+                                           p_gen=past_probs,
+                                           p_tar=curr_probs,
                                            log_prob=log_prob,
                                            normalize=True)
         if use_natural_grad:

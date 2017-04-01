@@ -2,6 +2,7 @@
 
 import rospy
 from threading import Lock
+
 from percepto_msgs.srv import GetCritique, GetCritiqueRequest, GetCritiqueResponse
 from percepto_msgs.srv import SetParameters, SetParametersRequest
 from infitu.srv import StartEvaluation, SetRecording

@@ -3,10 +3,7 @@ import random
 import math
 
 from itertools import izip
-
-import poli.policies as pp
-import poli.bandit_learners as pbl
-
+import poli
 import matplotlib.pyplot as plt
 
 
@@ -33,13 +30,13 @@ def train(policy):
     converged = False
     iter_counter = 0
     max_iters = 1000
-    estimator = pbl.BanditPolicyGradientLearner(policy=policy,
-                                                batch_size=100,
-                                                buffer_size=0,
-                                                use_log_probs=True,
-                                                use_natural_gradient=False,
-                                                inv_fisher_offset=1E-9,
-                                                seed=1)
+    estimator = poli.BanditPolicyGradientLearner(policy=policy,
+                                                 batch_size=100,
+                                                 buffer_size=0,
+                                                 use_log_probs=True,
+                                                 use_natural_gradient=False,
+                                                 inv_fisher_offset=1E-9,
+                                                 seed=1)
     estimated_rewards = []
     while not converged:
         # Execute
@@ -85,15 +82,15 @@ if __name__ == '__main__':
     B = np.zeros((adim, xdim))
     B[:, -1] = -1
 
-    poli = pp.LinearPolicy(input_dim=xdim, output_dim=adim)
-    poli.A = A
-    poli.B = B
-    init_params = poli.get_theta()
+    policy = poli.LinearPolicy(input_dim=xdim, output_dim=adim)
+    policy.A = A
+    policy.B = B
+    init_params = policy.get_theta()
 
-    poli.set_theta(init_params)
-    ur_rews, est_rews = train(poli)
-    ur_A = poli.A
-    ur_B = poli.B
+    policy.set_theta(init_params)
+    ur_rews, est_rews = train(policy)
+    ur_A = policy.A
+    ur_B = policy.B
 
     # Plotting
     plt.ion()
@@ -121,7 +118,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.plot(rep_test_points, test_out.flatten(), 'g.')
     plt.plot(test_points, test_means, 'g-', linewidth=2)
-    
+
     plt.xlabel('Action error')
     plt.ylabel('Received reward')
     plt.title('Reward function')

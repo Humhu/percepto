@@ -25,8 +25,8 @@ def parse_optimizers(spec):
 
     optimizer_type = spec.pop('type')
 
-    lookup = {'cma_es'           : CMAOptimizer,
-              'gradient_descent' : GradientDescent}
+    lookup = {'cma_es': CMAOptimizer,
+              'gradient_descent': GradientDescent}
     if optimizer_type not in lookup:
         raise ValueError('Optimizer type %s not valid type: %s' %
                          (optimizer_type, str(lookup.keys())))
@@ -160,6 +160,7 @@ class GradientDescent(Optimizer):
     y_tol         : float (default 0)
         Minimum change in successive absolute objective value to converge
     """
+
     def __init__(self, mode='min', step_size=0.1, max_l2_norm=float('inf'),
                  max_linf_norm=float('inf'), max_iters=0, x_tol=1E-3,
                  grad_tol=1E-3, y_tol=0):
@@ -224,22 +225,25 @@ class GradientDescent(Optimizer):
         if y_init is None or grad is None:
             return x_init, None, None
 
+        step = grad * self._step_size * self._k
+
         # Check for infinity norm violations
-        grad_linf = np.linalg.norm(grad, ord=float('inf'))
-        if grad_linf > self._max_linf:
-            linf_scale = self._max_linf / grad_linf
+        step_linf = np.linalg.norm(step, ord=float('inf'))
+        if step_linf > self._max_linf:
+            linf_scale = self._max_linf / step_linf
         else:
             linf_scale = 1
 
         # Check for L2 norm violations
-        grad_l2 = np.linalg.norm(grad, ord=2)
-        if grad_l2 > self._max_l2:
-            l2_scale = self._max_l2 / grad_l2
+        step_l2 = np.linalg.norm(step, ord=2)
+        if step_l2 > self._max_l2:
+            l2_scale = self._max_l2 / step_l2
         else:
             l2_scale = 1
-            
-        adj_scale = max(linf_scale, l2_scale)
 
-        grad = grad * adj_scale
-        x_next = x_init + self._k * self._step_size * grad
+        adj_scale = min(linf_scale, l2_scale)
+
+        step = step * adj_scale
+
+        x_next = x_init + adj_scale * step
         return x_next, y_init, grad
