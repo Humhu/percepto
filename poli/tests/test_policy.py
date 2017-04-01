@@ -30,13 +30,12 @@ def train(policy):
     converged = False
     iter_counter = 0
     max_iters = 1000
-    estimator = poli.BanditPolicyGradientLearner(policy=policy,
-                                                 batch_size=100,
-                                                 buffer_size=0,
-                                                 use_log_probs=True,
-                                                 use_natural_gradient=False,
-                                                 inv_fisher_offset=1E-9,
-                                                 seed=1)
+    estimator = poli.PolicyGradientLearner(policy=policy,
+                                           batch_size=100,
+                                           buffer_size=0,
+                                           use_natural_gradient=False,
+                                           inv_fisher_offset=1E-9,
+                                           seed=1)
     estimated_rewards = []
     while not converged:
         # Execute
@@ -46,7 +45,7 @@ def train(policy):
         reward = reward_func(state, action)
         print 'Mean: %s\nCov: %s' % (np.array_str(policy.mean), np.array_str(policy.cov))
 
-        estimator.report_sample(state, action, reward)
+        estimator.report_trajectory([state], [action], [reward])
 
         iter_counter += 1
         if iter_counter >= max_iters:
