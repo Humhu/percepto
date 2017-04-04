@@ -5,82 +5,74 @@ import numpy as np
 import poli.sampling as isamp
 import scipy.linalg as spl
 import scipy.signal as sps
-import poli.importance_sampling as isamp
 from itertools import izip
 
-def estimate_fisher_matrix(gradients, curr_probs=0, past_probs=0,
-                           inv_fisher_off=1E-9, diag=False):
-    """Returns the Cholesky decomposition of the estimated inverse Fisher information matrix.
 
-    Either computes outer products from gradients, or uses pre-computed outer products.
+def isample_fisher(gradients, p_tar, p_gen, offset=1E-9,
+                   diag=False, min_logprob=float('-inf'), normalize=True):
+    """Compute the Cholesky decomposition of the Fisher information matrix
+    computed from importance sampling gradients.
 
     Parameters
     ----------
-    gradients         : iterable of numpy 1D or 2D array
-        Gradients of log-prob for each trajectory, or gradient outer products
-    curr_probs        : float or iterable of float (default 0)
-        Current log-prob for each trajectory
-    past_probs        : float or iterable of float (default 0)
-        Generating log-prob for each trajectory
-    inv_fisher_off    : float (default 1E-9)
+    gradients         : iterable of iterable of float
+        list of gradients in each trajectory
+    p_tar        : iterable of iterable of float
+        list of current log-probs for each action in each trajectory
+    p_gen        : iterable of iterable of float
+        list of generating log-probs for each action in each trajectory
+    offset    : float (default 1E-9)
         Offset to add to diagonal of inverse Fisher prior to decomposing
     diag              : bool (default False)
         Whether to use only the diagonal elements of the inverse fisher
-
-    Returns
-    -------
-    fisher_chol       : Cholesky decomposition tuple
-        Tuple to be used in spl.cho_solve
+    min_logprob       : float (default -inf)
+        Minimum log-weight for importance sampling
     """
-    if len(gradients[0].shape) == 1:
-        gradients = [np.outer(g, g) for g in gradients]
 
-    inv_fisher = isamp.importance_sample(gradients,
-                                         p_old=past_probs,
-                                         p_new=curr_probs,
-                                         log_prob=True,
-                                         normalize=True)
-    inv_fisher += inv_fisher_off * np.identity(inv_fisher.shape[0])
     if diag:
-        inv_fisher = np.diag(np.diag(inv_fisher))
-        
-    fisher_chol = spl.cho_factor(inv_fisher)
+        grad_ops = [np.diag(g * g) for g in gradients]
+    else:
+        grad_ops = [np.outer(g, g) for g in gradients]
 
+    # Fisher matrix is expectation over states of expected action log-prob outer prods
+    # TODO Technically this importance sampling approach is wrong! Should use
+    # mixture probs
+    fisher = isamp.importance_sample(grad_ops,
+                                     p_tar=p_tar,
+                                     p_gen=p_gen,
+                                     normalize=normalize,
+                                     min_logprob=min_logprob)
+    fisher += offset * np.identity(fisher.shape[0])
+    if diag:
+        fisher = np.diag(np.diag(fisher))
+    fisher_chol = spl.cho_factor(fisher)
     return fisher_chol
 
-def reinforce_preprocess(rewards, gradients, curr_probs, prev_probs):
-    """Processes trajectories according to the REINFORCE algorithm:
 
-    Trajectory rewards are summed over the trajectory
-    """
-    traj_rewards = np.array([np.sum(r) for r in rewards])
-    traj_grads =  np.array([np.sum(g, axis=0) for g in gradients])
-    traj_cprobs = [np.sum(c) for c in curr_probs]
-    traj_pprobs = [np.sum(p) for p in prev_probs]
-    return traj_rewards, traj_grads, traj_cprobs, traj_pprobs
-
-def reinforce_baseline(rewards, gradients, curr_probs, past_probs, fisher_chol,
-                       est_reward=False, est_grad=False, grad_ops=None):
-    """Computes the constant REINFORCE baseline for each trajectory.
+def constant_isamp_baseline(rewards, gradients, r_grads, p_tar, p_gen,
+                            fisher_chol=None, est_reward=False, est_grad=False,
+                            fisher_diag=False, min_logprob=float('-inf'),
+                            normalize=True):
+    """Computes the optimal constant importance sampling baseline for each trajectory.
 
     Parameters
     ----------
     rewards     : numpy 1D array
-        The trajectory rewards
+        Rewards for each trajectory
     gradients   : numpy 2D array
-        Log-liklihood gradients for each quantity
-    curr_probs  : iterable of float
-        Current log-likelihood for each quantity
-    past_probs  : iterable of float
-        Generating log-likelihood for each quantity
+        Log-liklihood gradients for each trajectory under the target distribution
+    r_grads      : numpy 2D array
+        Reward-gradient estimate for each trajectory
+    p_tar       : iterable of float
+        Target distribution log-prob for each trajectory
+    p_gen  : iterable of float
+        Generating log-prob for each trajectory
     fisher_chol : Cholesky decomposition
         Cholesky decomposition of current Fisher information matrix
     est_reward  : boolean (default False)
         Whether to output a reward baseline
     est_grad    : boolean (default False)
         Whether to output a gradient baseline
-    grad_ops    : numpy 3D array (default None)
-        Gradient outer products. If not given, computed from gradients
 
     Returns
     -------
@@ -90,34 +82,119 @@ def reinforce_baseline(rewards, gradients, curr_probs, past_probs, fisher_chol,
     rew_baselines = None
     grad_baselines = None
 
+    if fisher_chol is None:
+        fisher_chol = isample_fisher(gradients,
+                                     p_tar=p_tar,
+                                     p_gen=p_gen,
+                                     normalize=normalize,
+                                     min_logprob=min_logprob,
+                                     diag=fisher_diag)
     if est_reward:
-        rew_baseline_ests = (rewards * gradients.T).T
+        rew_baseline_ests = [r * g for r, g in izip(rewards, gradients)]
         rew_baseline_acc = isamp.importance_sample(rew_baseline_ests,
-                                                   p_old=past_probs,
-                                                   p_new=curr_probs,
-                                                   log_prob=True,
-                                                   normalize=True)
+                                                   p_tar=p_tar,
+                                                   p_gen=p_gen,
+                                                   normalize=normalize,
+                                                   min_logprob=min_logprob)
         rew_baseline = spl.cho_solve(fisher_chol, rew_baseline_acc)
         rew_baselines = np.dot(gradients, rew_baseline)
+
     if est_grad:
-        if grad_ops is None:
-            grad_ops = np.asarray([np.outer(g, g) for g in gradients])
-        grad_baseline_ests = (rewards * grad_ops.T).T
-        grad_baseline_acc = isamp.importance_sample(grad_baseline_ests,
-                                                    p_old=past_probs,
-                                                    p_new=curr_probs,
-                                                    log_prob=True,
-                                                    normalize=True)
-        grad_baseline = spl.cho_solve(fisher_chol, grad_baseline_acc)
+        if fisher_diag:
+            grad_base_ests = [np.diag(rp * g)
+                              for rp, g in izip(r_grads, gradients)]
+        else:
+            grad_base_ests = [np.outer(rp, g)
+                              for rp, g in izip(r_grads, gradients)]
+        baseline_acc = isamp.importance_sample(grad_base_ests,
+                                               p_tar=p_tar,
+                                               p_gen=p_gen,
+                                               normalize=normalize,
+                                               min_logprob=min_logprob)
+        grad_baseline = spl.cho_solve(fisher_chol, baseline_acc)
         grad_baselines = np.dot(gradients, grad_baseline)
 
     return rew_baselines, grad_baselines
 
 
-def importance_policy_gradient(rewards, gradients, curr_probs, past_probs,
-                               est_reward=True, est_grad=True, use_natural_grad=True,
-                               inv_fisher_off=1E-9, inv_fisher_diag=False):
-    """Compute a bandit policy expected rewards and gradient using importance
+def _importance_preprocess_gpomdp(rewards, gradients, p_tar, p_gen):
+    """Computes various trajectory quantities using the GPOMDP formulation.
+    """
+
+    res = {'traj_r': [], 'traj_p_tar': [], 'traj_p_gen': [],
+           'r_grads': [], 'state_act_p_tar': [],
+           'state_act_p_gen': [], 'act_grads': [],
+           'traj_grads': []}
+
+    for rs, gs, ps, qs in izip(rewards, gradients, p_tar, p_gen):
+
+        traj_p = np.sum(ps)
+        traj_q = np.sum(qs)
+        sum_grads = np.cumsum(gs, axis=0)
+        r_grad = np.sum((np.asarray(rs) * sum_grads.T).T, axis=0)
+
+        res['r_grads'].append(r_grad)
+        res['traj_p_tar'].append(traj_p)
+        res['traj_p_gen'].append(traj_q)
+        res['traj_grads'].append(sum_grads[-1])
+        res['traj_r'].append(np.sum(rs))
+
+        # Used for estimating fisher
+        res['act_grads'].extend(gs)
+        res['state_act_p_tar'].extend(np.cumsum(ps))
+        res['state_act_p_gen'].extend(np.cumsum(qs))
+
+    return res
+
+
+def _importance_preprocess_reinforce(rewards, gradients, p_tar, p_gen):
+    """Computes various trajectory quantities using the REINFORCE formulation.
+    """
+
+    res = {'traj_r': [], 'traj_p_tar': [], 'traj_p_gen': [],
+           'r_grads': [], 'state_act_p_tar': [],
+           'state_act_p_gen': [], 'act_grads': [],
+           'traj_grads': []}
+
+    for rs, gs, ps, qs in izip(rewards, gradients, p_tar, p_gen):
+
+        traj_p = np.sum(ps)
+        traj_q = np.sum(qs)
+        sum_grads = np.sum(gs, axis=0)
+        traj_r = np.sum(rs)
+        r_grad = sum_grads * traj_r
+
+        res['r_grads'].append(r_grad)
+        res['traj_p_tar'].append(traj_p)
+        res['traj_p_gen'].append(traj_q)
+        res['traj_grads'].append(sum_grads[-1])
+        res['traj_r'].append(np.sum(rs))
+
+        # Used for estimating fisher
+        res['act_grads'].extend(gs)
+        res['state_act_p_tar'].extend(np.cumsum(ps))
+        res['state_act_p_gen'].extend(np.cumsum(qs))
+
+    return res
+
+
+def importance_reinforce(rewards, gradients, p_tar, p_gen,
+                         use_baseline=True, use_natural_grad=True,
+                         fisher_diag=False, min_logprob=float('-inf'),
+                         normalize=True):
+    res = _importance_preprocess_reinforce(rewards, gradients, p_tar, p_gen)
+    return _importance_policy_gradient(res,
+                                       use_baseline=use_baseline,
+                                       use_natural_grad=use_natural_grad, fisher_diag=fisher_diag,
+                                       min_logprob=min_logprob,
+                                       normalize=normalize)
+
+
+def importance_gpomdp(rewards, gradients, p_tar, p_gen,
+                      use_baseline=True, use_natural_grad=True,
+                      fisher_diag=False, min_logprob=float('-inf'),
+                      normalize=True):
+    """Compute policy expected rewards and gradient using importance
     sampling.
 
     Follows the description in Tang and Abbeel's "On a Connection between
@@ -129,10 +206,10 @@ def importance_policy_gradient(rewards, gradients, curr_probs, past_probs,
         The rewards received
     gradients         : iterable of N numpy 1D-arrays
         The policy gradients corresponding to each acquired reward
-    curr_probs        : iterable of N floats
+    p_tar        : iterable of N floats
         The probabilities (or log-probabilities) of each action corresponding
         to the rewards for current parameters
-    past_probs        : iterable of N floats
+    p_gen        : iterable of N floats
         The probabilities (or log-probabilities) of each action corresponding
         to the rewards when they were executed
     log_prob          : boolean
@@ -143,10 +220,8 @@ def importance_policy_gradient(rewards, gradients, curr_probs, past_probs,
         Whether to estimate the gradient of the expected reward or not
     use_natural_grad  : boolean (default True)
         Whether to estimate the natural gradient
-    inv_fisher_off : double (default 1E-9)
-        Value to add to diagonal of inverse Fisher matrix for conditioning
-    inv_fisher_diag   : boolean (default False)
-        Whether to use only the diagonal of the inverse Fisher matrix
+    fisher_diag   : boolean (default False)
+        Whether to use only the diagonal of the Fisher matrix
 
     Returns
     -------
@@ -155,57 +230,56 @@ def importance_policy_gradient(rewards, gradients, curr_probs, past_probs,
     grad_val          : numpy 1D-array if est_grad is True, else None
         The estimated policy gradient for this bandit
     """
-    if not est_reward and not est_grad:
-        return None, None
 
-    curr_probs = np.asarray(curr_probs)
-    past_probs = np.asarray(past_probs)
-    rewards = np.asarray(rewards)
-    gradients = np.asarray(gradients)
+    res = _importance_preprocess_gpomdp(rewards=rewards,
+                                        gradients=gradients,
+                                        p_tar=p_tar,
+                                        p_gen=p_gen)
+    return _importance_policy_gradient(res,
+                                       use_baseline=use_baseline,
+                                       use_natural_grad=use_natural_grad, fisher_diag=fisher_diag,
+                                       min_logprob=min_logprob,
+                                       normalize=normalize)
 
-    # Estimate the policy inverse Fisher information matrix
-    # This will be used for estimating the baseline and also in computing
-    # the natural policy gradient
-    grad_ops = np.array([np.outer(g, g) for g in gradients])
-    fisher_cho = estimate_fisher_matrix(gradients=grad_ops,
-                                        curr_probs=curr_probs,
-                                        past_probs=past_probs,
-                                        inv_fisher_off=inv_fisher_off,
-                                        diag=inv_fisher_diag)
 
-    rew_baselines, grad_baselines = reinforce_baseline(rewards=rewards,
-                                                       gradients=gradients,
-                                                       curr_probs=curr_probs,
-                                                       past_probs=past_probs,
-                                                       fisher_chol=fisher_cho,
-                                                       est_reward=est_reward,
-                                                       est_grad=est_grad,
-                                                       grad_ops=grad_ops)
+def _importance_policy_gradient(res, use_baseline, use_natural_grad,
+                                fisher_diag, min_logprob, normalize):
+    """Implementation of importance-sampling based policy gradient computation.
+    """
+    if use_baseline:
+        rew_b, grad_b = constant_isamp_baseline(rewards=res['traj_r'],
+                                                gradients=res['traj_grads'],
+                                                r_grads=res['r_grads'],
+                                                p_tar=res['traj_p_tar'],
+                                                p_gen=res['traj_p_gen'],
+                                                est_reward=True,
+                                                est_grad=True,
+                                                fisher_diag=fisher_diag,
+                                                min_logprob=min_logprob,
+                                                normalize=normalize)
+    else:
+        rew_b = np.zeros((1))
+        grad_b = np.zeros((1))
 
-    j_grads = (rewards * gradients.T).T
-
-    # Estimate the expected reward
-    rew_val = None
-    if est_reward:
-        rew_ests = rewards - rew_baselines
-        rew_val = isamp.importance_sample(rew_ests,
-                                          p_old=past_probs,
-                                          p_new=curr_probs,
-                                          log_prob=True,
-                                          normalize=True)
+    rew_val = isamp.importance_sample(res['traj_r'] - rew_b,
+                                      p_tar=res['traj_p_tar'],
+                                      p_gen=res['traj_p_gen'],
+                                      normalize=normalize,
+                                      min_logprob=min_logprob)
 
     # Estimate the policy gradient
-    grad_val = None
-    if est_grad:
-        grad_ests = j_grads - grad_baselines
-        grad_val = isamp.importance_sample(grad_ests,
-                                           p_old=past_probs,
-                                           p_new=curr_probs,
-                                           log_prob=True,
-                                           normalize=True)
-        if use_natural_grad:
-            grad_val = spl.cho_solve(fisher_cho, grad_val)
+    grad_val = isamp.importance_sample(res['r_grads'] - grad_b,
+                                       p_tar=res['traj_p_tar'],
+                                       p_gen=res['traj_p_gen'],
+                                       normalize=normalize,
+                                       min_logprob=min_logprob)
+    if use_natural_grad:
+        act_fisher_chol = isample_fisher(gradients=res['act_grads'],
+                                         p_tar=res['state_act_p_tar'],
+                                         p_gen=res['state_act_p_gen'],
+                                         min_logprob=min_logprob,
+                                         diag=fisher_diag,
+                                         normalize=normalize)
+        grad_val = spl.cho_solve(act_fisher_chol, grad_val)
 
-    import pdb
-    pdb.set_trace()
     return rew_val, grad_val

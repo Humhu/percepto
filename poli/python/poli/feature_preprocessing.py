@@ -103,6 +103,11 @@ class OnlineFeatureNormalizer(object):
         self.min_samples = min_samples
         self.keep_updating = keep_updating
 
+    def set_updating(self, enable):
+        """Enable or disable updating the scaling.
+        """
+        self.keep_updating = enable
+
     def process(self, v):
         """Learn using a received sample and return the normalized output.
         """
