@@ -20,61 +20,32 @@ class ParameterPolicyNode(object):
         # Parse parameter interface
         interface_info = rospy.get_param('~interface')
         self.interface = infitu.parse_interface(interface_info)
+        output_dim = self.interface.num_parameters
+
+        stream_name = rospy.get_param('~input_stream')
+        self.stream_rx = broadcast.Receiver(stream_name)
+        raw_input_dim = self.stream_rx.stream_feature_size
 
         # Parse policy
         self.policy_lock = Lock()
-        policy_info = rospy.get_param('~policy')
-        stream_name = policy_info.pop('input_stream')
-        self.stream_rx = broadcast.Receiver(stream_name)
-
-        self.project_actions = policy_info.pop('project_actions')
-        raw_input_dim = self.stream_rx.stream_feature_size
-        input_dim = raw_input_dim + 1
-        output_dim = self.interface.num_parameters
-
-        if rospy.has_param('~input_preprocessing'):
-            self.normalizer = None
-            self.augmenter = None
-
-            if rospy.has_param('~input_preprocessing/augmentation'):
-                aug_info = rospy.get_param('~input_preprocessing/augmentation')
-                self.augmenter = poli.FeaturePolynomialAugmenter(dim=raw_input_dim,
-                                                                 **aug_info)
-                raw_input_dim = self.augmenter.dim
-                input_dim = raw_input_dim + 1
-
-            if rospy.has_param('~input_preprocessing/normalization'):
-                norm_info = rospy.get_param(
-                    '~input_preprocessing/normalization')
-                self.normalizer = poli.OnlineFeatureNormalizer(dim=raw_input_dim,
-                                                               **norm_info)
-
-            if rospy.has_param('~input_preprocessing/stream_name'):
-                stream_name = rospy.get_param(
-                    '~input_preprocessing/stream_name')
-                self.norm_tx = broadcast.Transmitter(stream_name=stream_name,
-                                                     feature_size=input_dim,
-                                                     description='Normalized policy input',
-                                                     namespace='~inputs')
-
-        # TODO Make homogeneous augmentation optional?
-        policy_info['input_dim'] = input_dim
-        policy_info['output_dim'] = output_dim
-        self.policy = poli.parse_policy(policy_info)
+        self.policy_wrapper = poli.parse_policy_wrapper(raw_input_dim=raw_input_dim,
+                                                        output_dim=output_dim,
+                                                        info=rospy.get_param('~'))
 
         # Parse learner
-        learner_info = rospy.get_param('~gradient_estimation')
-        self.learner = poli.parse_learner(learner_info, self.policy)
+        learner_info = rospy.get_param('~learning/gradient_estimation')
+        self.learner = poli.parse_gradient_estimator(learner_info,
+                                                     policy=self.policy)
 
         # Parse optimizer
-        optimizer_info = rospy.get_param('~optimizer')
+        optimizer_info = rospy.get_param('~learning/optimizer')
         optimizer_info['mode'] = 'max'
         self.optimizer = optim.parse_optimizers(optimizer_info)
 
         # Parse evaluator
-        evaluator_info = rospy.get_param('~evaluator')
-        reward_topic = evaluator_info.pop('reward_topic')
-        self.evaluator = poli.DelayedBanditEvaluator(**evaluator_info)
+        recorder_info = rospy.get_param('~learning/sar_recorder')
+        reward_topic = recorder_info.pop('reward_topic')
+        self.recorder = poli.SARRecorder(**recorder_info)
 
         # Parse action broadcaster
         if rospy.has_param('~action_broadcast'):
@@ -97,17 +68,6 @@ class ParameterPolicyNode(object):
                                             RewardStamped,
                                             self.reward_callback)
 
-    def __preprocess_input(self, v):
-        if self.augmenter is not None:
-            v = self.augmenter.process(v)
-        if self.normalizer is not None:
-            v = self.normalizer.process(v)
-            if v is None:
-                return None
-
-        v = np.hstack((v, 1))
-        return v
-
     def action_spin(self, event):
 
         now = rospy.Time.now()
@@ -116,53 +76,45 @@ class ParameterPolicyNode(object):
         if stamp is None or raw_state is None:
             rospy.logwarn('Could not read input stream at time %s', str(now))
 
-        state = self.__preprocess_input(raw_state)
+        self.policy_lock.acquire()
+        state = self.policy_wrapper.process_input(raw_state)
         if state is None:
             rospy.loginfo('Input normalizer not ready yet')
+            self.policy_lock.release()
             return
+        action = self.policy_wrapper.sample_action(state, proc_input=False)
+        self.interface.set_values(action)
 
-        self.norm_tx.publish(time=stamp, feats=state)
-
-        self.policy_lock.acquire()
-        action = self.policy.sample_action(state)
-        if self.project_actions:
-            action[action > 1] = 1
-            action[action < -1] = -1
-
+        # Output printout
         action_mean = self.policy.mean
         action_cov = self.policy.cov
-
         msg = 'State: %s\nAction: %s\n' % (
             np.array_str(state), np.array_str(action))
         msg += 'Mean: %s\nCov:\n%s' % (np.array_str(action_mean),
                                        np.array_str(action_cov))
         rospy.loginfo(msg)
 
-        # Perform projection down to normalized set
-
-        self.interface.set_values(action)
-
         if self.action_tx is not None:
             self.action_tx.publish(time=now, feats=action)
 
-        self.evaluator.report_state_action(time=now.to_sec(),
-                                           state=state,
-                                           action=action)
+        self.recorder.report_state_action(time=now.to_sec(),
+                                          state=state,
+                                          action=action)
         self.policy_lock.release()
 
     def reward_callback(self, msg):
-        self.evaluator.report_reward(time=msg.header.stamp.to_sec(),
-                                     reward=msg.reward)
+        self.recorder.report_reward(time=msg.header.stamp.to_sec(),
+                                    reward=msg.reward)
 
     def learn_spin(self, event):
         self.policy_lock.acquire()
 
         rospy.loginfo('Processing experience buffer...')
-        sar_tuples = self.evaluator.process_buffers()
-        for s, a, r in sar_tuples:
+        sar_tuples = self.recorder.process_buffers()
+        for t, s, a, r in sar_tuples:
             rospy.loginfo('Experience state: %s action: %s reward: %f',
                           np.array_str(s), np.array_str(a), r)
-            self.learner.report_sample(state=s, action=a, reward=r)
+            self.learner.report_episode(states=[s], actions=[a], rewards=[r])
 
         rospy.loginfo('Have %d SAR samples', self.learner.num_samples)
 
@@ -170,15 +122,18 @@ class ParameterPolicyNode(object):
         # all single threaded?
         theta_init = self.policy.get_theta()
         theta = self.optimizer.step(x_init=theta_init,
-                                    func=self.learner.compute_objective_and_gradient)
+                                    func=self.learner.estimate_reward_and_gradient)
         self.policy.set_theta(theta)
         rospy.loginfo('Parameter A:\n%s', np.array_str(self.policy.A))
         rospy.loginfo('Parameter B:\n%s', np.array_str(self.policy.B))
         self.policy_lock.release()
 
+    @property
+    def policy(self):
+        return self.policy_wrapper.policy
 
 if __name__ == '__main__':
-    rospy.init_node('bandit_policy_gradient')
+    rospy.init_node('policy_gradient_node')
 
     node = ParameterPolicyNode()
     try:

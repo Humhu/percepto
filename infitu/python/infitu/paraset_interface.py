@@ -45,7 +45,7 @@ class NumericParameterInterface(object):
         if scale < 0:
             raise ValueError('Limits must be [low, high]')
 
-        def unscale_func(x): 
+        def unscale_func(x):
             x = min(max(x, -1), 1)
             return x * scale + offset
 

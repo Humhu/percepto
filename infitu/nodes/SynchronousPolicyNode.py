@@ -17,43 +17,24 @@ class SynchronousPolicyNode(object):
 
         # Parse policy
         self.policy_lock = Lock()
-        policy_info = rospy.get_param('~policy')
-        stream_name = policy_info.pop('input_stream')
-        output_dim = policy_info.pop('action_dim')
+        stream_name = rospy.get_param('~input_stream')
+        output_dim = rospy.get_param('~action_dim')
         self.stream_rx = broadcast.Receiver(stream_name)
-
-        self.project_actions = policy_info.pop('project_actions')
         raw_input_dim = self.stream_rx.stream_feature_size
-        input_dim = raw_input_dim + 1
 
-        self.normalizer = None
-        self.augmenter = None
-        if rospy.has_param('~input_preprocessing'):
-
-            if rospy.has_param('~input_preprocessing/augmentation'):
-                aug_info = rospy.get_param('~input_preprocessing/augmentation')
-                self.augmenter = poli.FeaturePolynomialAugmenter(dim=raw_input_dim,
-                                                                 **aug_info)
-                raw_input_dim = self.augmenter.dim
-                input_dim = raw_input_dim + 1
-
-            if rospy.has_param('~input_preprocessing/normalization'):
-                norm_info = rospy.get_param(
-                    '~input_preprocessing/normalization')
-                self.normalizer = poli.OnlineFeatureNormalizer(dim=raw_input_dim,
-                                                               **norm_info)
-
-        # TODO Make homogeneous augmentation optional?
-        policy_info['input_dim'] = input_dim
-        policy_info['output_dim'] = output_dim
-        self.policy = poli.parse_policy(policy_info)
+        # Parse policy
+        self.policy_lock = Lock()
+        self.policy_wrapper = poli.parse_policy_wrapper(raw_input_dim=raw_input_dim,
+                                                        output_dim=output_dim,
+                                                        info=rospy.get_param('~'))
 
         # Parse learner
-        learner_info = rospy.get_param('~gradient_estimation')
-        self.learner = poli.parse_learner(learner_info, self.policy)
+        learner_info = rospy.get_param('~learning/gradient_estimation')
+        self.learner = poli.parse_gradient_estimator(learner_info,
+                                                     policy=self.policy)
 
         # Parse optimizer
-        optimizer_info = rospy.get_param('~optimizer')
+        optimizer_info = rospy.get_param('~learning/optimizer')
         optimizer_info['mode'] = 'max'
         self.optimizer = optim.parse_optimizers(optimizer_info)
 
@@ -68,16 +49,9 @@ class SynchronousPolicyNode(object):
         self._learn_timer = rospy.Timer(period=rospy.Duration(1.0 / learn_rate),
                                         callback=self.learn_spin)
 
-    def __preprocess_input(self, v):
-        if self.augmenter is not None:
-            v = self.augmenter.process(v)
-        if self.normalizer is not None:
-            v = self.normalizer.process(v)
-            if v is None:
-                return None
-
-        v = np.hstack((v, 1))
-        return v
+    @property
+    def policy(self):
+        return self.policy_wrapper.policy
 
     @property
     def default_input(self):
@@ -97,21 +71,17 @@ class SynchronousPolicyNode(object):
                 rospy.sleep(rospy.Duration(1.0))
                 continue
 
-            state = self.__preprocess_input(raw_state)
+            state = self.policy_wrapper.process_input(raw_state)
             use_default = state is None
             if use_default:
                 rospy.loginfo('Input normalizer not ready yet. Using default input.')
                 state = self.default_input
 
             self.policy_lock.acquire()
-            action = self.policy.sample_action(state)
-            self.policy_lock.release()
-            if self.project_actions:
-                action[action > 1] = 1
-                action[action < -1] = -1
-
+            action = self.policy_wrapper.sample_action(state, proc_input=False)
             action_mean = self.policy.mean
             action_cov = self.policy.cov
+            self.policy_lock.release()
 
             msg = 'Executing:\n'
             msg += '\tState: %s\n' % np.array_str(state)
@@ -124,8 +94,7 @@ class SynchronousPolicyNode(object):
 
             if not use_default:
                 self.policy_lock.acquire()
-                self.learner.report_sample(
-                    state=state, action=action, reward=reward)
+                self.learner.report_episode(states=[state], actions=[action], rewards=[reward])
                 self.policy_lock.release()
 
             self._policy_rate.sleep()
@@ -137,7 +106,7 @@ class SynchronousPolicyNode(object):
         self.policy_lock.acquire()
         theta_init = self.policy.get_theta()
         theta = self.optimizer.step(x_init=theta_init,
-                                    func=self.learner.compute_objective_and_gradient)
+                                    func=self.learner.estimate_reward_and_gradient)
         self.policy.set_theta(theta)
         rospy.loginfo('Parameter A:\n%s', np.array_str(self.policy.A))
         rospy.loginfo('Parameter B:\n%s', np.array_str(self.policy.B))
