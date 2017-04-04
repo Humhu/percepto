@@ -3,6 +3,16 @@
 
 import numpy as np
 
+def parse_feature_augmenter(dim, spec):
+    if 'type' not in spec:
+        raise ValueError('Specification must include type!')
+
+    aug_type = spec.pop('type')
+    lookup = {'polynomial': PolynomialFeatureAugmenter}
+    if aug_type not in lookup:
+        raise ValueError('Augmenter type %s not valid type: %s' %
+                         (aug_type, str(lookup.keys())))
+    return lookup[aug_type](dim=dim, **spec)
 
 class OnlineMaxTracker(object):
     """Computes the maximum/min for a stream of vectors online.
@@ -44,7 +54,7 @@ class OnlineMomentTracker:
         The number of standard deviations to normalize to
     '''
 
-    def __init__(self, dim, num_sds):
+    def __init__(self, dim, num_sds=3.0):
         self.M1 = np.zeros(dim)
         self.M2 = np.zeros(dim)
         self.count = 0
@@ -88,11 +98,11 @@ class OnlineFeatureNormalizer(object):
         Which normalization method to use
     min_samples   : positive integer
         Minimum number of samples required before outputing
-    keep_updating : boolean
+    keep_updating : boolean (default False)
         Whether to keep updating the normalization online after min_samples obtained
     """
 
-    def __init__(self, dim, mode, min_samples, keep_updating, **kwargs):
+    def __init__(self, dim, mode, min_samples, keep_updating=False, **kwargs):
         if mode == 'minmax':
             self.tracker = OnlineMaxTracker(dim, **kwargs)
         elif mode == 'moments':
@@ -123,7 +133,7 @@ class OnlineFeatureNormalizer(object):
             offset = self.tracker.offset
             return (v - offset) / scale
 
-class FeaturePolynomialAugmenter(object):
+class PolynomialFeatureAugmenter(object):
     def __init__(self, dim, max_order):
         self._dim = dim
         self.max_order = max_order

@@ -167,7 +167,7 @@ def _importance_preprocess_reinforce(rewards, gradients, p_tar, p_gen):
         res['r_grads'].append(r_grad)
         res['traj_p_tar'].append(traj_p)
         res['traj_p_gen'].append(traj_q)
-        res['traj_grads'].append(sum_grads[-1])
+        res['traj_grads'].append(sum_grads)
         res['traj_r'].append(np.sum(rs))
 
         # Used for estimating fisher

@@ -8,8 +8,8 @@ import scipy.integrate as spg
 import scipy.interpolate as spi
 
 
-class DelayedBanditEvaluator(object):
-    """Buffers and returns integrated bandit rewards between actions.
+class SARRecorder(object):
+    """Buffers and returns integrated rewards between actions.
 
     Assumes that state-action tuples and rewards are reported in monotonically
     increasing temporal order, respectively.
@@ -19,15 +19,18 @@ class DelayedBanditEvaluator(object):
 
     Parameters
     ----------
-    integration_mode : string (traps, simps)
+    integration_mode   : string (traps, simps)
+    interpolation_mode : string (zero, linear, etc...)
+        See scipy.interpolation.interp1d
     """
 
-    def __init__(self, integration_mode):
+    def __init__(self, integration_mode, interpolation_mode='linear'):
         self._sa_buffer = deque()
         self._sa_lock = Lock()
         self._r_buffer = deque()
         self._r_lock = Lock()
 
+        self._interp_mode = interpolation_mode
         if integration_mode == 'traps':
             self._integration_func = np.trapz
         elif integration_mode == 'simps':
@@ -74,7 +77,7 @@ class DelayedBanditEvaluator(object):
 
         Returns
         -------
-        out : list of state-action-reward tuples
+        out : list of time-state-action-reward tuples
         """
         self._sa_lock.acquire()
         self._r_lock.acquire()
@@ -88,7 +91,7 @@ class DelayedBanditEvaluator(object):
         t_vals, r_vals = zip(*self._r_buffer)
         t_vals = np.array(t_vals)
         r_vals = np.array(r_vals)
-        interp = spi.interp1d(x=t_vals, y=r_vals)
+        interp = spi.interp1d(x=t_vals, y=r_vals, kind=self._interp_mode)
 
         while len(self._sa_buffer) > 1:
             t, s, a = self._sa_buffer[0]
@@ -112,7 +115,7 @@ class DelayedBanditEvaluator(object):
 
             r_integrated = self._integration_func(y=ri_vals, x=ti_vals)
             self._sa_buffer.popleft()
-            out.append((s, a, r))
+            out.append((t, s, a, r))
 
         # Trim reward buffer down
         earliest_a_time = self._sa_buffer[0][0]
@@ -122,3 +125,60 @@ class DelayedBanditEvaluator(object):
         self._sa_lock.release()
         self._r_lock.release()
         return out
+
+
+class EpisodeRecorder(object):
+    """Converts timestamped SAR tuples into time-divided episodes.
+
+    All calls are thread safe.
+    """
+    def __init__(self):
+        self._sar_buffer = deque()
+        self._ep_breaks = deque()
+        self._sar_lock = Lock()
+        self._ep_lock = Lock()
+
+    def report_sar_tuples(self, sars):
+        """Report timestamped SAR tuples.
+        """
+        self._sar_lock.acquire()
+        self._sar_buffer.extend(sars)
+        self._sar_lock.release()
+
+    def report_episode_break(self, time):
+        """Report a break between episodes.
+        """
+        self._ep_lock.acquire()
+        self._ep_breaks.append(time)
+        self._ep_lock.release()
+
+    def retrieve_episodes(self):
+        """Process internal buffers to produce episodes.
+        """
+        self._ep_lock.acquire()
+        self._sar_lock.acquire()
+
+        episodes = []
+        while len(self._ep_breaks) > 0:
+            next_break = self._ep_breaks[0]
+
+            episode = []
+            complete = False
+            for t, s, a, r in self._sar_buffer:
+                if t < next_break:
+                    episode.append((t, s, a, r))
+                else:
+                    complete = True
+                    break
+
+            if not complete:
+                break
+            else:
+                episodes.append(episode)
+                self._ep_breaks.popleft()
+                while self._sar_buffer[0][0] < next_break:
+                    self._sar_buffer.popleft()
+
+        self._ep_lock.release()
+        self._sar_lock.release()
+        return episodes

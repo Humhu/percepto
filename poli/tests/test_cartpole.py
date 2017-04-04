@@ -34,7 +34,7 @@ def run_trial(policy, pfunc, max_len=200):
 
         if done:
             break
-    print "Episode finished after %d timesteps" % (t+1)
+    print "Episode finished after %d timesteps" % (t + 1)
     return observations, actions, rewards, logprobs
 
 
@@ -50,9 +50,10 @@ if __name__ == '__main__':
     #                                             keep_updating=True,
     #                                             num_sds=2.0)
     augmenter = poli.FeaturePolynomialAugmenter(dim=raw_xdim, max_order=1)
+
     def preprocess(v):
         #v = preprocessor.process(v)
-        #if v is None:
+        # if v is None:
         #    return None
         v = augmenter.process(v)
         return np.hstack((v, 1))
@@ -72,19 +73,18 @@ if __name__ == '__main__':
 
     batch_size = 30
     init_learn_size = 40
-    estimator = poli.PolicyGradientLearner(policy=policy,
-                                           traj_mode='gpomdp',
-                                           batch_size=batch_size,
-                                           buffer_size=100,
-                                           use_natural_gradient=True,
-                                           use_norm_sample=True,
-                                           use_diag_fisher=False,
-                                           use_baseline=True,
-                                           seed=1)
+    estimator = poli.EpisodicPolicyGradientEstimator(policy=policy,
+                                                     traj_mode='gpomdp',
+                                                     batch_size=batch_size,
+                                                     buffer_size=100,
+                                                     use_natural_gradient=True,
+                                                     use_norm_sample=True,
+                                                     use_diag_fisher=False,
+                                                     use_baseline=True,
+                                                     seed=1)
 
     optimizer = optim.GradientDescent(mode='max', step_size=0.1,
                                       max_linf_norm=0.01, max_iters=10)
-
 
     # print 'Initializing feature preprocessor...'
     # for i in range(min_preprocessor_samples):
@@ -102,7 +102,7 @@ if __name__ == '__main__':
         print 'B:\n%s' % np.array_str(policy.B)
         counter += 1
         states, actions, rewards, logprobs = run_trial(policy, preprocess, 500)
-        estimator.report_trajectory(states, actions, rewards, logprobs)
+        estimator.report_episode(states, actions, rewards, logprobs)
 
         trials.append(len(rewards))
 
