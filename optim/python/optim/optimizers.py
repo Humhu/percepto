@@ -71,6 +71,8 @@ class Optimizer(object):
         -------
         x_opt  : numpy ND-array
             The final optimized input
+        y_opt  : float
+            The final optimized objective
         """
         pass
 
@@ -162,8 +164,8 @@ class GradientDescent(Optimizer):
     """
 
     def __init__(self, mode='min', step_size=0.1, max_l2_norm=float('inf'),
-                 max_linf_norm=float('inf'), max_iters=0, x_tol=1E-3,
-                 grad_tol=1E-3, y_tol=0):
+                 max_linf_norm=float('inf'), max_iters=0, x_tol=1E-6,
+                 grad_tol=1E-6, y_tol=0):
         if mode == 'min':
             self._k = -1
         elif mode == 'max':
@@ -210,7 +212,7 @@ class GradientDescent(Optimizer):
             x_curr = x_next
             y_curr = y_next
 
-        return x_curr
+        return x_curr, y_curr
 
     def __step(self, x_init, func):
         """Internal function for running one iteration of optimization.
@@ -221,7 +223,7 @@ class GradientDescent(Optimizer):
         y_init
         grad
         """
-        y_init, grad = func(x_init)
+        y_init, grad = func(x=x_init)
         if y_init is None or grad is None:
             return x_init, None, None
 
@@ -242,8 +244,6 @@ class GradientDescent(Optimizer):
             l2_scale = 1
 
         adj_scale = min(linf_scale, l2_scale)
-
-        step = step * adj_scale
 
         x_next = x_init + adj_scale * step
         return x_next, y_init, grad
