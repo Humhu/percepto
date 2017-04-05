@@ -1,0 +1,70 @@
+<launch>
+
+    <node pkg="infitu" type="test_continuous_problem.py" name="test_problem" output="screen" required="true">
+        <rosparam>
+            cart_dt: 0.1
+            cart_max_acc: 1.0
+            cart_max_steps: 100
+            tick_rate: 10.0
+        </rosparam>
+    </node>
+
+    <node pkg="infitu" type="ParameterPolicyNode.py" name="policy" output="screen">
+        <rosparam>
+            interface:
+                acc0:
+                    param_name: acc_0
+                    base_namespace: /test_problem
+                    lower_limit: -1
+                    upper_limit: 1
+                acc1:
+                    param_name: acc_1
+                    base_namespace: /test_problem
+                    lower_limit: -1
+                    upper_limit: 1
+
+            input_stream: cart_state
+            policy_rate: 3.0
+            learn_rate: 0.5
+            
+            policy:
+                type: linear
+            input_processing:
+                enable_homogeneous: true
+                <!--normalization:
+                    mode: moments
+                    min_samples: 30
+                    keep_updating: False
+                    num_sds: 3.0
+                augmentation:
+                    type: polynomial
+                    max_order: 1-->
+            output_processing:
+                type: box
+                lims: 1
+            regularization:
+                scale: 1E-1
+            learning:
+                reward_topic: test_problem/reward
+                break_topic: test_problem/breaks
+                episode_recording:
+                    mixing_mode: average
+                    interpolation_mode: linear
+                    integration_mode: traps
+                gradient_estimation:
+                    type: episodic_policy_gradient
+                    traj_mode: gpomdp
+                    batch_size: 30
+                    buffer_size: 100
+                    use_natural_gradient: true
+                    use_baseline: true
+                    seed: 1
+                optimizer:
+                    type: gradient_descent
+                    step_size: 1E-1
+                    max_linf_norm: 0.1
+                    max_iters: 10
+        </rosparam>
+    </node>
+    
+</launch>

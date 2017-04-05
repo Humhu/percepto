@@ -29,8 +29,9 @@ class NumericParameterInterface(object):
     to an input range of -1 to 1.
     """
 
-    def __init__(self):
+    def __init__(self, verbose=False):
         self._setters = []
+        self._verbose = verbose
 
     def add_parameter(self, name, param_name, base_topic, limits):
         """Adds another parameter to this interface.
@@ -68,7 +69,9 @@ class NumericParameterInterface(object):
 
             out += '\n\t%s: %f (%f)' % (name, vi, vscaled)
             setter.set_value(vscaled)
-        rospy.loginfo(out)
+        
+        if self._verbose:
+            rospy.loginfo(out)
 
     @property
     def num_parameters(self):

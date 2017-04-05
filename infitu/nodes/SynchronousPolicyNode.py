@@ -24,14 +24,20 @@ class SynchronousPolicyNode(object):
 
         # Parse policy
         self.policy_lock = Lock()
-        self.policy_wrapper = poli.parse_policy_wrapper(raw_input_dim=raw_input_dim,
-                                                        output_dim=output_dim,
-                                                        info=rospy.get_param('~'))
+        self._active_wrapper = poli.parse_policy_wrapper(raw_input_dim=raw_input_dim,
+                                                         output_dim=output_dim,
+                                                         info=rospy.get_param('~'))
+        # Create a duplicate policy to use for gradient estimation asynchronously
+        # NOTE The learner wrapper should never process inputs/outputs, since it would
+        # diverge from the active wrapper! We use only its policy member.
+        self._learner_wrapper = poli.parse_policy_wrapper(raw_input_dim=raw_input_dim,
+                                                          output_dim=output_dim,
+                                                          info=rospy.get_param('~'))
 
         # Parse learner
         learner_info = rospy.get_param('~learning/gradient_estimation')
         self.learner = poli.parse_gradient_estimator(learner_info,
-                                                     policy=self.policy)
+                                                     policy=self.learner_policy)
 
         # Parse optimizer
         optimizer_info = rospy.get_param('~learning/optimizer')
@@ -50,12 +56,16 @@ class SynchronousPolicyNode(object):
                                         callback=self.learn_spin)
 
     @property
-    def policy(self):
-        return self.policy_wrapper.policy
+    def active_policy(self):
+        return self._active_wrapper.policy
+
+    @property
+    def learner_policy(self):
+        return self._learner_wrapper.policy
 
     @property
     def default_input(self):
-        v = np.zeros(self.policy.input_dim)
+        v = np.zeros(self.active_policy.input_dim)
         v[-1] = 1
         return v
 
@@ -71,16 +81,19 @@ class SynchronousPolicyNode(object):
                 rospy.sleep(rospy.Duration(1.0))
                 continue
 
-            state = self.policy_wrapper.process_input(raw_state)
+            self.policy_lock.acquire()
+            state = self._active_wrapper.process_input(raw_state)
             use_default = state is None
             if use_default:
-                rospy.loginfo('Input normalizer not ready yet. Using default input.')
+                rospy.loginfo(
+                    'Input normalizer not ready yet. Using default input.')
                 state = self.default_input
 
-            self.policy_lock.acquire()
-            action = self.policy_wrapper.sample_action(state, proc_input=False)
-            action_mean = self.policy.mean
-            action_cov = self.policy.cov
+            action = self._active_wrapper.sample_action(state=state,
+                                                        proc_input=False)
+            action_logprob = self.active_policy.logprob(state, action)
+            action_mean = self.active_policy.mean
+            action_cov = self.active_policy.cov
             self.policy_lock.release()
 
             msg = 'Executing:\n'
@@ -94,23 +107,31 @@ class SynchronousPolicyNode(object):
 
             if not use_default:
                 self.policy_lock.acquire()
-                self.learner.report_episode(states=[state], actions=[action], rewards=[reward])
+                # TODO Generalize between sequential, bandit problems?
+                self.learner.report_episode(states=[state],
+                                            actions=[action],
+                                            rewards=[reward],
+                                            logprobs=[action_logprob])
                 self.policy_lock.release()
-
             self._policy_rate.sleep()
 
     def learn_spin(self, event):
 
         rospy.loginfo('Have %d SAR samples', self.learner.num_samples)
 
+        theta, obj = self.optimizer.optimize(x_init=self.learner_policy.get_theta(),
+                                             func=self.learner.estimate_reward_and_gradient)
+        
+        if obj is not None:
+            rospy.loginfo('Predicted reward: %f' % obj)
+
+        self.learner_policy.set_theta(theta)
         self.policy_lock.acquire()
-        theta_init = self.policy.get_theta()
-        theta = self.optimizer.step(x_init=theta_init,
-                                    func=self.learner.estimate_reward_and_gradient)
-        self.policy.set_theta(theta)
-        rospy.loginfo('Parameter A:\n%s', np.array_str(self.policy.A))
-        rospy.loginfo('Parameter B:\n%s', np.array_str(self.policy.B))
+        self.active_policy.set_theta(theta)
         self.policy_lock.release()
+
+        rospy.loginfo('Parameter A:\n%s', np.array_str(self.learner_policy.A))
+        rospy.loginfo('Parameter B:\n%s', np.array_str(self.learner_policy.B))
 
 
 if __name__ == '__main__':
