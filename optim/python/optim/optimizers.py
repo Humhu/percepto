@@ -195,7 +195,7 @@ class GradientDescent(Optimizer):
             # when it comes to checking y_tol
             x_next, y_next, grad = self.__step(x_init=x_curr, func=func)
             if y_next is None or grad is None:
-                return x_next
+                return x_next, y_next
 
             # Check convergence
             iter_count += 1

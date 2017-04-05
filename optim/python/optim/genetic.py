@@ -3,10 +3,11 @@ from numpy.random import multivariate_normal as mvn
 from itertools import izip
 import math
 
+
 class GeneticOptimizer(object):
 
     def __init__(self, crossover_func, mutate_func, selection_func,
-                 checker_func=None, prob_cx=0.6, popsize=None, 
+                 checker_func=None, prob_cx=0.6, popsize=None,
                  elitist=False, verbose=False):
         self.crossover = crossover_func
         self.mutate = mutate_func
@@ -58,11 +59,11 @@ class GeneticOptimizer(object):
 
         # Pick new population parents
         parents = self.selection(N, self.pop_fitness)
-        crossover_probs = np.random.rand(N/2)
+        crossover_probs = np.random.rand(N / 2)
         children = []
-        for i in range(N/2):
-            a_ind = parents[2*i]
-            b_ind = parents[2*i+1]
+        for i in range(N / 2):
+            a_ind = parents[2 * i]
+            b_ind = parents[2 * i + 1]
             par_a = self.population[a_ind]
             par_b = self.population[b_ind]
             if crossover_probs[i] < self.prob_cx:
@@ -74,10 +75,12 @@ class GeneticOptimizer(object):
                 child_b = par_b
                 if self.verbose:
                     msg = 'No crossover:\n'
-            
+
             if self.verbose:
-                msg += '\tParent %d: %s fit:%f\n' % (a_ind, str(par_a), fitness[a_ind])
-                msg += '\tParent %d: %s fit:%f\n' % (b_ind, str(par_b), fitness[b_ind])
+                msg += '\tParent %d: %s fit:%f\n' % (
+                    a_ind, str(par_a), fitness[a_ind])
+                msg += '\tParent %d: %s fit:%f\n' % (
+                    b_ind, str(par_b), fitness[b_ind])
                 print msg
 
             # Apply mutations
@@ -98,6 +101,7 @@ class GeneticOptimizer(object):
             children[-1] = elite
         self.population = children
 
+
 def uniform_crossover(a, b, cx_rate=0.5):
     '''Perform crossover (breeding) on two iterable objects.
     '''
@@ -108,6 +112,7 @@ def uniform_crossover(a, b, cx_rate=0.5):
     out_a = [ai if p else bi for p, ai, bi in izip(a_picks, a, b)]
     out_b = [bi if p else ai for p, ai, bi in izip(a_picks, a, b)]
     return out_a, out_b
+
 
 def gaussian_mutate(a, cov):
     '''Perform Gaussian mutation on a vector gene.
@@ -126,6 +131,7 @@ def gaussian_mutate(a, cov):
 
     return a + mvn(mean=np.zeros(N), cov=cov)
 
+
 def categorical_mutate(a, categories, weights=None):
     '''Mutates a categorical gene.
     '''
@@ -136,46 +142,61 @@ def categorical_mutate(a, categories, weights=None):
         weights = np.ones(len(categories))
     else:
         weights = np.asarray(weights)
-    
-    sample_weights = [w if c != a else 0 for w,c in izip(weights, categories)]
+
+    sample_weights = [w if c != a else 0 for w, c in izip(weights, categories)]
     sample_weights = np.asarray(sample_weights)
     sample_weights = sample_weights / np.sum(sample_weights)
     return np.random.choice(categories, p=sample_weights)
 
+
 def low_variance_selection(N, weights, comb_width=0.9):
     if comb_width > 1.0 or comb_width < 0.0:
         raise ValueError('comb_width must be between 0 and 1.')
-    
+
     inds = range(len(weights))
     weights = np.asarray(weights)
     weights = weights / np.sum(weights)
-    
+
     # Special case of N=1
     if N == 1:
         return np.random.choice(inds, p=weights)
-        
+
     cum_weights = np.cumsum(weights)
-    shift = np.random.uniform(0, 1.0-comb_width)
+    shift = np.random.uniform(0, 1.0 - comb_width)
     comb = np.linspace(start=0, stop=comb_width, num=N) + shift
     print comb
     picks = [np.argmax(cum_weights > c) for c in comb]
     return picks
-    
-def tournament_selection(N, weights, k_size=None):
+
+
+def tournament_selection(N, weights, k_size=None, replacement=True):
     num_competitors = len(weights)
 
     if k_size is None:
-        k_size = max(math.ceil(0.5 * num_competitors), 1)
+        k_size = int(max(math.ceil(0.5 * num_competitors), 1))
 
-    ranks = list(enumerate(weights))
-    def select():
+    def select(w, data):
         # TODO Can make more efficient with cumprod?
         best_ind = None
+        best_data = None
         best_fit = float('-inf')
         for i in range(k_size):
-            ind = np.random.random_integers(low=0, high=num_competitors-1)
-            if weights[ind] > best_fit:
+            ind = np.random.random_integers(low=0, high=len(w) - 1)
+            if w[ind] > best_fit:
                 best_ind = ind
-                best_fit = weights[ind]
-        return best_ind
-    return [select() for i in range(N)]
+                best_data = data[ind]
+                best_fit = w[ind]
+        return best_ind, best_data
+
+    inds = range(num_competitors)
+    if replacement:
+        return [select(weights, inds)[1] for _ in range(N)]
+    else:
+        w = list(weights)
+        out = []
+        for _ in range(N):
+            ind, orig_ind = select(w, inds)
+            out.append(orig_ind)
+            w.pop(ind)
+            inds.pop(ind)
+        return out
