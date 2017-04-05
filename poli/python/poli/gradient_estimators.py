@@ -6,13 +6,15 @@ import random
 from itertools import izip
 from collections import deque
 from math import sqrt
+
 import policies as pp
 import policy_gradient as ppg
+import optim
 
 from joblib import Parallel, delayed
 
 
-def parse_gradient_estimator(spec, policy):
+def parse_gradient_estimator(spec, policy, regularizer=None):
     """Parses a dictionary to construct the appropriate gradient estimator object.
     """
     if 'type' not in spec:
@@ -24,7 +26,7 @@ def parse_gradient_estimator(spec, policy):
         raise ValueError('Gradient estimator type %s not valid type: %s' %
                          (learner_type, str(lookup.keys())))
 
-    return lookup[learner_type](policy=policy, **spec)
+    return lookup[learner_type](policy=policy, regularizer=regularizer, **spec)
 
 
 def __compute_gradients(policy, traj):
@@ -56,7 +58,7 @@ class EpisodicPolicyGradientEstimator(object):
     """
 
     def __init__(self, policy, traj_mode, batch_size=0, buffer_size=0,
-                 use_natural_gradient=True, fisher_offset=1E-9, seed=None,
+                 use_natural_gradient=True, fisher_offset=1E-9, seed=None, regularizer=None,
                  use_norm_sample=True, use_diag_fisher=False, use_baseline=True,
                  n_threads=4):
 
@@ -77,6 +79,7 @@ class EpisodicPolicyGradientEstimator(object):
         else:
             raise ValueError('Unsupported trajectory mode')
 
+        self._regularizer = regularizer
         self._batch_size = int(batch_size)
         self._buffer_size = int(buffer_size)
         self._use_nat_grad = bool(use_natural_gradient)
@@ -98,7 +101,7 @@ class EpisodicPolicyGradientEstimator(object):
 
     @property
     def num_samples(self):
-        """Returns the number of buffered SAR samples.
+        """Returns the number of buffered episodes.
         """
         return len(self._buffer)
 
@@ -137,11 +140,14 @@ class EpisodicPolicyGradientEstimator(object):
             self._policy.set_theta(x)
 
         samples = self.__sample_buffer(sample)
-        ret = self.__estimate(samples, est_reward=True, est_grad=False)[0]
+        obj = self.__estimate(samples, est_reward=True, est_grad=False)[0]
+        if self._regularizer is not None:
+            reg = self._regularizer.compute_objective()
+            obj += reg
 
         if x is not None:
             self._policy.set_theta(theta)
-        return ret
+        return obj
 
     def estimate_gradient(self, x=None, sample=True):
         """Estimate the policy gradient.
@@ -151,11 +157,14 @@ class EpisodicPolicyGradientEstimator(object):
             self._policy.set_theta(x)
 
         samples = self.__sample_buffer(sample)
-        ret = self.__estimate(samples, est_reward=False, est_grad=True)[1]
+        grad = self.__estimate(samples, est_reward=False, est_grad=True)[1]
+        if self._regularizer is not None:
+            dreg = self._regularizer.compute_gradient()
+            grad += dreg
 
         if x is not None:
             self._policy.set_theta(theta)
-        return ret
+        return grad
 
     def estimate_reward_and_gradient(self, x=None, sample=True):
         """Estimate both the expected reward and policy gradient.
@@ -165,11 +174,15 @@ class EpisodicPolicyGradientEstimator(object):
             self._policy.set_theta(x)
 
         samples = self.__sample_buffer(sample)
-        ret = self.__estimate(samples, est_reward=True, est_grad=True)
+        obj, grad = self.__estimate(samples, est_reward=True, est_grad=True)
+        if self._regularizer is not None:
+            reg, dreg = self._regularizer.compute_objective_and_gradient()
+            obj += reg
+            grad += dreg
 
         if x is not None:
             self._policy.set_theta(theta)
-        return ret
+        return obj, grad
 
     def __sample_buffer(self, sample=True):
         """Returns a set of samples from the internal buffer, or override
@@ -188,6 +201,10 @@ class EpisodicPolicyGradientEstimator(object):
             inds = random.sample(range(self.num_samples), self._batch_size)
             # inds = np.random.choice(self.num_samples, size=self._batch_size,
             #                        p=pick_probs)
+            #inds = optim.tournament_selection(N=self._batch_size,
+            #                                  weights=sum_rewards,
+            #                                  replacement=False,
+            #                                  k_size=None)
 
             samples = [self._buffer[i] for i in inds]
         else:

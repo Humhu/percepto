@@ -6,7 +6,6 @@ import poli.policies as pp
 import poli.feature_preprocessing as pfpp
 import poli.output_constraints as poc
 
-
 def parse_policy_wrapper(raw_input_dim, output_dim, info):
 
     # Parse input preprocessing
