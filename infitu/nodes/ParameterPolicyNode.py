@@ -33,7 +33,6 @@ class ParameterPolicyNode(object):
                                                          output_dim=output_dim,
                                                          info=rospy.get_param('~'))
         self.active_policy.B[:, -1] = -1
-        self.active_policy.A[:, 0:2] = -np.identity(2)
 
         policy_rate = rospy.get_param('~policy_rate')
         self._policy_timer = rospy.Timer(period=rospy.Duration(1.0 / policy_rate),
@@ -61,7 +60,6 @@ class ParameterPolicyNode(object):
                                                               info=rospy.get_param('~'))
             # TODO HACK init
             self.learner_policy.B[:, -1] = -1
-            self.learner_policy.A[:, 0:2] = -np.identity(2)
 
             learning_info = rospy.get_param('~learning')
 
@@ -133,7 +131,7 @@ class ParameterPolicyNode(object):
                                            np.array_str(action))
         msg += 'Mean: %s\nCov:\n%s' % (np.array_str(action_mean),
                                        np.array_str(action_cov))
-        # rospy.loginfo(msg)
+        rospy.loginfo(msg)
 
         if self.action_tx is not None:
             self.action_tx.publish(time=now, feats=action)
@@ -155,6 +153,8 @@ class ParameterPolicyNode(object):
 
         rospy.loginfo('Processing timestep buffer...')
         for ep in self.recorder.process_episodes():
+            if len(ep) == 0:
+                continue
             rospy.loginfo(print_episode(ep))
             _, states, actions, logprobs, rewards = izip(*ep)
             # rewards = np.array(rewards) / len(ep)
@@ -184,7 +184,7 @@ def print_episode(ep):
     for t, s, a, l, r in ep:
         msg += 'S: %s A:%s R: %f\n' % (np.array_str(s), np.array_str(a), r)
         sum_r += r
-    msg += 'Sum R: %f Avg R: %f' % (sum_r, sum_r / len(ep))
+    #msg += 'Sum R: %f Avg R: %f' % (sum_r, sum_r / len(ep))
     return msg
 
 

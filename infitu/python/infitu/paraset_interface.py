@@ -10,7 +10,12 @@ from itertools import izip
 def parse_interface(info):
     """Parses a dictionary to produce a NumericParameterInterface.
     """
-    interface = NumericParameterInterface()
+    if 'verbose' in info:
+        verbose = bool(info.pop('verbose'))
+    else:
+        verbose = False
+    
+    interface = NumericParameterInterface(verbose=verbose)
     for name, v in info.iteritems():
         param_name = v['param_name']
         base_topic = v['base_namespace']
