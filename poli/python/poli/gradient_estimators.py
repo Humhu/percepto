@@ -58,7 +58,7 @@ class EpisodicPolicyGradientEstimator(object):
     """
 
     def __init__(self, policy, traj_mode, batch_size=0, buffer_size=0,
-                 use_natural_gradient=True, fisher_offset=1E-9, seed=None, regularizer=None,
+                 use_natural_gradient=True, fisher_offset=1E-9, seed=None, regularizer=None, sampler=None,
                  use_norm_sample=True, use_diag_fisher=False, use_baseline=True,
                  n_threads=4):
 
@@ -80,6 +80,7 @@ class EpisodicPolicyGradientEstimator(object):
             raise ValueError('Unsupported trajectory mode')
 
         self._regularizer = regularizer
+        self._sampler = sampler
         self._batch_size = int(batch_size)
         self._buffer_size = int(buffer_size)
         self._use_nat_grad = bool(use_natural_gradient)
@@ -130,6 +131,7 @@ class EpisodicPolicyGradientEstimator(object):
             logprobs = [self._policy.logprob(s, a)
                         for s, a in izip(states, actions)]
 
+        # TODO Used a namedtuple
         self._buffer.append(zip(states, actions, rewards, logprobs))
 
     def estimate_reward(self, x=None, sample=True):
@@ -193,19 +195,12 @@ class EpisodicPolicyGradientEstimator(object):
         if self.num_samples < self._batch_size:
             return None
 
-        #sum_rewards = [np.sum([t[2] for t in traj]) for traj in self._buffer]
-        #pick_probs = sum_rewards / np.sum(sum_rewards)
-
         if self._batch_size != 0:
 
-            inds = random.sample(range(self.num_samples), self._batch_size)
-            # inds = np.random.choice(self.num_samples, size=self._batch_size,
-            #                        p=pick_probs)
-            #inds = optim.tournament_selection(N=self._batch_size,
-            #                                  weights=sum_rewards,
-            #                                  replacement=False,
-            #                                  k_size=None)
-
+            if self._sampler is None:
+                inds = random.sample(range(self.num_samples), self._batch_size)
+            else:
+                inds = self._sampler.sample_data(n=self._batch_size, data=self._buffer)
             samples = [self._buffer[i] for i in inds]
         else:
             samples = self._buffer

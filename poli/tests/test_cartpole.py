@@ -2,13 +2,20 @@ import numpy as np
 import gym
 import poli
 import optim
-
+import math
 from itertools import izip
 
 env = gym.make('CartPole-v1')
 env.reset()
 a_scale = env.action_space.high - env.action_space.low
 
+def trial_sum_reward(datum):
+    s, a, r, l = izip(*datum)
+    return np.sum(r)
+
+def trial_prob(datum):
+    s, a, r, l = izip(*datum)
+    return math.exp(np.sum(l))
 
 def run_trial(policy, pfunc, max_len=200):
 
@@ -49,7 +56,7 @@ if __name__ == '__main__':
     #                                             min_samples=min_preprocessor_samples,
     #                                             keep_updating=True,
     #                                             num_sds=2.0)
-    augmenter = poli.FeaturePolynomialAugmenter(dim=raw_xdim, max_order=1)
+    augmenter = poli.PolynomialFeatureAugmenter(dim=raw_xdim, max_order=1)
 
     def preprocess(v):
         #v = preprocessor.process(v)
@@ -62,14 +69,16 @@ if __name__ == '__main__':
     adim = env.action_space.shape[0]
     #A = np.random.rand(adim, xdim) - 0.5
     A = np.zeros((adim, xdim))
-    A[0, 2] = 1
+    #A[0, 2] = 1
     B = np.zeros((adim, xdim))
-    B[:, -1] = -3
+    B[:, -1] = -2
 
     policy = poli.LinearPolicy(input_dim=xdim, output_dim=adim)
     policy.A = A
     policy.B = B
     init_params = policy.get_theta()
+
+    wds = poli.WeightedDataSampler(weight_func=trial_prob)
 
     batch_size = 30
     init_learn_size = 40
@@ -77,6 +86,7 @@ if __name__ == '__main__':
                                                      traj_mode='gpomdp',
                                                      batch_size=batch_size,
                                                      buffer_size=100,
+                                                     sampler=wds,
                                                      use_natural_gradient=True,
                                                      use_norm_sample=True,
                                                      use_diag_fisher=False,

@@ -6,3 +6,4 @@ from gradient_estimators import *
 from sampling import *
 from policy_gradient import *
 from policy_wrapper import *
+from data_samplers import *
