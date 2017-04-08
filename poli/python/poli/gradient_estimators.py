@@ -4,14 +4,17 @@ import dill
 import numpy as np
 import random
 from itertools import izip
-from collections import deque
+from collections import deque, namedtuple
 from math import sqrt
 
+import sampling as samp
 import policies as pp
 import policy_gradient as ppg
 import optim
 
 from joblib import Parallel, delayed
+
+#SarTuple = namedtuple('SarTuple', ['state', 'action', 'reward', 'gen_logprob, curr_logprob'])
 
 
 def parse_gradient_estimator(spec, policy, regularizer=None):
@@ -58,19 +61,14 @@ class EpisodicPolicyGradientEstimator(object):
     """
 
     def __init__(self, policy, traj_mode, batch_size=0, buffer_size=0,
-                 use_natural_gradient=True, fisher_offset=1E-9, seed=None, regularizer=None, sampler=None,
-                 use_norm_sample=True, use_diag_fisher=False, use_baseline=True,
-                 n_threads=4):
+                 use_natural_gradient=True, fisher_offset=1E-9,
+                 regularizer=None, sampler=None, use_norm_sample=True,
+                 use_diag_fisher=False, use_baseline=True, n_threads=4):
 
         if not isinstance(policy, pp.StochasticPolicy):
             raise ValueError(
                 'Policy must implement the StochasticPolicy interface.')
         self._policy = policy
-
-        # TODO Do we need to wrap random so its repeatable with threading?
-        seed = int(seed)
-        if seed is not None:
-            random.seed(seed)
 
         if traj_mode == 'reinforce':
             self._grad_est = ppg.importance_reinforce
@@ -79,15 +77,16 @@ class EpisodicPolicyGradientEstimator(object):
         else:
             raise ValueError('Unsupported trajectory mode')
 
-        self._regularizer = regularizer
-        self._sampler = sampler
-        self._batch_size = int(batch_size)
-        self._buffer_size = int(buffer_size)
-        self._use_nat_grad = bool(use_natural_gradient)
-        self._fish_off = float(fisher_offset)
-        self._use_norm_sample = use_norm_sample
-        self._use_diag_fisher = use_diag_fisher
-        self._use_baseline = use_baseline
+        self.regularizer = regularizer
+        self.sampler = sampler
+        self.batch_size = int(batch_size)
+        self.buffer_size = int(buffer_size)
+        self.use_nat_grad = bool(use_natural_gradient)
+        self.fish_off = float(fisher_offset)
+        self.use_norm_sample = use_norm_sample
+        self.use_diag_fisher = use_diag_fisher
+        self.use_baseline = use_baseline
+
         self._pool = Parallel(n_jobs=n_threads)
 
         self.reset()
@@ -95,8 +94,8 @@ class EpisodicPolicyGradientEstimator(object):
     def reset(self):
         """Clears the internal SAR buffer.
         """
-        if self._buffer_size != 0:
-            self._buffer = deque(maxlen=self._buffer_size)
+        if self.buffer_size != 0:
+            self._buffer = deque(maxlen=self.buffer_size)
         else:
             self._buffer = deque()
 
@@ -131,54 +130,54 @@ class EpisodicPolicyGradientEstimator(object):
             logprobs = [self._policy.logprob(s, a)
                         for s, a in izip(states, actions)]
 
-        # TODO Used a namedtuple
+        # TODO Used a namedtuple?
         self._buffer.append(zip(states, actions, rewards, logprobs))
 
-    def estimate_reward(self, x=None, sample=True):
+    def estimate_reward(self, x=None):
         """Estimate the policy expected reward.
         """
         if x is not None:
             theta = self._policy.get_theta()
             self._policy.set_theta(x)
 
-        samples = self.__sample_buffer(sample)
+        samples = self.__sample_buffer()
         obj = self.__estimate(samples, est_reward=True, est_grad=False)[0]
-        if self._regularizer is not None:
-            reg = self._regularizer.compute_objective()
+        if self.regularizer is not None:
+            reg = self.regularizer.compute_objective()
             obj += reg
 
         if x is not None:
             self._policy.set_theta(theta)
         return obj
 
-    def estimate_gradient(self, x=None, sample=True):
+    def estimate_gradient(self, x=None):
         """Estimate the policy gradient.
         """
         if x is not None:
             theta = self._policy.get_theta()
             self._policy.set_theta(x)
 
-        samples = self.__sample_buffer(sample)
+        samples = self.__sample_buffer()
         grad = self.__estimate(samples, est_reward=False, est_grad=True)[1]
-        if self._regularizer is not None:
-            dreg = self._regularizer.compute_gradient()
+        if self.regularizer is not None:
+            dreg = self.regularizer.compute_gradient()
             grad += dreg
 
         if x is not None:
             self._policy.set_theta(theta)
         return grad
 
-    def estimate_reward_and_gradient(self, x=None, sample=True):
+    def estimate_reward_and_gradient(self, x=None):
         """Estimate both the expected reward and policy gradient.
         """
         if x is not None:
             theta = self._policy.get_theta()
             self._policy.set_theta(x)
 
-        samples = self.__sample_buffer(sample)
+        samples = self.__sample_buffer()
         obj, grad = self.__estimate(samples, est_reward=True, est_grad=True)
-        if self._regularizer is not None:
-            reg, dreg = self._regularizer.compute_objective_and_gradient()
+        if self.regularizer is not None:
+            reg, dreg = self.regularizer.compute_objective_and_gradient()
             obj += reg
             grad += dreg
 
@@ -186,48 +185,71 @@ class EpisodicPolicyGradientEstimator(object):
             self._policy.set_theta(theta)
         return obj, grad
 
-    def __sample_buffer(self, sample=True):
-        """Returns a set of samples from the internal buffer, or override
-        settings to use all samples.
+    def __sample_buffer(self):
+        """Returns a set of sample indices.
 
         Returns None if there are not enough samples (num samples < batch size)
         """
-        if self.num_samples < self._batch_size:
-            return None
+        inds = range(self.num_samples)
+        random.shuffle(inds)
+        return inds
 
-        if self._batch_size != 0:
-
-            if self._sampler is None:
-                inds = random.sample(range(self.num_samples), self._batch_size)
-            else:
-                inds = self._sampler.sample_data(n=self._batch_size, data=self._buffer)
-            samples = [self._buffer[i] for i in inds]
-        else:
-            samples = self._buffer
-
-        return samples
+    def __augment_trajectory(self, traj):
+        s, a, r, q = izip(*traj)
+        p = [self._policy.logprob(si, ai) for si, ai in izip(s, a)]
+        g = [self._policy.gradient(si, ai) for si, ai in izip(s, a)]
+        return zip(s, a, r, g, q, p)
 
     def __comp_gradients(self, traj):
         return [self._policy.gradient(s, a) for s, a, _, _ in traj]
 
-    def __estimate(self, samples, est_reward, est_grad):
+    def __estimate(self, inds, est_reward, est_grad):
         """Perform importance sampling on a set of samples to estimate
         expected reward and gradient.
         """
-        if samples is None:
+        if inds is None:
             return None, None
 
-        rewards, gradients, curr_probs, past_probs = zip(
-            *self._pool(delayed(_process_traj)(self._policy, traj) for traj in samples))
+        #data = self._pool(delayed(_process_traj)(self._policy, traj)
+        #                  for traj in self._buffer)
 
-        return self._grad_est(rewards=rewards,
-                              gradients=gradients,
-                              p_tar=curr_probs,
-                              p_gen=past_probs,
-                              use_baseline=self._use_baseline,
-                              use_natural_grad=self._use_nat_grad,
-                              fisher_diag=self._use_diag_fisher,
-                              normalize=self._use_norm_sample)
+        rs = []
+        gs = []
+        ps = []
+        qs = []
+        for ssize, next_ind in enumerate(inds):
+            ssize += 1  # Starts at 0
+
+            traj = self.__augment_trajectory(self._buffer[next_ind])
+            _, _, r, g, q, p = zip(*traj)
+            rs.append(r)
+            gs.append(g)
+            ps.append(p)
+            qs.append(q)
+
+            traj_ps = [np.sum(pi) for pi in ps]
+            traj_qs = [np.sum(qi) for qi in qs]
+            mw, ess = samp.importance_sample_ess(p_gen=traj_qs,
+                                                 p_tar=traj_ps,
+                                                 min_weight=0.1)
+
+            if ess < self.batch_size:
+                # print 'ESS %f < desired %f' % (ess, self.batch_size)
+                continue
+
+            print 'Using %d samples to achieve ESS %f' % (ssize, ess)
+            return self._grad_est(rewards=rs,
+                                  gradients=gs,
+                                  p_tar=ps,
+                                  p_gen=qs,
+                                  use_baseline=self.use_baseline,
+                                  use_natural_grad=self.use_nat_grad,
+                                  fisher_diag=self.use_diag_fisher,
+                                  normalize=self.use_norm_sample,
+                                  min_weight=0.1)
+
+        print 'Could not achieve desired sample size'
+        return None, None
 
 
 def _process_traj(policy, traj):

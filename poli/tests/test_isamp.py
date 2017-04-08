@@ -85,7 +85,7 @@ if __name__ == '__main__':
 
         return np.mean(samples)
 
-    def estimate_p_mean(n_samples, use_baseline):
+    def estimate_p_mean(n_samples, use_baseline, min_weight=0):
         q_samples = np.squeeze([q_dist.sample() for i in range(n_samples)])
         qs = [q_dist.log_prob(x) for x in q_samples]
         ps = [p_dist.log_prob(x) for x in q_samples]
@@ -114,12 +114,13 @@ if __name__ == '__main__':
             est_baseline_acc = poli.importance_sample(est_baseline_ests,
                                                       p_tar=ps,
                                                       p_gen=qs,
-                                                      normalize=True)
+                                                      normalize=True,
+                                                      min_weight=min_weight)
             est_baseline = spl.cho_solve(est_fisher, est_baseline_acc)
             est_baseline_vals = np.dot(q_grads, est_baseline)
             q_samples = q_samples - est_baseline_vals
 
-        return poli.importance_sample(q_samples, p_gen=qs, p_tar=ps, normalize=True)
+        return poli.importance_sample(q_samples, p_gen=qs, p_tar=ps, normalize=True, min_weight=min_weight)
 
     n_samples = 30
     n_trials = 30
@@ -129,5 +130,8 @@ if __name__ == '__main__':
     #base_estimates = [estimate_q_mean(n_samples, True) for i in range(n_trials)]
 
     # Estimating mean 2 using samples from mean 1
-    defa_estimates = [estimate_p_mean(n_samples, False) for i in range(n_trials)]
-    base_estimates = [estimate_p_mean(n_samples, True) for i in range(n_trials)]
+    nobase_all_estimates = [estimate_p_mean(n_samples, False, 0) for i in range(n_trials)]
+    nobase_filt_estimates = [estimate_p_mean(n_samples, False, 0.1) for i in range(n_trials)]
+    base_all_estimates = [estimate_p_mean(n_samples, True, 0) for i in range(n_trials)]
+    base_filt_estimates = [estimate_p_mean(n_samples, True, 0.1) for i in range(n_trials)]
+    
