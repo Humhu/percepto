@@ -44,7 +44,7 @@ def importance_sample_ess(p_gen, p_tar, min_weight=0):
 
     mean_weight = np.mean(weights)
     mean_sq_weight = np.mean(weights * weights)
-    ess = N * mean_weight / mean_sq_weight
+    ess = N * mean_weight ** 2 / mean_sq_weight
     return mean_weight, ess
 
 
