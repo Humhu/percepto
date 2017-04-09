@@ -5,6 +5,7 @@ import poli
 import optim
 import math
 from itertools import izip
+from argus_utils import KalmanFilter
 
 import matplotlib.pyplot as plt
 
@@ -34,6 +35,19 @@ def importance_weight(datum):
     return w
 
 
+def execute(state, policy, enable_safety):
+    x, xdot, th, thdot, _ = state
+    if enable_safety:
+        if th > 0.1 and thdot > 0.1:
+            print 'Executing safety action 1'
+            return np.array([1.0]), True
+        elif th < -0.1 and thdot < -0.1:
+            print 'Executing safety action -1'
+            return np.array([-1.0]), True
+
+    return policy.sample_action(state), False
+
+
 def run_trial(policy, pfunc, max_len=200):
 
     observation = env.reset()
@@ -43,9 +57,14 @@ def run_trial(policy, pfunc, max_len=200):
     rewards = []
     actions = []
     logprobs = []
+    num_safety = 0
+    max_safety = 3
     for t in range(max_len):
         env.render()
-        action = policy.sample_action(observation)
+        #action, used_safety = execute(observation, policy, enable_safety=num_safety < max_safety)
+        action, used_safety = policy.sample_action(observation), False
+        if used_safety:
+            num_safety += 1
         action[action > 1] = 1
         action[action < -1] = -1
 
@@ -77,23 +96,18 @@ def train_policy(policy, optimizer, estimator, n_iters, t_len):
         states, actions, rewards, logprobs = run_trial(
             policy, preprocess, t_len)
         estimator.report_episode(states, actions, rewards, logprobs)
-        #r_states = [np.hstack((-s[0:-1], 1)) for s in states]
-        #r_actions = [-a for a in actions]
-        #estimator.report_episode(r_states, r_actions, rewards, logprobs)
 
         trials.append(len(rewards))
 
-        if estimator.num_samples < init_learn_size:
-            continue
-
         #rew, grad = estimator.estimate_reward_and_gradient()
-        #if rew is not None and grad is not None:
+        # if rew is not None and grad is not None:
         #    rews.append(rew)
         #    grads.append(grad)
         #    print 'Est reward: %f grad: %s' % (rew, np.array_str(grad))
 
         theta, pred_rew = optimizer.optimize(x_init=policy.get_theta(),
                                              func=estimator.estimate_reward_and_gradient)
+        estimator.remove_unlikely_trajectories(min_log_weight=-3)
         policy.set_theta(theta)
 
         if len(trials) > 3 and np.mean(trials[-3:]) == t_len:
@@ -139,31 +153,31 @@ if __name__ == '__main__':
 
     wds = poli.WeightedDataSampler(weight_func=importance_weight)
 
-    batch_size = 30
-    init_learn_size = 40
+    batch_size = 0
     estimator = poli.EpisodicPolicyGradientEstimator(policy=policy,
                                                      traj_mode='reinforce',
                                                      batch_size=batch_size,
-                                                     buffer_size=0,
-                                                     #sampler=wds,
+                                                     buffer_size=200,
+                                                     # sampler=wds,
                                                      use_natural_gradient=True,
                                                      use_norm_sample=True,
                                                      use_diag_fisher=False,
                                                      use_baseline=True,
                                                      n_threads=1)
 
-    # n_samples = 50
+    # n_samples = 30
     # n_trials = 30
-    # print 'Running baseline trials...'
-    # baseline_results = [pred_grad(policy, estimator, n_samples)
-    #                     for i in range(n_trials)]
-    # baseline_rewards, baseline_grads = izip(*baseline_results)
-
-    # print 'Running no baseline trials'
-    # estimator.use_baseline = False
+    # print 'Running no filter trials'
     # nobaseline_results = [pred_grad(policy, estimator, n_samples)
     #                       for i in range(n_trials)]
     # nobaseline_rewards, nobaseline_grads = izip(*nobaseline_results)
 
+    # print 'Running filtered trials...'
+    # estimator.log_weight_lim = 3
+    # baseline_results = [pred_grad(policy, estimator, n_samples)
+    #                     for i in range(n_trials)]
+    # baseline_rewards, baseline_grads = izip(*baseline_results)
+
+    estimator.log_weight_lim = 3
     trace = train_policy(policy=policy, optimizer=optimizer,
-                         estimator=estimator, n_iters=200, t_len=500)
+                        estimator=estimator, n_iters=300, t_len=500)

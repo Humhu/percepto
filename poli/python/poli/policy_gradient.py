@@ -9,7 +9,7 @@ from itertools import izip
 
 
 def isample_fisher(gradients, p_tar, p_gen, offset=1E-9,
-                   diag=False, min_weight=float('-inf'), normalize=True):
+                   diag=False, **kwargs):
     """Compute the Cholesky decomposition of the Fisher information matrix
     computed from importance sampling gradients.
 
@@ -40,8 +40,7 @@ def isample_fisher(gradients, p_tar, p_gen, offset=1E-9,
     fisher = isamp.importance_sample(grad_ops,
                                      p_tar=p_tar,
                                      p_gen=p_gen,
-                                     normalize=normalize,
-                                     min_weight=min_weight)
+                                     **kwargs)
 
     fisher += offset * np.identity(fisher.shape[0])
     if diag:
@@ -52,8 +51,7 @@ def isample_fisher(gradients, p_tar, p_gen, offset=1E-9,
 
 def constant_isamp_baseline(rewards, gradients, r_grads, p_tar, p_gen,
                             fisher_chol=None, est_reward=False, est_grad=False,
-                            fisher_diag=False, min_weight=float('-inf'),
-                            normalize=True):
+                            fisher_diag=False, **kwargs):
     """Computes the optimal constant importance sampling baseline for each trajectory.
 
     Parameters
@@ -87,16 +85,14 @@ def constant_isamp_baseline(rewards, gradients, r_grads, p_tar, p_gen,
         fisher_chol = isample_fisher(gradients,
                                      p_tar=p_tar,
                                      p_gen=p_gen,
-                                     normalize=normalize,
-                                     min_weight=min_weight,
-                                     diag=fisher_diag)
+                                     diag=fisher_diag,
+                                     **kwargs)
     if est_reward:
         rew_baseline_ests = [r * g for r, g in izip(rewards, gradients)]
         rew_baseline_acc = isamp.importance_sample(rew_baseline_ests,
                                                    p_tar=p_tar,
                                                    p_gen=p_gen,
-                                                   normalize=normalize,
-                                                   min_weight=min_weight)
+                                                   **kwargs)
 
         rew_baseline = spl.cho_solve(fisher_chol, rew_baseline_acc)
         rew_baselines = np.dot(gradients, rew_baseline)
@@ -111,8 +107,7 @@ def constant_isamp_baseline(rewards, gradients, r_grads, p_tar, p_gen,
         baseline_acc = isamp.importance_sample(grad_base_ests,
                                                p_tar=p_tar,
                                                p_gen=p_gen,
-                                               normalize=normalize,
-                                               min_weight=min_weight)
+                                               **kwargs)
         grad_baseline = spl.cho_solve(fisher_chol, baseline_acc)
         grad_baselines = np.dot(gradients, grad_baseline)
 
@@ -182,20 +177,18 @@ def _importance_preprocess_reinforce(rewards, gradients, p_tar, p_gen):
 
 def importance_reinforce(rewards, gradients, p_tar, p_gen,
                          use_baseline=True, use_natural_grad=True,
-                         fisher_diag=False, min_weight=0,
-                         normalize=True):
+                         fisher_diag=False, **kwargs):
     res = _importance_preprocess_reinforce(rewards, gradients, p_tar, p_gen)
     return _importance_policy_gradient(res,
                                        use_baseline=use_baseline,
-                                       use_natural_grad=use_natural_grad, fisher_diag=fisher_diag,
-                                       min_weight=min_weight,
-                                       normalize=normalize)
+                                       use_natural_grad=use_natural_grad,
+                                       fisher_diag=fisher_diag,
+                                       **kwargs)
 
 
 def importance_gpomdp(rewards, gradients, p_tar, p_gen,
                       use_baseline=True, use_natural_grad=True,
-                      fisher_diag=False, min_weight=0,
-                      normalize=True):
+                      fisher_diag=False, **kwargs):
     """Compute policy expected rewards and gradient using importance
     sampling.
 
@@ -239,13 +232,13 @@ def importance_gpomdp(rewards, gradients, p_tar, p_gen,
                                         p_gen=p_gen)
     return _importance_policy_gradient(res,
                                        use_baseline=use_baseline,
-                                       use_natural_grad=use_natural_grad, fisher_diag=fisher_diag,
-                                       min_weight=min_weight,
-                                       normalize=normalize)
+                                       use_natural_grad=use_natural_grad,
+                                       fisher_diag=fisher_diag,
+                                       **kwargs)
 
 
 def _importance_policy_gradient(res, use_baseline, use_natural_grad,
-                                fisher_diag, min_weight, normalize):
+                                fisher_diag, **kwargs):
     """Implementation of importance-sampling based policy gradient computation.
     """
     try:
@@ -258,35 +251,43 @@ def _importance_policy_gradient(res, use_baseline, use_natural_grad,
                                                     est_reward=True,
                                                     est_grad=True,
                                                     fisher_diag=fisher_diag,
-                                                    min_weight=min_weight,
-                                                    normalize=normalize)
+                                                    **kwargs)
         else:
             rew_b = np.zeros((1))
             grad_b = np.zeros((1))
 
         rew_val = isamp.importance_sample(res['traj_r'] - rew_b,
-                                        p_tar=res['traj_p_tar'],
-                                        p_gen=res['traj_p_gen'],
-                                        normalize=normalize,
-                                        min_weight=min_weight)
+                                          p_tar=res['traj_p_tar'],
+                                          p_gen=res['traj_p_gen'],
+                                          **kwargs)
+        rew_var, rew_var_ess = isamp.importance_sample_var(x=res['traj_r'] - rew_b,
+                                                           est=rew_val,
+                                                           p_tar=res['traj_p_tar'],
+                                                           p_gen=res['traj_p_gen'])
+        print 'Reward SD: %f ESS: %f' % (np.sqrt(rew_var), rew_var_ess)
 
         # Estimate the policy gradient
         grad_val = isamp.importance_sample(res['r_grads'] - grad_b,
-                                        p_tar=res['traj_p_tar'],
-                                        p_gen=res['traj_p_gen'],
-                                        normalize=normalize,
-                                        min_weight=min_weight)
+                                           p_tar=res['traj_p_tar'],
+                                           p_gen=res['traj_p_gen'],
+                                           **kwargs)
+        grad_var, grad_var_ess = isamp.importance_sample_var(x=res['r_grads'] - grad_b,
+                                                             est=grad_val,
+                                                             p_tar=res['traj_p_tar'],
+                                                             p_gen=res['traj_p_gen'])
+
         if use_natural_grad:
             act_fisher_chol = isample_fisher(gradients=res['act_grads'],
-                                            p_tar=res['state_act_p_tar'],
-                                            p_gen=res['state_act_p_gen'],
-                                            min_weight=min_weight,
-                                            diag=fisher_diag,
-                                            normalize=normalize)
+                                             p_tar=res['state_act_p_tar'],
+                                             p_gen=res['state_act_p_gen'],
+                                             diag=fisher_diag,
+                                             **kwargs)
             grad_val = spl.cho_solve(act_fisher_chol, grad_val)
+            grad_var = spl.cho_solve(act_fisher_chol, spl.cho_solve(act_fisher_chol, grad_var).T).T
+            print 'Grad SD: %s ESS: %f' % (np.array_str(np.sqrt(np.diag(grad_var))), grad_var_ess)
 
         return rew_val, grad_val
-    
+
     except isamp.SamplingException:
         print 'Sampling exception!'
         return None, None

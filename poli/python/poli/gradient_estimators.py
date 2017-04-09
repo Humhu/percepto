@@ -5,7 +5,7 @@ import numpy as np
 import random
 from itertools import izip
 from collections import deque, namedtuple
-from math import sqrt
+import math
 
 import sampling as samp
 import policies as pp
@@ -86,6 +86,7 @@ class EpisodicPolicyGradientEstimator(object):
         self.use_norm_sample = use_norm_sample
         self.use_diag_fisher = use_diag_fisher
         self.use_baseline = use_baseline
+        self.log_weight_lim = float('inf')
 
         self._pool = Parallel(n_jobs=n_threads)
 
@@ -133,40 +134,6 @@ class EpisodicPolicyGradientEstimator(object):
         # TODO Used a namedtuple?
         self._buffer.append(zip(states, actions, rewards, logprobs))
 
-    def estimate_reward(self, x=None):
-        """Estimate the policy expected reward.
-        """
-        if x is not None:
-            theta = self._policy.get_theta()
-            self._policy.set_theta(x)
-
-        samples = self.__sample_buffer()
-        obj = self.__estimate(samples, est_reward=True, est_grad=False)[0]
-        if self.regularizer is not None:
-            reg = self.regularizer.compute_objective()
-            obj += reg
-
-        if x is not None:
-            self._policy.set_theta(theta)
-        return obj
-
-    def estimate_gradient(self, x=None):
-        """Estimate the policy gradient.
-        """
-        if x is not None:
-            theta = self._policy.get_theta()
-            self._policy.set_theta(x)
-
-        samples = self.__sample_buffer()
-        grad = self.__estimate(samples, est_reward=False, est_grad=True)[1]
-        if self.regularizer is not None:
-            dreg = self.regularizer.compute_gradient()
-            grad += dreg
-
-        if x is not None:
-            self._policy.set_theta(theta)
-        return grad
-
     def estimate_reward_and_gradient(self, x=None):
         """Estimate both the expected reward and policy gradient.
         """
@@ -184,6 +151,20 @@ class EpisodicPolicyGradientEstimator(object):
         if x is not None:
             self._policy.set_theta(theta)
         return obj, grad
+
+    def remove_unlikely_trajectories(self, min_log_weight=-3):
+        trajectories = list(self._buffer)
+        self.reset()
+        for traj in trajectories:
+            _, _, _, _, q, p = zip(*self.__augment_trajectory(traj))
+            p = np.sum(p)
+            q = np.sum(q)
+            log_weight = np.sum(p - q)
+            if log_weight < min_log_weight:
+                print 'Dropping trajectory with log_weight %f' % log_weight
+            else:
+                self._buffer.append(traj)
+
 
     def __sample_buffer(self):
         """Returns a set of sample indices.
@@ -231,10 +212,15 @@ class EpisodicPolicyGradientEstimator(object):
             traj_qs = [np.sum(qi) for qi in qs]
             mw, ess = samp.importance_sample_ess(p_gen=traj_qs,
                                                  p_tar=traj_ps,
-                                                 min_weight=0.1)
+                                                 log_weight_lim=self.log_weight_lim)
 
-            if ess < self.batch_size:
-                # print 'ESS %f < desired %f' % (ess, self.batch_size)
+            if self.batch_size == 0 and ssize < self.num_samples:
+                continue
+            elif self.batch_size > 0 and ess < self.batch_size:
+                p = math.exp(np.sum(p))
+                q = math.exp(np.sum(q))
+                print 'Added w %f (p %f q %f)' % (p/q, p, q)
+                print 'ESS %f < desired %f' % (ess, self.batch_size)
                 continue
 
             print 'Using %d samples to achieve ESS %f' % (ssize, ess)
@@ -246,7 +232,7 @@ class EpisodicPolicyGradientEstimator(object):
                                   use_natural_grad=self.use_nat_grad,
                                   fisher_diag=self.use_diag_fisher,
                                   normalize=self.use_norm_sample,
-                                  min_weight=0.1)
+                                  log_weight_lim=self.log_weight_lim)
 
         print 'Could not achieve desired sample size'
         return None, None
