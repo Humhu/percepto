@@ -107,7 +107,8 @@ def train_policy(policy, optimizer, estimator, n_iters, t_len):
             policy.set_theta(theta)
             estimator.update_buffer()
             #estimator.reset()
-            estimator.remove_unlikely_trajectories(min_log_weight=-estimator.log_weight_lim - 1)
+            estimator.remove_unlikely_trajectories(min_log_weight=-3)
+            print '%d trajectories remaining' % estimator.num_samples
 
         if len(trials) > 3 and np.mean(trials[-3:]) == t_len:
             break
@@ -148,13 +149,13 @@ if __name__ == '__main__':
     init_theta = policy.get_theta()
 
     # TODO How do we pick good step sizes?
-    optimizer = optim.GradientDescent(mode='max', step_size=1E-1,
+    optimizer = optim.GradientDescent(mode='max', step_size=1,
                                       max_linf_norm=0.1, max_iters=1)
 
     wds = poli.WeightedDataSampler(weight_func=importance_weight)
 
     estimator = poli.EpisodicPolicyGradientEstimator(policy=policy,
-                                                     traj_mode='per',
+                                                     traj_mode='uni',
                                                      buffer_size=0,
                                                      # sampler=wds,
                                                      use_natural_gradient=True,
@@ -176,11 +177,10 @@ if __name__ == '__main__':
     #                     for i in range(n_trials)]
     # baseline_rewards, baseline_grads = izip(*baseline_results)
 
-    num_trials = 30
-    estimator.log_weight_lim = 1
-    estimator.max_dev_ratio = 0.25
-    estimator.max_grad_dev = 0.1
-    estimator.min_ess = 20
+    num_trials = 10
+    estimator.log_weight_lim = float('inf')
+    estimator.min_ess = float('inf')
+    estimator.max_grad_flip_prob = 1.0
 
     def training_test():
         lens = []

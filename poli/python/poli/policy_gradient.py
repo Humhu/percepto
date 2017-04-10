@@ -7,6 +7,8 @@ import scipy.linalg as spl
 import scipy.signal as sps
 from itertools import izip
 
+from sklearn.neighbors.kde import KernelDensity
+
 
 def isample_fisher(gradients, p_tar, p_gen, offset=1E-9,
                    diag=False, **kwargs):
@@ -114,13 +116,46 @@ def constant_isamp_baseline(rewards, gradients, r_grads, p_tar, p_gen,
     return rew_baselines, grad_baselines
 
 
-def _importance_preprocess_per(rewards, gradients, p_tar, p_gen):
+def _importance_preprocess_uni(states, rewards, gradients, p_tar, p_gen):
     res = {'traj_r': [], 'traj_p_tar': [], 'traj_p_gen': [],
            'r_grads': [], 'state_act_p_tar': [],
            'state_act_p_gen': [], 'act_grads': [],
            'traj_grads': []}
 
-    for rs, gs, ps, qs in izip(rewards, gradients, p_tar, p_gen):
+    flat_states = [s for traj in states for s in traj]
+    kde = KernelDensity(kernel='gaussian', bandwidth=0.25) # TODO Pass in as args?
+    kde.fit(flat_states)
+
+    for ss, rs, gs, ps, qs in izip(states, rewards, gradients, p_tar, p_gen):
+
+        state_probs = kde.score_samples(ss)
+        traj_p = np.cumsum(ps)  # + np.mean(state_probs)
+        traj_q = np.cumsum(qs) + state_probs
+        traj_grads = np.cumsum(gs, axis=0)
+        r_acc = np.cumsum(rs[::-1])[::-1]
+        r_grad = (r_acc * traj_grads.T).T
+
+        res['r_grads'].extend(r_grad)
+        res['traj_p_tar'].extend(traj_p)
+        res['traj_p_gen'].extend(traj_q)
+        res['traj_grads'].extend(traj_grads)
+        res['traj_r'].extend(r_acc)
+
+        # Used for estimating fisher
+        res['act_grads'].extend(gs)
+        res['state_act_p_tar'].extend(traj_p)
+        res['state_act_p_gen'].extend(traj_q)
+
+    return res
+
+
+def _importance_preprocess_per(states, rewards, gradients, p_tar, p_gen):
+    res = {'traj_r': [], 'traj_p_tar': [], 'traj_p_gen': [],
+           'r_grads': [], 'state_act_p_tar': [],
+           'state_act_p_gen': [], 'act_grads': [],
+           'traj_grads': []}
+
+    for ss, rs, gs, ps, qs in izip(states, rewards, gradients, p_tar, p_gen):
 
         traj_p = np.cumsum(ps)
         traj_q = np.cumsum(qs)
@@ -136,8 +171,8 @@ def _importance_preprocess_per(rewards, gradients, p_tar, p_gen):
 
         # Used for estimating fisher
         res['act_grads'].extend(gs)
-        res['state_act_p_tar'].extend(np.cumsum(ps))
-        res['state_act_p_gen'].extend(np.cumsum(qs))
+        res['state_act_p_tar'].extend(traj_p)
+        res['state_act_p_gen'].extend(traj_q)
 
     return res
 
@@ -203,10 +238,10 @@ def _importance_preprocess_reinforce(rewards, gradients, p_tar, p_gen):
     return res
 
 
-def importance_per_decision(rewards, gradients, p_tar, p_gen,
-                            use_baseline=True, use_natural_grad=True,
-                            fisher_diag=False, ret_diagnostics=False, **kwargs):
-    res = _importance_preprocess_per(rewards, gradients, p_tar, p_gen)
+def importance_per_uniform(states, rewards, gradients, p_tar, p_gen,
+                           use_baseline=True, use_natural_grad=True,
+                           fisher_diag=False, ret_diagnostics=False, **kwargs):
+    res = _importance_preprocess_uni(states, rewards, gradients, p_tar, p_gen)
     return _importance_policy_gradient(res,
                                        use_baseline=use_baseline,
                                        use_natural_grad=use_natural_grad,
@@ -215,7 +250,19 @@ def importance_per_decision(rewards, gradients, p_tar, p_gen,
                                        **kwargs)
 
 
-def importance_reinforce(rewards, gradients, p_tar, p_gen,
+def importance_per_decision(states, rewards, gradients, p_tar, p_gen,
+                            use_baseline=True, use_natural_grad=True,
+                            fisher_diag=False, ret_diagnostics=False, **kwargs):
+    res = _importance_preprocess_per(states, rewards, gradients, p_tar, p_gen)
+    return _importance_policy_gradient(res,
+                                       use_baseline=use_baseline,
+                                       use_natural_grad=use_natural_grad,
+                                       fisher_diag=fisher_diag,
+                                       ret_diagnostics=ret_diagnostics,
+                                       **kwargs)
+
+
+def importance_reinforce(states, rewards, gradients, p_tar, p_gen,
                          use_baseline=True, use_natural_grad=True,
                          fisher_diag=False, ret_diagnostics=False, **kwargs):
     res = _importance_preprocess_reinforce(rewards, gradients, p_tar, p_gen)
@@ -227,7 +274,7 @@ def importance_reinforce(rewards, gradients, p_tar, p_gen,
                                        **kwargs)
 
 
-def importance_gpomdp(rewards, gradients, p_tar, p_gen,
+def importance_gpomdp(states, rewards, gradients, p_tar, p_gen,
                       use_baseline=True, use_natural_grad=True,
                       fisher_diag=False, ret_diagnostics=False, **kwargs):
     """Compute policy expected rewards and gradient using importance

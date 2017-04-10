@@ -81,6 +81,8 @@ class EpisodicPolicyGradientEstimator(object):
             self._grad_est = ppg.importance_gpomdp
         elif traj_mode == 'per':
             self._grad_est = ppg.importance_per_decision
+        elif traj_mode == 'uni':
+            self._grad_est = ppg.importance_per_uniform
         else:
             raise ValueError('Unsupported trajectory mode')
 
@@ -213,8 +215,9 @@ class EpisodicPolicyGradientEstimator(object):
             return None, None
 
         data = [zip(*self._buffer[ind]) for ind in inds]
-        _, _, rs, gs, qs, ps = zip(*data)
-        rew, grad, ess, rvar, gvar = self._grad_est(rewards=rs,
+        ss, _, rs, gs, qs, ps = zip(*data)
+        rew, grad, ess, rvar, gvar = self._grad_est(states=ss,
+                                                    rewards=rs,
                                                     gradients=gs,
                                                     p_tar=ps,
                                                     p_gen=qs,
