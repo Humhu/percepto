@@ -88,6 +88,10 @@ class EpisodicPolicyGradientEstimator(object):
         self.use_baseline = use_baseline
         self.log_weight_lim = float('inf')
 
+        self.max_dev_ratio = 1.0
+        self.max_grad_dev = 0.1
+        self.min_ess = float('-inf')
+
         self._pool = Parallel(n_jobs=n_threads)
 
         self.reset()
@@ -132,7 +136,8 @@ class EpisodicPolicyGradientEstimator(object):
                         for s, a in izip(states, actions)]
 
         # TODO Used a namedtuple?
-        self._buffer.append(zip(states, actions, rewards, logprobs))
+        gradients = [self._policy.gradient(s, a) for s, a in izip(states, actions)]
+        self._buffer.append(zip(states, actions, rewards, gradients, logprobs, logprobs))
 
     def estimate_reward_and_gradient(self, x=None):
         """Estimate both the expected reward and policy gradient.
@@ -156,7 +161,8 @@ class EpisodicPolicyGradientEstimator(object):
         trajectories = list(self._buffer)
         self.reset()
         for traj in trajectories:
-            _, _, _, _, q, p = zip(*self.__augment_trajectory(traj))
+            s, a, _, g, q, p = izip(*traj)
+            p = [self._policy.logprob(si, ai) for si, ai in izip(s, a)]
             p = np.sum(p)
             q = np.sum(q)
             log_weight = np.sum(p - q)
@@ -165,6 +171,14 @@ class EpisodicPolicyGradientEstimator(object):
             else:
                 self._buffer.append(traj)
 
+    def update_buffer(self):
+        data = list(self._buffer)
+        self.reset()
+        for dat in data:
+            s, a, r, g, q, p = izip(*dat)
+            g = [self._policy.gradient(si, ai) for si, ai in izip(s, a)]
+            p = [self._policy.logprob(si, ai) for si, ai in izip(s, a)]
+            self._buffer.append(zip(s, a, r, g, q, p))
 
     def __sample_buffer(self):
         """Returns a set of sample indices.
@@ -175,67 +189,90 @@ class EpisodicPolicyGradientEstimator(object):
         random.shuffle(inds)
         return inds
 
-    def __augment_trajectory(self, traj):
-        s, a, r, q = izip(*traj)
-        p = [self._policy.logprob(si, ai) for si, ai in izip(s, a)]
-        g = [self._policy.gradient(si, ai) for si, ai in izip(s, a)]
-        return zip(s, a, r, g, q, p)
-
-    def __comp_gradients(self, traj):
-        return [self._policy.gradient(s, a) for s, a, _, _ in traj]
-
     def __estimate(self, inds, est_reward, est_grad):
         """Perform importance sampling on a set of samples to estimate
         expected reward and gradient.
         """
-        if inds is None:
-            return None, None
-
-        #data = self._pool(delayed(_process_traj)(self._policy, traj)
+        # data = self._pool(delayed(_process_traj)(self._policy, traj)
         #                  for traj in self._buffer)
 
-        rs = []
-        gs = []
-        ps = []
-        qs = []
-        for ssize, next_ind in enumerate(inds):
-            ssize += 1  # Starts at 0
+        if len(inds) < self.batch_size:
+            return None, None
 
-            traj = self.__augment_trajectory(self._buffer[next_ind])
-            _, _, r, g, q, p = zip(*traj)
-            rs.append(r)
-            gs.append(g)
-            ps.append(p)
-            qs.append(q)
+        data = [zip(*self._buffer[ind]) for ind in inds]
+        _, _, rs, gs, qs, ps = zip(*data)
+        rew, grad, ess, rvar, gvar = self._grad_est(rewards=rs,
+                                                    gradients=gs,
+                                                    p_tar=ps,
+                                                    p_gen=qs,
+                                                    use_baseline=self.use_baseline,
+                                                    use_natural_grad=self.use_nat_grad,
+                                                    fisher_diag=self.use_diag_fisher,
+                                                    normalize=self.use_norm_sample,
+                                                    log_weight_lim=self.log_weight_lim,
+                                                    ret_diagnostics=True)
 
-            traj_ps = [np.sum(pi) for pi in ps]
-            traj_qs = [np.sum(qi) for qi in qs]
-            mw, ess = samp.importance_sample_ess(p_gen=traj_qs,
-                                                 p_tar=traj_ps,
-                                                 log_weight_lim=self.log_weight_lim)
+        # Confidence interval shrinks with root N
+        gsd = np.sqrt(np.diag(gvar / ess))
+        sdr = gsd / np.abs(grad)
+        print 'ESS: %f' % ess
+        print 'Grad: %s' % np.array_str(grad)
+        print 'Grad SD: %s' % np.array_str(gsd)
+        print 'Grad Dev. Ratio: %s' % np.array_str(sdr)
 
-            if self.batch_size == 0 and ssize < self.num_samples:
-                continue
-            elif self.batch_size > 0 and ess < self.batch_size:
-                p = math.exp(np.sum(p))
-                q = math.exp(np.sum(q))
-                print 'Added w %f (p %f q %f)' % (p/q, p, q)
-                print 'ESS %f < desired %f' % (ess, self.batch_size)
-                continue
+        pass_min_ess = ess >= self.min_ess
+        pass_max_dev = gsd <= self.max_grad_dev
+        pass_max_ratio = sdr <= self.max_dev_ratio
+        
+        # Must pass one of two conditions
+        if pass_min_ess or np.all(np.logical_or(pass_max_dev, pass_max_ratio)):
+            return rew, grad
+        else:
+            print 'Gradient does not pass tests, skipping...'
+            return None, None
 
-            print 'Using %d samples to achieve ESS %f' % (ssize, ess)
-            return self._grad_est(rewards=rs,
-                                  gradients=gs,
-                                  p_tar=ps,
-                                  p_gen=qs,
-                                  use_baseline=self.use_baseline,
-                                  use_natural_grad=self.use_nat_grad,
-                                  fisher_diag=self.use_diag_fisher,
-                                  normalize=self.use_norm_sample,
-                                  log_weight_lim=self.log_weight_lim)
+        # rs = []
+        # gs = []
+        # ps = []
+        # qs = []
+        # for ssize, next_ind in enumerate(inds):
+        #     ssize += 1  # Starts at 0
 
-        print 'Could not achieve desired sample size'
-        return None, None
+        #     traj = self.__augment_trajectory(self._buffer[next_ind])
+        #     _, _, r, g, q, p = zip(*traj)
+        #     rs.append(r)
+        #     gs.append(g)
+        #     ps.append(p)
+        #     qs.append(q)
+
+        #     traj_ps = [np.sum(pi) for pi in ps]
+        #     traj_qs = [np.sum(qi) for qi in qs]
+        #     mw, ess = samp.importance_sample_ess(p_gen=traj_qs,
+        #                                          p_tar=traj_ps,
+        #                                          log_weight_lim=self.log_weight_lim)
+
+        #     if self.batch_size == 0 and ssize < self.num_samples:
+        #         continue
+        #     elif self.batch_size > 0 and ess < self.batch_size:
+        #         p = math.exp(np.sum(p))
+        #         q = math.exp(np.sum(q))
+        #         print 'Added w %f (p %f q %f)' % (p / q, p, q)
+        #         print 'ESS %f < desired %f' % (ess, self.batch_size)
+        #         continue
+
+        #     print 'Using %d samples to achieve ESS %f' % (ssize, ess)
+        #     return self._grad_est(rewards=rs,
+        #                           gradients=gs,
+        #                           p_tar=ps,
+        #                           p_gen=qs,
+        #                           use_baseline=self.use_baseline,
+        #                           use_natural_grad=self.use_nat_grad,
+        #                           fisher_diag=self.use_diag_fisher,
+        #                           normalize=self.use_norm_sample,
+        #                           log_weight_lim=self.log_weight_lim)
+
+        # print 'Could not achieve desired sample size'
+        # return None, None
 
 
 def _process_traj(policy, traj):

@@ -177,18 +177,19 @@ def _importance_preprocess_reinforce(rewards, gradients, p_tar, p_gen):
 
 def importance_reinforce(rewards, gradients, p_tar, p_gen,
                          use_baseline=True, use_natural_grad=True,
-                         fisher_diag=False, **kwargs):
+                         fisher_diag=False, ret_diagnostics=False, **kwargs):
     res = _importance_preprocess_reinforce(rewards, gradients, p_tar, p_gen)
     return _importance_policy_gradient(res,
                                        use_baseline=use_baseline,
                                        use_natural_grad=use_natural_grad,
                                        fisher_diag=fisher_diag,
+                                       ret_diagnostics=ret_diagnostics,
                                        **kwargs)
 
 
 def importance_gpomdp(rewards, gradients, p_tar, p_gen,
                       use_baseline=True, use_natural_grad=True,
-                      fisher_diag=False, **kwargs):
+                      fisher_diag=False, ret_diagnostics=False, **kwargs):
     """Compute policy expected rewards and gradient using importance
     sampling.
 
@@ -234,11 +235,12 @@ def importance_gpomdp(rewards, gradients, p_tar, p_gen,
                                        use_baseline=use_baseline,
                                        use_natural_grad=use_natural_grad,
                                        fisher_diag=fisher_diag,
+                                       ret_diagnostics=ret_diagnostics,
                                        **kwargs)
 
 
 def _importance_policy_gradient(res, use_baseline, use_natural_grad,
-                                fisher_diag, **kwargs):
+                                fisher_diag, ret_diagnostics=False, **kwargs):
     """Implementation of importance-sampling based policy gradient computation.
     """
     try:
@@ -260,21 +262,12 @@ def _importance_policy_gradient(res, use_baseline, use_natural_grad,
                                           p_tar=res['traj_p_tar'],
                                           p_gen=res['traj_p_gen'],
                                           **kwargs)
-        rew_var, rew_var_ess = isamp.importance_sample_var(x=res['traj_r'] - rew_b,
-                                                           est=rew_val,
-                                                           p_tar=res['traj_p_tar'],
-                                                           p_gen=res['traj_p_gen'])
-        print 'Reward SD: %f ESS: %f' % (np.sqrt(rew_var), rew_var_ess)
 
         # Estimate the policy gradient
         grad_val = isamp.importance_sample(res['r_grads'] - grad_b,
                                            p_tar=res['traj_p_tar'],
                                            p_gen=res['traj_p_gen'],
                                            **kwargs)
-        grad_var, grad_var_ess = isamp.importance_sample_var(x=res['r_grads'] - grad_b,
-                                                             est=grad_val,
-                                                             p_tar=res['traj_p_tar'],
-                                                             p_gen=res['traj_p_gen'])
 
         if use_natural_grad:
             act_fisher_chol = isample_fisher(gradients=res['act_grads'],
@@ -283,11 +276,30 @@ def _importance_policy_gradient(res, use_baseline, use_natural_grad,
                                              diag=fisher_diag,
                                              **kwargs)
             grad_val = spl.cho_solve(act_fisher_chol, grad_val)
-            grad_var = spl.cho_solve(act_fisher_chol, spl.cho_solve(act_fisher_chol, grad_var).T).T
-            print 'Grad SD: %s ESS: %f' % (np.array_str(np.sqrt(np.diag(grad_var))), grad_var_ess)
 
-        return rew_val, grad_val
+        if ret_diagnostics:
+            traj_mw, ess = isamp.importance_sample_ess(p_gen=res['traj_p_gen'],
+                                                       p_tar=res['traj_p_tar'],
+                                                       **kwargs)
+            rew_var, rew_var_ess = isamp.importance_sample_var(x=res['traj_r'] - rew_b,
+                                                               est=rew_val,
+                                                               p_tar=res['traj_p_tar'],
+                                                               p_gen=res['traj_p_gen'],
+                                                               **kwargs)
+            grad_var, grad_var_ess = isamp.importance_sample_var(x=res['r_grads'] - grad_b,
+                                                                 est=grad_val,
+                                                                 p_tar=res['traj_p_tar'],
+                                                                 p_gen=res['traj_p_gen'],
+                                                                 **kwargs)
+            if use_natural_grad:
+                grad_var_acc = spl.cho_solve(act_fisher_chol, grad_var)
+                grad_var = spl.cho_solve(act_fisher_chol, grad_var_acc.T).T
+
+            return rew_val, grad_val, ess, rew_var, grad_var
+
+        else:
+            return rew_val, grad_val
 
     except isamp.SamplingException:
-        print 'Sampling exception!'
+        print 'Sampling exception: Could not estimate gradient'
         return None, None

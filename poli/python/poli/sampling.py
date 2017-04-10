@@ -8,7 +8,8 @@ class SamplingException(Exception):
     pass
 
 
-def importance_sample_ess(p_gen, p_tar, log_weight_lim=float('inf')):
+def importance_sample_ess(p_gen, p_tar, log_weight_lim=float('inf'), normalize=False):
+    # TODO Normalize not used?
     """Computes prior diagnostics for importance sampling.
 
     Parameters
@@ -35,7 +36,8 @@ def importance_sample_ess(p_gen, p_tar, log_weight_lim=float('inf')):
         p_tar = np.asarray(p_tar)
 
     log_weights = p_tar - p_gen
-    valid = np.logical_and(log_weights > -log_weight_lim, log_weights < log_weight_lim)
+    valid = np.logical_and(log_weights > -log_weight_lim,
+                           log_weights < log_weight_lim)
     if not np.any(valid):
         return float('nan'), 0
 
@@ -46,7 +48,10 @@ def importance_sample_ess(p_gen, p_tar, log_weight_lim=float('inf')):
     ess = len(weights) * mean_weight ** 2 / mean_sq_weight
     return mean_weight, ess
 
-def importance_sample_var(x, est, p_gen, p_tar):
+
+def importance_sample_var(x, est, p_gen, p_tar, log_weight_lim=float('inf'),
+                          normalize=False):
+    # TODO normalize not used?
     x = np.asarray(x)
     N = len(x)
 
@@ -60,7 +65,15 @@ def importance_sample_var(x, est, p_gen, p_tar):
     else:
         p_tar = np.asarray(p_tar)
 
-    weights = np.exp(p_tar - p_gen)
+    log_weights = p_tar - p_gen
+    valid = np.logical_and(log_weights > -log_weight_lim,
+                           log_weights < log_weight_lim)
+    if not np.any(valid):
+        return float('inf'), 0
+
+    weights = np.exp(log_weights[valid])
+    x = x[valid]
+
     deltas = x - est
     outers = np.asarray([np.outer(d, d) for d in deltas])
     norm_weights = weights / np.sum(weights)
@@ -68,6 +81,7 @@ def importance_sample_var(x, est, p_gen, p_tar):
     est_var = np.sum((norm_weights * norm_weights) * outers.T, axis=-1).T
     ess = np.sum(norm_weights ** 2) ** 2 / np.sum(norm_weights ** 4)
     return est_var, ess
+
 
 def importance_sample(x, p_gen, p_tar, normalize=False, log_weight_lim=float('inf')):
     """Perform standard importance sampling.
@@ -94,7 +108,8 @@ def importance_sample(x, p_gen, p_tar, normalize=False, log_weight_lim=float('in
         p_tar = np.asarray(p_tar)
 
     log_weights = p_tar - p_gen
-    valid = np.logical_and(log_weights > -log_weight_lim, log_weights < log_weight_lim)
+    valid = np.logical_and(log_weights > -log_weight_lim,
+                           log_weights < log_weight_lim)
     if not np.any(valid):
         raise SamplingException()
 
