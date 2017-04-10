@@ -256,7 +256,9 @@ class EpisodeRecorder(object):
         self._r_lock.acquire()
 
         episodes = []
-        while len(self._ep_breaks) > 0 and len(self._sa_buffer) > 0:
+        while len(self._ep_breaks) > 0 and \
+                len(self._sa_buffer) > 0 and \
+                len(self._r_buffer) > 0:
             next_break = self._ep_breaks[0]
 
             # Make sure that we have data past the break time to ensure that
