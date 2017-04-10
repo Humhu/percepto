@@ -17,7 +17,7 @@ from joblib import Parallel, delayed
 #SarTuple = namedtuple('SarTuple', ['state', 'action', 'reward', 'gen_logprob, curr_logprob'])
 
 
-def parse_gradient_estimator(spec, policy, regularizer=None):
+def parse_gradient_estimator(spec, **kwargs):
     """Parses a dictionary to construct the appropriate gradient estimator object.
     """
     if 'type' not in spec:
@@ -29,7 +29,9 @@ def parse_gradient_estimator(spec, policy, regularizer=None):
         raise ValueError('Gradient estimator type %s not valid type: %s' %
                          (learner_type, str(lookup.keys())))
 
-    return lookup[learner_type](policy=policy, regularizer=regularizer, **spec)
+    for key, value in kwargs.iteritems():
+        spec[key] = value
+    return lookup[learner_type](**spec)
 
 
 def __compute_gradients(policy, traj):
@@ -63,7 +65,9 @@ class EpisodicPolicyGradientEstimator(object):
     def __init__(self, policy, traj_mode, batch_size=0, buffer_size=0,
                  use_natural_gradient=True, fisher_offset=1E-9,
                  regularizer=None, sampler=None, use_norm_sample=True,
-                 use_diag_fisher=False, use_baseline=True, n_threads=4):
+                 use_diag_fisher=False, use_baseline=True, log_weight_lim=float(
+                     'inf'),
+                 n_threads=4):
 
         if not isinstance(policy, pp.StochasticPolicy):
             raise ValueError(
@@ -88,7 +92,7 @@ class EpisodicPolicyGradientEstimator(object):
         self.use_norm_sample = use_norm_sample
         self.use_diag_fisher = use_diag_fisher
         self.use_baseline = use_baseline
-        self.log_weight_lim = float('inf')
+        self.log_weight_lim = log_weight_lim
 
         self.max_dev_ratio = 1.0
         self.max_grad_dev = 0.1
@@ -138,8 +142,10 @@ class EpisodicPolicyGradientEstimator(object):
                         for s, a in izip(states, actions)]
 
         # TODO Used a namedtuple?
-        gradients = [self._policy.gradient(s, a) for s, a in izip(states, actions)]
-        self._buffer.append(zip(states, actions, rewards, gradients, logprobs, logprobs))
+        gradients = [self._policy.gradient(s, a)
+                     for s, a in izip(states, actions)]
+        self._buffer.append(zip(states, actions, rewards,
+                                gradients, logprobs, logprobs))
 
     def estimate_reward_and_gradient(self, x=None):
         """Estimate both the expected reward and policy gradient.
@@ -159,7 +165,10 @@ class EpisodicPolicyGradientEstimator(object):
             self._policy.set_theta(theta)
         return obj, grad
 
-    def remove_unlikely_trajectories(self, min_log_weight=-3):
+    def remove_unlikely_trajectories(self, min_log_weight=None):
+        if min_log_weight is None:
+            min_log_weight = -self.log_weight_lim
+
         trajectories = list(self._buffer)
         self.reset()
         for traj in trajectories:
@@ -225,7 +234,7 @@ class EpisodicPolicyGradientEstimator(object):
         pass_min_ess = ess >= self.min_ess
         pass_max_dev = gsd <= self.max_grad_dev
         pass_max_ratio = sdr <= self.max_dev_ratio
-        
+
         # Must pass one of two conditions
         if pass_min_ess or np.all(np.logical_or(pass_max_dev, pass_max_ratio)):
             return rew, grad
