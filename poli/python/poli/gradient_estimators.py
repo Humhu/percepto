@@ -6,6 +6,7 @@ import random
 from itertools import izip
 from collections import deque, namedtuple
 import math
+import scipy.stats as sps
 
 import sampling as samp
 import policies as pp
@@ -65,9 +66,9 @@ class EpisodicPolicyGradientEstimator(object):
     def __init__(self, policy, traj_mode, batch_size=0, buffer_size=0,
                  use_natural_gradient=True, fisher_offset=1E-9,
                  regularizer=None, sampler=None, use_norm_sample=True,
-                 use_diag_fisher=False, use_baseline=True, log_weight_lim=float(
-                     'inf'),
-                 n_threads=4):
+                 use_diag_fisher=False, use_baseline=True,
+                 log_weight_lim=float('inf'), min_ess=float('-inf'),
+                 max_grad_flip_prob=1.0, n_threads=4):
 
         if not isinstance(policy, pp.StochasticPolicy):
             raise ValueError(
@@ -94,9 +95,10 @@ class EpisodicPolicyGradientEstimator(object):
         self.use_baseline = use_baseline
         self.log_weight_lim = log_weight_lim
 
-        self.max_dev_ratio = 1.0
-        self.max_grad_dev = 0.1
-        self.min_ess = float('-inf')
+        self.min_ess = float(min_ess)
+        self.max_grad_flip_prob = max_grad_flip_prob
+        #self.max_dev_ratio = float(max_dev_ratio)
+        #self.max_grad_dev = float(max_grad_dev)
 
         self._pool = Parallel(n_jobs=n_threads)
 
@@ -225,18 +227,22 @@ class EpisodicPolicyGradientEstimator(object):
 
         # Confidence interval shrinks with root N
         gsd = np.sqrt(np.diag(gvar / ess))
-        sdr = gsd / np.abs(grad)
+        # sdr = gsd / np.abs(grad)
         print 'ESS: %f' % ess
         print 'Grad: %s' % np.array_str(grad)
         print 'Grad SD: %s' % np.array_str(gsd)
-        print 'Grad Dev. Ratio: %s' % np.array_str(sdr)
 
         pass_min_ess = ess >= self.min_ess
-        pass_max_dev = gsd <= self.max_grad_dev
-        pass_max_ratio = sdr <= self.max_dev_ratio
+        #pass_max_dev = gsd <= self.max_grad_dev
+        #pass_max_ratio = sdr <= self.max_dev_ratio
 
+        cdf_vals = np.array([sps.norm(loc=abs(val), scale=sd).cdf(0)
+                             for val, sd in izip(grad, gsd)])
+        print 'Grad sign flip probs: %s' % np.array_str(cdf_vals)
+        pass_cdf = np.all(cdf_vals <= self.max_grad_flip_prob)
         # Must pass one of two conditions
-        if pass_min_ess or np.all(np.logical_or(pass_max_dev, pass_max_ratio)):
+        if pass_min_ess or pass_cdf:
+            # or np.all(np.logical_or(pass_max_dev, pass_max_ratio)):
             return rew, grad
         else:
             print 'Gradient does not pass tests, skipping...'

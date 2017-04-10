@@ -192,7 +192,7 @@ class ParameterPolicyNode(object):
             self.active_policy.set_theta(theta)
             self.policy_lock.release()
 
-            self.grad_est.update_buffers()
+            self.grad_est.update_buffer()
             self.grad_est.remove_unlikely_trajectories()
 
             rospy.loginfo('Estimated reward: %f', reward)
