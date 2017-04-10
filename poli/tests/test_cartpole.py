@@ -92,7 +92,7 @@ def train_policy(policy, optimizer, estimator, n_iters, t_len):
     for i in range(n_iters):
         print 'Trial %d...' % counter
         print 'A:\n%s' % np.array_str(policy.A)
-        print 'b:\n%s' % np.array_str(policy.b)
+        print 'B:\n%s' % np.array_str(policy.B)
         counter += 1
         states, actions, rewards, logprobs = run_trial(
             policy, preprocess, t_len)
@@ -105,8 +105,8 @@ def train_policy(policy, optimizer, estimator, n_iters, t_len):
                                              func=estimator.estimate_reward_and_gradient)
         if np.any(theta != start_theta):
             policy.set_theta(theta)
-            #estimator.reset()
             estimator.update_buffer()
+            #estimator.reset()
             estimator.remove_unlikely_trajectories(min_log_weight=-estimator.log_weight_lim - 1)
 
         if len(trials) > 3 and np.mean(trials[-3:]) == t_len:
@@ -141,9 +141,10 @@ if __name__ == '__main__':
     B = np.zeros((adim, xdim))
     B[:, -1] = -2
 
-    policy = poli.FixedLinearPolicy(input_dim=xdim, output_dim=adim)
+    policy = poli.LinearPolicy(input_dim=xdim, output_dim=adim)
     policy.A = A
-    policy.b[:] = -2
+    #policy.b[:] = -2
+    policy.B = B
     init_theta = policy.get_theta()
 
     # TODO How do we pick good step sizes?
@@ -153,8 +154,8 @@ if __name__ == '__main__':
     wds = poli.WeightedDataSampler(weight_func=importance_weight)
 
     estimator = poli.EpisodicPolicyGradientEstimator(policy=policy,
-                                                     traj_mode='reinforce',
-                                                     buffer_size=200,
+                                                     traj_mode='per',
+                                                     buffer_size=0,
                                                      # sampler=wds,
                                                      use_natural_gradient=True,
                                                      use_norm_sample=True,
@@ -170,7 +171,7 @@ if __name__ == '__main__':
     # nobaseline_rewards, nobaseline_grads = izip(*nobaseline_results)
 
     # print 'Running filtered trials...'
-    # estimator.log_weight_lim = 3
+    # estimator.log_weight_lim = 1
     # baseline_results = [pred_grad(policy, estimator, n_samples)
     #                     for i in range(n_trials)]
     # baseline_rewards, baseline_grads = izip(*baseline_results)

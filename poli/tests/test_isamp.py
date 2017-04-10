@@ -137,8 +137,8 @@ if __name__ == '__main__':
     nobase_all_estimates = [estimate_p_mean(
         n_samples, False) for i in range(n_trials)]
     nobase_filt_estimates = [estimate_p_mean(
-        n_samples, False, 3) for i in range(n_trials)]
+        n_samples, False, 1) for i in range(n_trials)]
     base_all_estimates = [estimate_p_mean(
         n_samples, True) for i in range(n_trials)]
     base_filt_estimates = [estimate_p_mean(
-        n_samples, True, 3) for i in range(n_trials)]
+        n_samples, True, 1) for i in range(n_trials)]

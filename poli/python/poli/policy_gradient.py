@@ -114,6 +114,34 @@ def constant_isamp_baseline(rewards, gradients, r_grads, p_tar, p_gen,
     return rew_baselines, grad_baselines
 
 
+def _importance_preprocess_per(rewards, gradients, p_tar, p_gen):
+    res = {'traj_r': [], 'traj_p_tar': [], 'traj_p_gen': [],
+           'r_grads': [], 'state_act_p_tar': [],
+           'state_act_p_gen': [], 'act_grads': [],
+           'traj_grads': []}
+
+    for rs, gs, ps, qs in izip(rewards, gradients, p_tar, p_gen):
+
+        traj_p = np.cumsum(ps)
+        traj_q = np.cumsum(qs)
+        traj_grads = np.cumsum(gs, axis=0)
+        r_acc = np.cumsum(rs[::-1])[::-1]
+        r_grad = (r_acc * traj_grads.T).T
+
+        res['r_grads'].extend(r_grad)
+        res['traj_p_tar'].extend(traj_p)
+        res['traj_p_gen'].extend(traj_q)
+        res['traj_grads'].extend(traj_grads)
+        res['traj_r'].extend(r_acc)
+
+        # Used for estimating fisher
+        res['act_grads'].extend(gs)
+        res['state_act_p_tar'].extend(np.cumsum(ps))
+        res['state_act_p_gen'].extend(np.cumsum(qs))
+
+    return res
+
+
 def _importance_preprocess_gpomdp(rewards, gradients, p_tar, p_gen):
     """Computes various trajectory quantities using the GPOMDP formulation.
     """
@@ -173,6 +201,18 @@ def _importance_preprocess_reinforce(rewards, gradients, p_tar, p_gen):
         res['state_act_p_gen'].extend(np.cumsum(qs))
 
     return res
+
+
+def importance_per_decision(rewards, gradients, p_tar, p_gen,
+                            use_baseline=True, use_natural_grad=True,
+                            fisher_diag=False, ret_diagnostics=False, **kwargs):
+    res = _importance_preprocess_per(rewards, gradients, p_tar, p_gen)
+    return _importance_policy_gradient(res,
+                                       use_baseline=use_baseline,
+                                       use_natural_grad=use_natural_grad,
+                                       fisher_diag=fisher_diag,
+                                       ret_diagnostics=ret_diagnostics,
+                                       **kwargs)
 
 
 def importance_reinforce(rewards, gradients, p_tar, p_gen,

@@ -74,6 +74,8 @@ class EpisodicPolicyGradientEstimator(object):
             self._grad_est = ppg.importance_reinforce
         elif traj_mode == 'gpomdp':
             self._grad_est = ppg.importance_gpomdp
+        elif traj_mode == 'per':
+            self._grad_est = ppg.importance_per_decision
         else:
             raise ValueError('Unsupported trajectory mode')
 
