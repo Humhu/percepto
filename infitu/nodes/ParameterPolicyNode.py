@@ -1,6 +1,7 @@
 #!/usr/bin/env python
-
+import cPickle as pickle
 import numpy as np
+import sys
 import rospy
 import poli
 import optim
@@ -69,6 +70,11 @@ class ParameterPolicyNode(object):
                 regularizer = poli.parse_regularizer(policy=self.learner_policy,
                                                      spec=reg_info)
 
+            # def trial_prob(datum):
+            #    s, a, r, l = izip(*datum)
+            #    return math.exp(np.sum(l))
+            #wds = poli.WeightedDataSampler(weight_func=trial_prob)
+
             grad_info = learning_info['gradient_estimation']
             self.grad_est = poli.parse_gradient_estimator(spec=grad_info,
                                                           policy=self.learner_policy,
@@ -84,14 +90,21 @@ class ParameterPolicyNode(object):
             self.recorder = poli.EpisodeRecorder(**recorder_info)
 
             learn_rate = rospy.get_param('~learn_rate')
-            self._learn_timer = rospy.Timer(period=rospy.Duration(1.0 / learn_rate),
-                                            callback=self.learn_spin)
+            # self._learn_timer = rospy.Timer(period=rospy.Duration(1.0 / learn_rate),
+            #                                callback=self.learn_spin)
             self._reward_sub = rospy.Subscriber(learning_info['reward_topic'],
                                                 RewardStamped,
                                                 self.reward_callback)
             self._break_sub = rospy.Subscriber(learning_info['break_topic'],
                                                EpisodeBreak,
                                                self.break_callback)
+
+            self._max_eps = rospy.get_param('~max_episodes')
+            self._eps_counter = 0
+
+            self.sum_returns = []
+            out_file = rospy.get_param('~out_file')
+            self._out_file = open(out_file, 'w')
 
     @property
     def active_policy(self):
@@ -129,15 +142,15 @@ class ParameterPolicyNode(object):
         # Output printout
         msg = 'State: %s\nAction: %s\n' % (np.array_str(state),
                                            np.array_str(action))
-        msg += 'Mean: %s\nCov:\n%s' % (np.array_str(action_mean),
-                                       np.array_str(action_cov))
-        rospy.loginfo(msg)
+        msg += 'Mean: %s\nSD:\n%s' % (np.array_str(action_mean),
+                                      np.array_str(np.sqrt(np.diag(action_cov))))
+        # rospy.loginfo(msg)
 
         if self.action_tx is not None:
-            self.action_tx.publish(time=now, feats=action)
+            self.action_tx.publish(time=event.current_real, feats=action)
 
         if self.recorder is not None:
-            self.recorder.report_state_action(time=now.to_sec(),
+            self.recorder.report_state_action(time=event.current_real.to_sec(),
                                               state=state,
                                               action=action,
                                               logprob=logprob)
@@ -149,15 +162,19 @@ class ParameterPolicyNode(object):
     def break_callback(self, msg):
         self.recorder.report_episode_break(time=msg.break_time.to_sec())
 
-    def learn_spin(self, event):
+    def learn_spin(self):
 
-        rospy.loginfo('Processing timestep buffer...')
         for ep in self.recorder.process_episodes():
             if len(ep) == 0:
                 continue
-            rospy.loginfo(print_episode(ep))
+            # rospy.loginfo(print_episode(ep))
+
+            self._eps_counter += 1
+
             _, states, actions, logprobs, rewards = izip(*ep)
-            # rewards = np.array(rewards) / len(ep)
+            rewards = np.array(rewards) / len(ep)
+            self.sum_returns.append(np.sum(rewards))
+
             self.grad_est.report_episode(states=states,
                                          actions=actions,
                                          rewards=rewards,
@@ -165,17 +182,28 @@ class ParameterPolicyNode(object):
 
         rospy.loginfo('Have %d episodes', self.grad_est.num_samples)
         rospy.loginfo('Beginning optimization...')
-        theta, reward = self.optimizer.optimize(x_init=self.learner_policy.get_theta(),
+
+        init_theta = self.learner_policy.get_theta()
+        theta, reward = self.optimizer.optimize(x_init=init_theta,
                                                 func=self.grad_est.estimate_reward_and_gradient)
-        self.learner_policy.set_theta(theta)
-        if reward is not None:
+        if np.any(init_theta != theta):
+            self.learner_policy.set_theta(theta)
+            self.policy_lock.acquire()
+            self.active_policy.set_theta(theta)
+            self.policy_lock.release()
+
+            self.grad_est.update_buffers()
+            self.grad_est.remove_unlikely_trajectories()
+
             rospy.loginfo('Estimated reward: %f', reward)
             rospy.loginfo('New A:\n%s', np.array_str(self.learner_policy.A))
             rospy.loginfo('New B:\n%s', np.array_str(self.learner_policy.B))
 
-        self.policy_lock.acquire()
-        self.active_policy.set_theta(theta)
-        self.policy_lock.release()
+        if self._eps_counter >= self._max_eps:
+            rospy.loginfo('Max episodes achieved.')
+            AB = (self.learner_policy.A, self.learner_policy.B)
+            pickle.dump((AB, self.sum_returns), self._out_file)
+            sys.exit(0)
 
 
 def print_episode(ep):
@@ -193,6 +221,8 @@ if __name__ == '__main__':
 
     node = ParameterPolicyNode()
     try:
-        rospy.spin()
+        while not rospy.is_shutdown():
+            node.learn_spin()
+            rospy.sleep(rospy.Duration(1.0))
     except rospy.ROSInterruptException:
         pass
