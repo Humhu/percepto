@@ -182,7 +182,7 @@ class GradientDescent(Optimizer):
         self._y_tol = float(y_tol)
 
     def step(self, x_init, func):
-        return self.__step(x_init, func)[0]
+        return self.__step(x_init, func)[0:2]
 
     def optimize(self, x_init, func):
         converged = False

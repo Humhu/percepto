@@ -43,6 +43,9 @@ class EpisodicPolicyGradientEstimator(object):
     """A policy learner that uses importance sampling to reuse past episode
     for estimating policy gradients and expected rewards.
 
+    Note that this object is not thread-safe and relies on external locking to
+    coordinate between all referenced objects.
+
     Parameters
     ----------
     policy               : Policy object
@@ -93,12 +96,12 @@ class EpisodicPolicyGradientEstimator(object):
 
         self.batch_size = int(batch_size)
         self.buffer_size = int(buffer_size)
-        
+
         self.use_nat_grad = bool(use_natural_gradient)
         self.use_baseline = use_baseline
 
         self.min_ess = float(min_ess)
-        self.max_grad_flip_prob = max_grad_flip_prob
+        self.max_grad_flip_prob = float(max_grad_flip_prob)
         #self.max_dev_ratio = float(max_dev_ratio)
         #self.max_grad_dev = float(max_grad_dev)
 
