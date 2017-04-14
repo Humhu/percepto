@@ -64,11 +64,9 @@ class EpisodicPolicyGradientEstimator(object):
     """
 
     def __init__(self, policy, traj_mode, batch_size=0, buffer_size=0,
-                 use_natural_gradient=True, fisher_offset=1E-9,
-                 regularizer=None, sampler=None, use_norm_sample=True,
-                 use_diag_fisher=False, use_baseline=True,
-                 log_weight_lim=float('inf'), min_ess=float('-inf'),
-                 max_grad_flip_prob=1.0, n_threads=4):
+                 use_natural_gradient=True, regularizer=None, sampler=None,
+                 sampling_args={}, reward_args={}, use_baseline=True,
+                 min_ess=float('-inf'), max_grad_flip_prob=1.0, n_threads=4):
 
         if not isinstance(policy, pp.StochasticPolicy):
             raise ValueError(
@@ -83,19 +81,21 @@ class EpisodicPolicyGradientEstimator(object):
             self._grad_est = ppg.importance_per_decision
         elif traj_mode == 'uni':
             self._grad_est = ppg.importance_per_uniform
+        elif traj_mode == 'value':
+            self._grad_est = ppg.importance_value
         else:
             raise ValueError('Unsupported trajectory mode')
 
         self.regularizer = regularizer
         self.sampler = sampler
+        self.sampling_args = sampling_args
+        self.reward_args = reward_args
+
         self.batch_size = int(batch_size)
         self.buffer_size = int(buffer_size)
+        
         self.use_nat_grad = bool(use_natural_gradient)
-        self.fish_off = float(fisher_offset)
-        self.use_norm_sample = use_norm_sample
-        self.use_diag_fisher = use_diag_fisher
         self.use_baseline = use_baseline
-        self.log_weight_lim = log_weight_lim
 
         self.min_ess = float(min_ess)
         self.max_grad_flip_prob = max_grad_flip_prob
@@ -171,7 +171,7 @@ class EpisodicPolicyGradientEstimator(object):
 
     def remove_unlikely_trajectories(self, min_log_weight=None):
         if min_log_weight is None:
-            min_log_weight = -self.log_weight_lim
+            min_log_weight = -3 # TODO
 
         trajectories = list(self._buffer)
         self.reset()
@@ -223,21 +223,17 @@ class EpisodicPolicyGradientEstimator(object):
                                                     p_gen=qs,
                                                     use_baseline=self.use_baseline,
                                                     use_natural_grad=self.use_nat_grad,
-                                                    fisher_diag=self.use_diag_fisher,
-                                                    normalize=self.use_norm_sample,
-                                                    log_weight_lim=self.log_weight_lim,
-                                                    ret_diagnostics=True)
+                                                    ret_diagnostics=True,
+                                                    sampling_args=self.sampling_args,
+                                                    sum_args=self.reward_args)
 
         # Confidence interval shrinks with root N
         gsd = np.sqrt(np.diag(gvar / ess))
-        # sdr = gsd / np.abs(grad)
         print 'ESS: %f' % ess
         print 'Grad: %s' % np.array_str(grad)
         print 'Grad SD: %s' % np.array_str(gsd)
 
         pass_min_ess = ess >= self.min_ess
-        #pass_max_dev = gsd <= self.max_grad_dev
-        #pass_max_ratio = sdr <= self.max_dev_ratio
 
         cdf_vals = np.array([sps.norm(loc=abs(val), scale=sd).cdf(0)
                              for val, sd in izip(grad, gsd)])
@@ -245,55 +241,10 @@ class EpisodicPolicyGradientEstimator(object):
         pass_cdf = np.all(cdf_vals <= self.max_grad_flip_prob)
         # Must pass one of two conditions
         if pass_min_ess or pass_cdf:
-            # or np.all(np.logical_or(pass_max_dev, pass_max_ratio)):
             return rew, grad
         else:
             print 'Gradient does not pass tests, skipping...'
             return None, None
-
-        # rs = []
-        # gs = []
-        # ps = []
-        # qs = []
-        # for ssize, next_ind in enumerate(inds):
-        #     ssize += 1  # Starts at 0
-
-        #     traj = self.__augment_trajectory(self._buffer[next_ind])
-        #     _, _, r, g, q, p = zip(*traj)
-        #     rs.append(r)
-        #     gs.append(g)
-        #     ps.append(p)
-        #     qs.append(q)
-
-        #     traj_ps = [np.sum(pi) for pi in ps]
-        #     traj_qs = [np.sum(qi) for qi in qs]
-        #     mw, ess = samp.importance_sample_ess(p_gen=traj_qs,
-        #                                          p_tar=traj_ps,
-        #                                          log_weight_lim=self.log_weight_lim)
-
-        #     if self.batch_size == 0 and ssize < self.num_samples:
-        #         continue
-        #     elif self.batch_size > 0 and ess < self.batch_size:
-        #         p = math.exp(np.sum(p))
-        #         q = math.exp(np.sum(q))
-        #         print 'Added w %f (p %f q %f)' % (p / q, p, q)
-        #         print 'ESS %f < desired %f' % (ess, self.batch_size)
-        #         continue
-
-        #     print 'Using %d samples to achieve ESS %f' % (ssize, ess)
-        #     return self._grad_est(rewards=rs,
-        #                           gradients=gs,
-        #                           p_tar=ps,
-        #                           p_gen=qs,
-        #                           use_baseline=self.use_baseline,
-        #                           use_natural_grad=self.use_nat_grad,
-        #                           fisher_diag=self.use_diag_fisher,
-        #                           normalize=self.use_norm_sample,
-        #                           log_weight_lim=self.log_weight_lim)
-
-        # print 'Could not achieve desired sample size'
-        # return None, None
-
 
 def _process_traj(policy, traj):
     s, a, r, p = zip(*traj)

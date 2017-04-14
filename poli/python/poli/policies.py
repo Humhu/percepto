@@ -254,8 +254,8 @@ class FixedLinearPolicy(StochasticPolicy):
     ----------
     A : numpy 2D-array 
         Maps state to output mean
-    B : numpy 2D-array 
-        Maps state to log variances
+    b : numpy 1D-array 
+        Constant log variances
     offset : float or numpy 2D-array
         Offset to add to the covariance
     """
@@ -267,7 +267,7 @@ class FixedLinearPolicy(StochasticPolicy):
         b = np.zeros(output_dim)
 
         self._Amod = modprop.ConstantModule(A)
-        self._bmod = modprop.ConstantModule(b)
+        self._Bmod = modprop.ConstantModule(b)
         self._state = modprop.ConstantModule(None)
         offset = np.atleast_2d(offset)
         if offset.shape != (output_dim, output_dim):
@@ -282,7 +282,7 @@ class FixedLinearPolicy(StochasticPolicy):
 
         self._expBx = modprop.ExponentialModule()
         modprop.link_ports(in_port=self._expBx.in_port,
-                           out_port=self._bmod.out_port)
+                           out_port=self._Bmod.out_port)
 
         self._expBxd = modprop.DiagonalReshapeModule()
         modprop.link_ports(in_port=self._expBxd.vec_in,
@@ -330,7 +330,7 @@ class FixedLinearPolicy(StochasticPolicy):
         modprop.iterative_backprop(self._llSink)
 
         return np.hstack((self._Amod.backprop_value[0],
-                          self._bmod.backprop_value[0]))
+                          self._Bmod.backprop_value[0]))
 
     def __foreprop(self, state, action):
         self._act.value = np.atleast_1d(action)
@@ -339,28 +339,28 @@ class FixedLinearPolicy(StochasticPolicy):
         if action is not None:
             modprop.iterative_foreprop(self._act)
         modprop.iterative_foreprop(self._Amod)
-        modprop.iterative_foreprop(self._bmod)
+        modprop.iterative_foreprop(self._Bmod)
         modprop.iterative_foreprop(self._covOffset)
 
     def __invalidate(self):
         modprop.iterative_invalidate(self._state)
         modprop.iterative_invalidate(self._act)
         modprop.iterative_invalidate(self._Amod)
-        modprop.iterative_invalidate(self._bmod)
+        modprop.iterative_invalidate(self._Bmod)
         modprop.iterative_invalidate(self._covOffset)
 
     def get_theta(self):
         return np.hstack((self._Amod.value.flatten('F'),
-                          self._bmod.value))
+                          self._Bmod.value))
 
     def set_theta(self, t):
         n_A = len(self._Amod.value.flat)
-        n_b = len(self._bmod.value)
+        n_b = len(self._Bmod.value)
         if n_A + n_b != len(t):
             raise ValueError('Parameter dimension mismatch!')
         self._Amod.value = np.reshape(
             t[:n_A], self._Amod.value.shape, order='F')
-        self._bmod.value = t[n_A:]
+        self._Bmod.value = t[n_A:]
 
     @property
     def A(self):
@@ -371,12 +371,12 @@ class FixedLinearPolicy(StochasticPolicy):
         self._Amod.value = a
 
     @property
-    def b(self):
-        return self._bmod.value
+    def B(self):
+        return self._Bmod.value
 
-    @b.setter
-    def b(self, bv):
-        self._bmod.value = bv
+    @B.setter
+    def B(self, bv):
+        self._Bmod.value = bv
 
     @property
     def mean(self):

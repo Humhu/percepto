@@ -5,7 +5,6 @@ import poli
 import optim
 import math
 from itertools import izip
-from argus_utils import KalmanFilter
 
 import matplotlib.pyplot as plt
 
@@ -48,7 +47,7 @@ def execute(state, policy, enable_safety):
     return policy.sample_action(state), False
 
 
-def run_trial(policy, pfunc, max_len=200):
+def run_trial(policy, pfunc, continuous, max_len=200):
 
     observation = env.reset()
     observation = pfunc(observation)
@@ -72,56 +71,68 @@ def run_trial(policy, pfunc, max_len=200):
         actions.append(action)
         observations.append(observation)
         logprobs.append(policy.logprob(observation, action))
+
         observation, reward, done, info = env.step(a_scale * action)
         observation = pfunc(observation)
         # Reward should correspond to current action
-        rewards.append(float(reward) / max_len)
 
-        if done:
-            break
-    print "Episode finished after %d timesteps" % (t + 1)
+        if continuous:
+            if done:
+                rewards.append(-10)
+                print 'Episode terminated'
+                break
+            else:
+                rewards.append(0.0)
+        else:
+            if done:
+                rewards.append(0.0)
+                print 'Episode terminated'
+                break
+            else:
+                rewards.append(1.0)
+
+    print 'Episode finished after %d timesteps' % (t + 1)
     return observations, actions, rewards, logprobs
 
 
-def train_policy(policy, optimizer, estimator, n_iters, t_len):
+def train_policy(policy, optimizer, estimator, continuous, n_iters, t_len, t_pass):
     trials = []
-    rews = []
     grads = []
-    counter = 0
 
     for i in range(n_iters):
-        print 'Trial %d...' % counter
+        print 'Trial %d...' % i
         print 'A:\n%s' % np.array_str(policy.A)
         print 'B:\n%s' % np.array_str(policy.B)
-        counter += 1
-        states, actions, rewards, logprobs = run_trial(
-            policy, preprocess, t_len)
+        states, actions, rewards, logprobs = run_trial(policy,
+                                                       preprocess,
+                                                       max_len=t_len,
+                                                       continuous=continuous)
         estimator.report_episode(states, actions, rewards, logprobs)
 
         trials.append(len(rewards))
 
         start_theta = policy.get_theta()
-        theta, pred_rew = optimizer.optimize(x_init=start_theta,
-                                             func=estimator.estimate_reward_and_gradient)
+        theta, _ = optimizer.optimize(x_init=start_theta,
+                                      func=estimator.estimate_reward_and_gradient)
         if np.any(theta != start_theta):
             policy.set_theta(theta)
             estimator.update_buffer()
-            #estimator.reset()
-            estimator.remove_unlikely_trajectories(min_log_weight=-3)
+            # estimator.remove_unlikely_trajectories(
+            #    min_log_weight=-3)
             print '%d trajectories remaining' % estimator.num_samples
 
-        if len(trials) > 3 and np.mean(trials[-3:]) == t_len:
+        if len(trials) > 3 and np.mean(trials[-3:]) >= t_pass:
+            print 'Convergence achieved'
             break
 
-    return trials, rews, grads
+    return trials, grads
 
-
-def pred_grad(policy, estimator, n):
-    estimator.reset()
-    for i in range(n):
-        states, actions, rewards, logprobs = run_trial(policy, preprocess, 500)
-        estimator.report_episode(states, actions, rewards, logprobs)
-    return estimator.estimate_reward_and_gradient()
+# def pred_grad(policy, estimator, n):
+#     estimator.reset()
+#     for i in range(n):
+#         states, actions, rewards, logprobs = run_trial(policy, preprocess, 500)
+#         estimator.report_episode(states, actions, rewards, logprobs)
+#     return estimator.estimate_reward_and_gradient()
 
 
 if __name__ == '__main__':
@@ -142,27 +153,71 @@ if __name__ == '__main__':
     B = np.zeros((adim, xdim))
     B[:, -1] = -2
 
-    policy = poli.LinearPolicy(input_dim=xdim, output_dim=adim)
+    policy = poli.FixedLinearPolicy(input_dim=xdim, output_dim=adim)
     policy.A = A
-    #policy.b[:] = -2
-    policy.B = B
+    policy.B[:] = -2
+    #policy.B = B
     init_theta = policy.get_theta()
 
     # TODO How do we pick good step sizes?
-    optimizer = optim.GradientDescent(mode='max', step_size=1,
+    optimizer = optim.GradientDescent(mode='max', step_size=0.01,
                                       max_linf_norm=0.1, max_iters=1)
 
     wds = poli.WeightedDataSampler(weight_func=importance_weight)
 
-    estimator = poli.EpisodicPolicyGradientEstimator(policy=policy,
-                                                     traj_mode='uni',
-                                                     buffer_size=0,
-                                                     # sampler=wds,
-                                                     use_natural_gradient=True,
-                                                     use_norm_sample=True,
-                                                     use_diag_fisher=False,
-                                                     use_baseline=True,
-                                                     n_threads=1)
+    # uni_estimator = poli.EpisodicPolicyGradientEstimator(policy=policy,
+    #                                                      traj_mode='uni',
+    #                                                      buffer_size=50,
+    #                                                      # sampler=wds,
+    #                                                      use_natural_gradient=True,
+    #                                                      use_norm_sample=True,
+    #                                                      use_diag_fisher=False,
+    #                                                      use_baseline=True,
+    #                                                      n_threads=1)
+
+    sampling_args = {'log_weight_lim': float('inf'),
+                     'normalize': True}
+    reward_args = {'gamma': 0.9,
+                   'horizon': 50}
+
+    # value_estimator = poli.EpisodicPolicyGradientEstimator(policy=policy,
+    #                                                        traj_mode='value',
+    #                                                        buffer_size=0,
+    #                                                        use_natural_gradient=True,
+    #                                                        use_baseline=True,
+    #                                                        sampling_args=sampling_args,
+    #                                                        reward_args=reward_args,
+    #                                                        n_threads=1)
+    # value_estimator.log_weight_lim = 4
+
+    per_estimator = poli.EpisodicPolicyGradientEstimator(policy=policy,
+                                                         traj_mode='per',
+                                                         buffer_size=0,
+                                                         use_natural_gradient=True,
+                                                         use_baseline=True,
+                                                         sampling_args=sampling_args,
+                                                         reward_args=reward_args,
+                                                         max_grad_flip_prob=0.1,
+                                                         min_ess=float('inf'),
+                                                         n_threads=1)
+
+    gpomdp_estimator = poli.EpisodicPolicyGradientEstimator(policy=policy,
+                                                            traj_mode='gpomdp',
+                                                            buffer_size=0,
+                                                            use_natural_gradient=True,
+                                                            use_baseline=True,
+                                                            sampling_args=sampling_args,
+                                                            max_grad_flip_prob=0,
+                                                            min_ess=0,
+                                                            n_threads=1)
+
+    reinforce_estimator = poli.EpisodicPolicyGradientEstimator(policy=policy,
+                                                               traj_mode='reinforce',
+                                                               buffer_size=0,
+                                                               use_natural_gradient=True,
+                                                               sampling_args=sampling_args,
+                                                               use_baseline=True,
+                                                               n_threads=1)
 
     # n_samples = 30
     # n_trials = 30
@@ -178,31 +233,42 @@ if __name__ == '__main__':
     # baseline_rewards, baseline_grads = izip(*baseline_results)
 
     num_trials = 10
-    estimator.log_weight_lim = float('inf')
-    estimator.min_ess = float('inf')
-    estimator.max_grad_flip_prob = 1.0
 
-    def training_test():
+    def training_test(est, continuous):
+        est.batch_size = 30
+
         lens = []
-        rs = []
         gs = []
         params = []
-        for i in range(num_trials):
+        for _ in range(num_trials):
             policy.set_theta(init_theta)
-            estimator.reset()
-            trace, rews, grads = train_policy(policy=policy,
-                                              optimizer=optimizer,
-                                              estimator=estimator,
-                                              n_iters=300,
-                                              t_len=500)
+            est.reset()
+            trace, grads = train_policy(policy=policy,
+                                        optimizer=optimizer,
+                                        estimator=est,
+                                        continuous=continuous,
+                                        n_iters=300,
+                                        t_len=500,
+                                        t_pass=500)
             lens.append(trace)
-            rs.append(rews)
             gs.append(grads)
             params.append(policy.get_theta())
-        return lens, rs, gs, params
+        return lens, gs, params
 
-    estimator.batch_size = 20
-    cont_lens, cont_rs, cont_gs, cont_params = training_test()
+    #val_lens, val_gs, val_params = training_test(value_estimator)
+    # rei_lens, rei_gs, rei_params = training_test(
+    #     reinforce_estimator, continuous=False)
+    # gpo_lens, gpo_gs, gpo_params = training_test(
+    #     gpomdp_estimator, continuous=False)
+    per_lens, per_gs, per_params = training_test(
+        per_estimator, continuous=False)
+
+    # crei_lens, crei_gs, crei_params = training_test(
+    #     reinforce_estimator, continuous=True)
+    # cgpo_lens, cgpo_gs, cgpo_params = training_test(
+    #     gpomdp_estimator, continuous=True)
+    cper_lens, cper_gs, cper_params = training_test(
+        per_estimator, continuous=True)
 
     #estimator.batch_size = 10
     #ess_lens, ess_rs, ess_gs, ess_params = training_test()
@@ -211,5 +277,5 @@ if __name__ == '__main__':
     # cont_As = [tr
 
     # Plotting
-    plt.ion()
-    plt.figure()
+    # plt.ion()
+    # plt.figure()
