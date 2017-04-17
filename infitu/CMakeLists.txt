@@ -18,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 add_service_files( FILES
                    StartEvaluation.srv
+                   StartTeardown.srv
                    SetRecording.srv
 )
 
