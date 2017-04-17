@@ -131,6 +131,8 @@ class OnlineFeatureNormalizer(object):
         else:
             scale = self.tracker.scale
             offset = self.tracker.offset
+            # Catch constant dimensions
+            scale[scale == 0] = 1.0
             return (v - offset) / scale
 
 class PolynomialFeatureAugmenter(object):

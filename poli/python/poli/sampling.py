@@ -24,6 +24,7 @@ def importance_sample_ess(p_gen, p_tar, log_weight_lim=float('inf'), normalize=F
     ess         : Effective sample size
     """
     N = len(p_gen)
+    log_weight_lim = float(log_weight_lim)    
 
     if not np.iterable(p_gen):
         p_gen = np.full(N, p_gen)
@@ -54,6 +55,7 @@ def importance_sample_var(x, est, p_gen, p_tar, log_weight_lim=float('inf'),
     # TODO normalize not used?
     x = np.asarray(x)
     N = len(x)
+    log_weight_lim = float(log_weight_lim)    
 
     if not np.iterable(p_gen):
         p_gen = np.full(N, p_gen)
@@ -96,6 +98,7 @@ def importance_sample(x, p_gen, p_tar, normalize=False, log_weight_lim=float('in
     """
     x = np.asarray(x)
     N = len(x)
+    log_weight_lim = float(log_weight_lim)
 
     if not np.iterable(p_gen):
         p_gen = np.full(N, p_gen)
