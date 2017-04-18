@@ -8,13 +8,15 @@ import poli.output_constraints as poc
 
 def parse_policy_wrapper(raw_input_dim, output_dim, info):
 
+    info = info['policy']
+
     # Parse input preprocessing
     input_dim = raw_input_dim
     normalizer = None
     augmenter = None
     enable_homogeneous = False
     if 'input_processing' in info:
-        ipp_info = info['input_processing']
+        ipp_info = info.pop('input_processing')
 
         if 'normalization' in ipp_info:
             norm_info = ipp_info['normalization']
@@ -43,7 +45,7 @@ def parse_policy_wrapper(raw_input_dim, output_dim, info):
 
     constrainer = None
     if 'output_processing' in info:
-        out_info = info['output_processing']
+        out_info = info.pop('output_processing')
         constrainer = poc.parse_output_constraints(dim=output_dim, spec=out_info)
 
     def action_proc(x):
@@ -52,10 +54,9 @@ def parse_policy_wrapper(raw_input_dim, output_dim, info):
         return x
 
     # Parse policy
-    policy_info = info.pop('policy')
-    policy_info['input_dim'] = input_dim
-    policy_info['output_dim'] = output_dim
-    policy = pp.parse_policy(policy_info)
+    info['input_dim'] = input_dim
+    info['output_dim'] = output_dim
+    policy = pp.parse_policy(info)
 
     return PolicyWrapper(policy=policy,
                          state_proc=state_proc,

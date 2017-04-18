@@ -67,8 +67,8 @@ class EpisodicPolicyGradientEstimator(object):
     """
 
     def __init__(self, policy, traj_mode, batch_size=0, buffer_size=0,
-                 use_natural_gradient=True, regularizer=None, sampler=None,
-                 sampling_args={}, reward_args={}, use_baseline=True,
+                 use_natural_gradient=True, fisher_diag=False, regularizer=None, 
+                 sampler=None, sampling_args={}, reward_args={}, use_baseline=True,
                  min_ess=float('-inf'), max_grad_flip_prob=1.0, n_threads=4):
 
         if not isinstance(policy, pp.StochasticPolicy):
@@ -82,10 +82,8 @@ class EpisodicPolicyGradientEstimator(object):
             self._grad_est = ppg.importance_gpomdp
         elif traj_mode == 'per':
             self._grad_est = ppg.importance_per_decision
-        elif traj_mode == 'uni':
-            self._grad_est = ppg.importance_per_uniform
-        elif traj_mode == 'value':
-            self._grad_est = ppg.importance_value
+        elif traj_mode == 'ppge':
+            self._grad_est = ppg.importance_ppge
         else:
             raise ValueError('Unsupported trajectory mode')
 
@@ -98,6 +96,7 @@ class EpisodicPolicyGradientEstimator(object):
         self.buffer_size = int(buffer_size)
 
         self.use_nat_grad = bool(use_natural_gradient)
+        self.fisher_diag = fisher_diag
         self.use_baseline = use_baseline
 
         self.min_ess = float(min_ess)
@@ -145,11 +144,11 @@ class EpisodicPolicyGradientEstimator(object):
         """
 
         if logprobs is None:
-            logprobs = [self._policy.logprob(s, a)
+            logprobs = [self._policy.logprob(state=s, action=a)
                         for s, a in izip(states, actions)]
 
         # TODO Used a namedtuple?
-        gradients = [self._policy.gradient(s, a)
+        gradients = [self._policy.gradient(state=s, action=a)
                      for s, a in izip(states, actions)]
         self._buffer.append(zip(states, actions, rewards,
                                 gradients, logprobs, logprobs))
@@ -226,6 +225,7 @@ class EpisodicPolicyGradientEstimator(object):
                                                     p_gen=qs,
                                                     use_baseline=self.use_baseline,
                                                     use_natural_grad=self.use_nat_grad,
+                                                    fisher_diag=self.fisher_diag,
                                                     ret_diagnostics=True,
                                                     sampling_args=self.sampling_args,
                                                     sum_args=self.reward_args)

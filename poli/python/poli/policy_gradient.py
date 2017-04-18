@@ -39,7 +39,7 @@ def isample_fisher(gradients, p_tar, p_gen, offset=1E-9,
 
     # Fisher matrix is expectation over states of expected action log-prob outer prods
     # TODO Technically this importance sampling approach is wrong! Should use
-    # mixture probs
+    # mixture probs7
     fisher = isamp.importance_sample(grad_ops,
                                      p_tar=p_tar,
                                      p_gen=p_gen,
@@ -151,7 +151,7 @@ def _importance_preprocess_uni(states, rewards, gradients, p_tar, p_gen):
 def importance_per_uniform(states, rewards, gradients, p_tar, p_gen,
                            use_baseline=True, use_natural_grad=True,
                            fisher_diag=False, ret_diagnostics=False,
-                           sampling_args={}):
+                           sampling_args=None):
     res = _importance_preprocess_uni(states, rewards, gradients, p_tar, p_gen)
     return _importance_policy_gradient(res,
                                        use_baseline=use_baseline,
@@ -217,7 +217,7 @@ def _compute_discounted(data, mode, gamma=1.0, horizon=None):
 def importance_value(states, rewards, gradients, p_tar, p_gen,
                      use_baseline=True, use_natural_grad=True,
                      fisher_diag=False, ret_diagnostics=False,
-                     sum_args={}, sampling_args={}):
+                     sum_args=None, sampling_args=None):
 
     res = _create_episode_info()
     if 'horizon' in sum_args:
@@ -253,7 +253,7 @@ def importance_value(states, rewards, gradients, p_tar, p_gen,
         # cumulative log-gradients for each value trace starting at i
         valu_g = [_compute_discounted(
             gs[i:], mode='from_start', horizon=horizon) for i in range(N)]
-        #trace_grads = np.array([np.sum(((w * r) * g.T).T, axis=0)
+        # trace_grads = np.array([np.sum(((w * r) * g.T).T, axis=0)
         #                        for w, r, g in izip(valu_w, valu_r, valu_g)])
         trace_grads = np.array([np.sum((r * g.T).T, axis=0)
                                 for r, g in izip(valu_r, valu_g)])
@@ -282,7 +282,7 @@ def importance_value(states, rewards, gradients, p_tar, p_gen,
 def importance_per_decision(states, rewards, gradients, p_tar, p_gen,
                             use_baseline=True, use_natural_grad=True,
                             fisher_diag=False, ret_diagnostics=False,
-                            sum_args={}, sampling_args={}):
+                            sum_args=None, sampling_args=None):
 
     res = _create_episode_info()
     if 'horizon' in sum_args:
@@ -325,7 +325,7 @@ def importance_per_decision(states, rewards, gradients, p_tar, p_gen,
 def importance_gpomdp(states, rewards, gradients, p_tar, p_gen,
                       use_baseline=True, use_natural_grad=True,
                       fisher_diag=False, ret_diagnostics=False,
-                      sum_args={}, sampling_args={}):
+                      sum_args=None, sampling_args=None):
     """Compute policy expected rewards and gradient using importance
     sampling.
 
@@ -369,7 +369,8 @@ def importance_gpomdp(states, rewards, gradients, p_tar, p_gen,
         traj_p = np.sum(ps)
         traj_q = np.sum(qs)
         sum_grads = np.cumsum(gs, axis=0)
-        traj_rs = np.asarray(rs)#_compute_discounted(data=rs, mode='in_place', **sum_args)
+        # _compute_discounted(data=rs, mode='in_place', **sum_args)
+        traj_rs = np.asarray(rs)
         r_grad = np.sum((traj_rs * sum_grads.T).T, axis=0)
 
         res.r_grads.append(r_grad)
@@ -394,7 +395,7 @@ def importance_gpomdp(states, rewards, gradients, p_tar, p_gen,
 def importance_reinforce(states, rewards, gradients, p_tar, p_gen,
                          use_baseline=True, use_natural_grad=True,
                          fisher_diag=False, ret_diagnostics=False,
-                         sum_args={}, sampling_args={}):
+                         sum_args=None, sampling_args=None):
 
     res = _create_episode_info()
     for rs, gs, ps, qs in izip(rewards, gradients, p_tar, p_gen):
@@ -409,7 +410,7 @@ def importance_reinforce(states, rewards, gradients, p_tar, p_gen,
         res.traj_p_tar.append(traj_p)
         res.traj_p_gen.append(traj_q)
         res.traj_grads.append(sum_grads)
-        res.traj_r.append(np.sum(rs))
+        res.traj_r.append(traj_r)
 
         # Used for estimating fisher
         res.act_grads.extend(gs)
@@ -424,9 +425,45 @@ def importance_reinforce(states, rewards, gradients, p_tar, p_gen,
                                        sampling_args=sampling_args)
 
 
+def importance_ppge(states, rewards, gradients, p_tar, p_gen,
+                    use_baseline=True, use_natural_grad=True,
+                    fisher_diag=False, ret_diagnostics=False,
+                    sum_args=None, sampling_args=None):
+
+    res = _create_episode_info()
+    for rs, g, p, q in izip(rewards, gradients, p_tar, p_gen):
+
+        # zip creates a list of singleton tuples when unpacking in the estimator...
+        # TODO Somehow fix this behavior or put a better check here
+        rs = rs[0]
+        g = g[0]
+        p = p[0]
+        q = q[0]
+
+        traj_r = _compute_discounted(data=rs, mode='cumulative', **sum_args)
+        r_grad = g * traj_r
+
+        res.r_grads.append(r_grad)
+        res.traj_p_tar.append(p)
+        res.traj_p_gen.append(q)
+        res.traj_grads.append(g)
+        res.traj_r.append(traj_r)
+
+        # Used for estimating fisher
+        res.act_grads.append(g)
+        res.state_act_p_tar.append(p)
+        res.state_act_p_gen.append(q)
+        
+    return _importance_policy_gradient(res,
+                                       use_baseline=use_baseline,
+                                       use_natural_grad=use_natural_grad,
+                                       fisher_diag=fisher_diag,
+                                       ret_diagnostics=ret_diagnostics,
+                                       sampling_args=sampling_args)
+
 def _importance_policy_gradient(res, use_baseline, use_natural_grad,
                                 fisher_diag, ret_diagnostics=False,
-                                sampling_args={}):
+                                sampling_args=None):
     """Implementation of importance-sampling based policy gradient computation.
     """
     try:
