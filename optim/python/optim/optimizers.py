@@ -4,7 +4,7 @@
 import abc
 import numpy as np
 import cma
-
+import scipy.optimize as spo
 
 def parse_optimizers(spec):
     """Takes a specification dictionary and returns an optimizer.
@@ -26,7 +26,8 @@ def parse_optimizers(spec):
     optimizer_type = spec.pop('type')
 
     lookup = {'cma_es': CMAOptimizer,
-              'gradient_descent': GradientDescent}
+              'gradient_descent': GradientDescent,
+              'bfgs': BFGSOptimizer}
     if optimizer_type not in lookup:
         raise ValueError('Optimizer type %s not valid type: %s' %
                          (optimizer_type, str(lookup.keys())))
@@ -86,7 +87,7 @@ class CMAOptimizer(Optimizer):
     num_restarts
     """
 
-    def __init__(self, mode='min', num_restarts=0, **kwargs):
+    def __init__(self, mode, num_restarts=0, **kwargs):
         if mode == 'min':
             self.k = 1
         elif mode == 'max':
@@ -124,19 +125,62 @@ class CMAOptimizer(Optimizer):
         """Optimize the specified function.
         """
         def obj(x):
-            return self.k * func(x)[0]
+            return self.k * func(x)
 
         best = cma.BestSolution()
         for i in range(self.num_restarts + 1):
             # TODO Set the initial standard deviations
             es = cma.CMAEvolutionStrategy(x_init, 0.5, self.opts)
-            # es.optimize(obj)
-            while not es.stop():
-                queries = es.ask()
-                es.tell(queries, func(queries))
+            es.optimize(obj)
+           # while not es.stop():
+           #     queries = es.ask()
+           #     es.tell(queries, func(queries))
             best.update(es.best)
         return best.x, best.f
 
+class BFGSOptimizer(Optimizer):
+    def __init__(self, mode, num_restarts=0, **kwargs):
+        if mode == 'min':
+            self.k = 1
+        elif mode == 'max':
+            self.k = -1
+        else:
+            raise ValueError('mode must be min or max!')
+
+        self.num_restarts = num_restarts
+        self.kwargs = kwargs
+        self.lower_bounds = float('-inf')
+        self.upper_bounds = float('inf')
+
+    def step(self, x_init, func):
+        raise RuntimeError('BFGS optimizer does not have step mode')
+
+    def optimize(self, x_init, func):
+        def obj(x):
+            return self.k * func(x)
+
+        x0 = x_init
+        best_x = x_init
+        best_y = float('inf')
+
+        def shape_bound(b, n):
+            if not np.iterable(b):
+                return np.full(n, b)
+            else:
+                return b
+        lower = shape_bound(self.lower_bounds, len(x0))
+        upper = shape_bound(self.upper_bounds, len(x0))
+        bounds = zip(lower, upper)
+
+        for i in range(self.num_restarts + 1):
+            res = spo.minimize(fun=obj, x0=x0, method='L-BFGS-B', jac=False,
+                               bounds=bounds, options=self.kwargs)
+            print res.fun
+            if res.fun < best_y:
+                best_y = res.fun
+                best_x = res.x
+            x0 = np.random.uniform(self.lower_bounds, self.upper_bounds, size=len(x0))
+        return best_x, best_y
 
 class GradientDescent(Optimizer):
     # TODO Add bounds

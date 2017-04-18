@@ -3,9 +3,8 @@
 import rospy
 from threading import Lock
 from percepto_msgs.srv import GetCritique, GetCritiqueRequest, GetCritiqueResponse
-
 from percepto_msgs.srv import SetParameters, SetParametersRequest
-from infitu.srv import StartEvaluation, SetRecording
+from infitu.srv import StartEvaluation, StartTeardown, SetRecording
 from fieldtrack.srv import ResetFilter, ResetFilterRequest
 
 
@@ -30,6 +29,13 @@ class EmpiricalParameterEvaluator:
         self.evaluation_proxy = rospy.ServiceProxy(
             evaluation_topic, StartEvaluation, True)
 
+        # Check for evaluation teardown
+        self.teardown_proxy = None
+        if rospy.has_param('~start_teardown_service'):
+            teardown_topic = rospy.get_param('~start_teardown_service')
+            wait_for_service(teardown_topic)
+            self.teardown_proxy = rospy.ServiceProxy(teardown_topic, StartTeardown, True)
+
         # Create filter reset proxy
         reset_topic = rospy.get_param('~reset_filter_service')
         wait_for_service(reset_topic)
@@ -46,8 +52,7 @@ class EmpiricalParameterEvaluator:
             raise ValueError('Critique not a registered recorder!')
 
         # Create critique service
-        self.evaluation_delay = rospy.Duration(
-            rospy.get_param('~evaluation_delay', 0.0))
+        self.evaluation_delay = rospy.Duration(rospy.get_param('~evaluation_delay', 0.0))
         self.critique_service = rospy.Service(
             '~get_critique', GetCritique, self.CritiqueCallback)
 
@@ -104,11 +109,20 @@ class EmpiricalParameterEvaluator:
             return False
         return True
 
-    def BeginEvaluation(self):
+    def RunEvaluation(self):
         try:
             self.evaluation_proxy.call()
         except rospy.ServiceException:
-            rospy.logerr('Could not begin evaluation.')
+            rospy.logerr('Could not run evaluation.')
+            return False
+        return True
+
+    def StartTeardown(self):
+        try:
+            if self.teardown_proxy is not None:
+                self.teardown_proxy.call()
+        except rospy.ServiceException:
+            rospy.logerr('Could not teardown.')
             return False
         return True
 
@@ -129,7 +143,7 @@ class EmpiricalParameterEvaluator:
             return None
 
         # Wait until evaluation is done
-        if not self.BeginEvaluation():
+        if not self.RunEvaluation():
             return None
 
         # Get outcomes
@@ -137,6 +151,10 @@ class EmpiricalParameterEvaluator:
         res.critique, feedback = self.StopRecording()
         res.feedback_names = [f[0] for f in feedback]
         res.feedback_values = [f[1] for f in feedback]
+
+        if not self.StartTeardown():
+            return None
+
         return res
 
 

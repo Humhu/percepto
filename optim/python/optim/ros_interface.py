@@ -33,7 +33,7 @@ class CritiqueInterface(object):
         try:
             res = self.proxy.call(req)
         except rospy.ServiceException:
-            rospy.logerr('Could not evaluate: %s ' + str(x))
+            rospy.logerr('Could not evaluate: %s ', str(x))
             raise RuntimeError('Could not evaluate')
 
         feedback = dict(izip(res.feedback_names, res.feedback_values))

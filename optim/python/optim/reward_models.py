@@ -5,6 +5,8 @@ import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.gaussian_process import GaussianProcessRegressor as GPRegressor
 from sklearn.gaussian_process.kernels import ConstantKernel, WhiteKernel, Matern
+from gp_extras.kernels import HeteroscedasticKernel
+
 
 def parse_reward_model(spec):
     """Takes a specification dictionary and returns an initialized reward model.
@@ -13,12 +15,14 @@ def parse_reward_model(spec):
         raise ValueError('Specification must include type!')
 
     model_type = spec.pop('type')
-    lookup = {'tabular'          : TabularRewardModel,
-              'gaussian_process' : GaussianProcessRewardModel,
-              'random_forest'    : RandomForestRewardModel}
+    lookup = {'tabular': TabularRewardModel,
+              'gaussian_process': GaussianProcessRewardModel,
+              'random_forest': RandomForestRewardModel}
     if model_type not in lookup:
-        raise ValueError('Model type %s not valid type: %s' % (model_type, str(lookup.keys())))
+        raise ValueError('Model type %s not valid type: %s' %
+                         (model_type, str(lookup.keys())))
     return lookup[model_type](**spec)
+
 
 class RewardModel(object):
     """Base class for all reward models.
@@ -75,6 +79,7 @@ class RewardModel(object):
         if t is not None:
             raise ValueError('This model has no parameters!')
 
+
 class TabularRewardModel(RewardModel):
     """Models rewards with as a lookup table.
 
@@ -88,6 +93,7 @@ class TabularRewardModel(RewardModel):
     default_std: numeric (default inf)
         The standard deviation estimate to return for inputs with no data.
     """
+
     def __init__(self, default_mean=0, default_std=float('inf')):
         self._table = {}
         self._default_mean = default_mean
@@ -130,6 +136,7 @@ class TabularRewardModel(RewardModel):
         else:
             return len(self._table[x])
 
+
 class GaussianProcessRewardModel(RewardModel):
     """
     Models rewards with a Gaussian process regressor.
@@ -163,22 +170,33 @@ class GaussianProcessRewardModel(RewardModel):
     Refer to sklearn.gaussian_process.GaussianProcessRegressor's __init__
     """
 
-    def __init__(self, min_samples=10, batch_retries=20, refine_ll_delta=1.0, 
-                 refine_retries=1, **kwargs):
+    def __init__(self, min_samples=10, batch_retries=20, refine_ll_delta=1.0,
+                 refine_retries=1, hetero_centers=[], hetero_gamma=5.0, **kwargs):
 
-        white = WhiteKernel(1.0, (1e-3, 1e3))
+        if len(hetero_centers) == 0:
+            noise = WhiteKernel(1.0, (1e-3, 1e3))
+        else:
+            noise = HeteroscedasticKernel.construct(hetero_centers,
+                                                    1.0, (1e-3, 1e3),
+                                                    gamma=hetero_gamma,
+                                                    gamma_bounds='fixed')
+
         # TODO Option for Matern vs RBF
-        self._kernel_base = ConstantKernel(1.0, (1e-3, 1e3)) * Matern(1.0, (1e-3, 1e3), nu=1.5)
-        self._kernel_noisy = self._kernel_base  + white
+        self._kernel_base = ConstantKernel(
+            1.0, (1e-3, 1e3)) * Matern(1.0, (1e-3, 1e3), nu=1.5)
+        self._kernel_noisy = self._kernel_base + noise
 
         self.gp = GPRegressor(kernel=self._kernel_noisy,
-                              kernel_noiseless=self._kernel_base, **kwargs)
+                              kernel_noiseless=self._kernel_base,
+                              **kwargs)
         self.hp_min_samples = min_samples
         self.hp_batch_retries = batch_retries
         self.hp_refine_ll_delta = refine_ll_delta
         self.hp_refine_retries = refine_retries
         self.hp_init = False
         self.last_ll = None
+
+        # TODO Track the y mean and update it during batch operations
 
     def report_sample(self, x, reward):
         self.gp.add_data(x, reward, incremental=True)
@@ -206,7 +224,7 @@ class GaussianProcessRewardModel(RewardModel):
             raise ValueError('x must be at most 2D')
         # TODO return-std might have a bug, use return_cov instead?
         pred_mean, pred_std = self.gp.predict(x, return_std=True)
-        return np.squeeze(pred_mean), pred_std
+        return np.squeeze(pred_mean), np.squeeze(pred_std)
 
     def clear(self):
         # TODO
@@ -250,6 +268,7 @@ class GaussianProcessRewardModel(RewardModel):
     def model(self):
         return self.gp
 
+
 class RandomForestRewardModel(RewardModel):
     """Models rewards with a random forest.
 
@@ -265,13 +284,14 @@ class RandomForestRewardModel(RewardModel):
     min_samples : integer (default 10)
         The minimum number of samples before the regressor is fitted
     """
+
     def __init__(self, incremental=False, inc_n_trees=1, min_samples=10, **kwargs):
         self._forest = RandomForestRegressor(warm_start=incremental, **kwargs)
         self._min_samples = min_samples
         self._inc_n_trees = inc_n_trees
 
         self._initialized = False
-        self._X = [] # TODO Use a more efficient container?
+        self._X = []  # TODO Use a more efficient container?
         self._Y = []
 
     def report_sample(self, x, reward):

@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import cPickle as pickle
 import numpy as np
 import rospy
 import poli
@@ -16,23 +17,27 @@ class SynchronousPolicyNode(object):
     def __init__(self):
 
         # Parse policy
-        self.policy_lock = Lock()
         stream_name = rospy.get_param('~input_stream')
         output_dim = rospy.get_param('~action_dim')
         self.stream_rx = broadcast.Receiver(stream_name)
         raw_input_dim = self.stream_rx.stream_feature_size
 
         # Parse policy
-        self.policy_lock = Lock()
+        self._active_lock = Lock()
         self._active_wrapper = poli.parse_policy_wrapper(raw_input_dim=raw_input_dim,
                                                          output_dim=output_dim,
                                                          info=rospy.get_param('~'))
         # Create a duplicate policy to use for gradient estimation asynchronously
         # NOTE The learner wrapper should never process inputs/outputs, since it would
         # diverge from the active wrapper! We use only its policy member.
+        self._learn_lock = Lock()
         self._learner_wrapper = poli.parse_policy_wrapper(raw_input_dim=raw_input_dim,
                                                           output_dim=output_dim,
                                                           info=rospy.get_param('~'))
+        #self.active_policy.B[:, -1] = -1
+        #self.learner_policy.B[:, -1] = -1
+        self.active_policy.B[:] = -1
+        self.learner_policy.B[:] = -1
 
         # Parse learner
         learner_info = rospy.get_param('~learning/gradient_estimation')
@@ -54,6 +59,14 @@ class SynchronousPolicyNode(object):
         self._policy_rate = rospy.Rate(policy_rate)
         self._learn_timer = rospy.Timer(period=rospy.Duration(1.0 / learn_rate),
                                         callback=self.learn_spin)
+
+        self._max_eps = rospy.get_param('~max_episodes')
+        self._eps_counter = 0
+
+        self.sar_tuples = []
+        self.feedbacks = {}
+        out_file = rospy.get_param('~out_file')
+        self._out_file = open(out_file, 'w')
 
     @property
     def active_policy(self):
@@ -81,7 +94,7 @@ class SynchronousPolicyNode(object):
                 rospy.sleep(rospy.Duration(1.0))
                 continue
 
-            self.policy_lock.acquire()
+            self._active_lock.acquire()
             state = self._active_wrapper.process_input(raw_state)
             use_default = state is None
             if use_default:
@@ -94,7 +107,7 @@ class SynchronousPolicyNode(object):
             action_logprob = self.active_policy.logprob(state, action)
             action_mean = self.active_policy.mean
             action_cov = self.active_policy.cov
-            self.policy_lock.release()
+            self._active_lock.release()
 
             msg = 'Executing:\n'
             msg += '\tState: %s\n' % np.array_str(state)
@@ -106,32 +119,55 @@ class SynchronousPolicyNode(object):
             rospy.loginfo('Received reward: %f' % reward)
 
             if not use_default:
-                self.policy_lock.acquire()
+                self.sar_tuples.append((state, action, reward))
+                for k, v in feedback.iteritems():
+                    if k not in self.feedbacks:
+                        self.feedbacks[k] = []
+                    self.feedbacks[k].append(v)
+                self._eps_counter += 1
+
                 # TODO Generalize between sequential, bandit problems?
+                self._learn_lock.acquire()
                 self.learner.report_episode(states=[state],
                                             actions=[action],
                                             rewards=[reward],
                                             logprobs=[action_logprob])
-                self.policy_lock.release()
+                self._learn_lock.release()
             self._policy_rate.sleep()
 
     def learn_spin(self, event):
 
         rospy.loginfo('Have %d SAR samples', self.learner.num_samples)
 
-        theta, obj = self.optimizer.optimize(x_init=self.learner_policy.get_theta(),
-                                             func=self.learner.estimate_reward_and_gradient)
-        
-        if obj is not None:
+        self._learn_lock.acquire()
+        init_theta = self.learner_policy.get_theta()
+
+        theta, obj = self.optimizer.step(x_init=init_theta,
+                                         func=self.learner.estimate_reward_and_gradient)
+        self._learn_lock.release()
+
+        if np.any(init_theta != theta):
+            self._active_lock.acquire()
+            self.active_policy.set_theta(theta)
+            self._active_lock.release()
+
+            self._learn_lock.acquire()
+            self.learner_policy.set_theta(theta)
+            self.learner.update_buffer()
+            self.learner.remove_unlikely_trajectories()
+            self._learn_lock.release()
+
             rospy.loginfo('Predicted reward: %f' % obj)
+            rospy.loginfo('Parameter A:\n%s',
+                          np.array_str(self.learner_policy.A))
+            rospy.loginfo('Parameter B:\n%s',
+                          np.array_str(self.learner_policy.B))
 
-        self.learner_policy.set_theta(theta)
-        self.policy_lock.acquire()
-        self.active_policy.set_theta(theta)
-        self.policy_lock.release()
-
-        rospy.loginfo('Parameter A:\n%s', np.array_str(self.learner_policy.A))
-        rospy.loginfo('Parameter B:\n%s', np.array_str(self.learner_policy.B))
+        if self._eps_counter >= self._max_eps:
+            AB = (self.learner_policy.A, self.learner_policy.B)
+            pickle.dump((AB, self.sar_tuples, self.feedbacks), self._out_file)
+            rospy.loginfo('Max episodes achieved. Shutting down...')
+            rospy.signal_shutdown('Max episodes achieved.')
 
 
 if __name__ == '__main__':
