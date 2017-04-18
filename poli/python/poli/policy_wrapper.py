@@ -17,6 +17,7 @@ def parse_policy(spec):
     policy_type = spec.pop('type')
     lookup = {'linear': LinearPolicy,
               'fixed_linear': FixedLinearPolicy,
+              'deterministic_linear': DeterministicLinearPolicy,
               'ppge': ParameterDistribution}
     if policy_type not in lookup:
         raise ValueError('Policy type %s not valid type: %s' %

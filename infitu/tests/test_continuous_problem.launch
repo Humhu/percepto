@@ -31,7 +31,7 @@
             learn_rate: 0.5
             
             deterministic_policy:
-                type: linear
+                type: deterministic_linear
                 input_processing:
                     enable_homogeneous: true
                 output_processing:
@@ -43,11 +43,12 @@
                 output_processing:
                     type: box
                     lims: 10
+                sds: 0.3
 
             learning:
                 reward_topic: test_problem/reward
                 break_topic: test_problem/breaks
-                remove_traj_ll: -3
+                remove_traj_ll: -2
                 episode_recording:
                     mixing_mode: integrate
                     interpolation_mode: linear
@@ -62,7 +63,7 @@
                     use_baseline: true
                     sampling_args:
                         normalize: true
-                        log_weight_lim: 3
+                        log_weight_lim: 2
                 optimizer:
                     type: gradient_descent
                     step_size: 1.0

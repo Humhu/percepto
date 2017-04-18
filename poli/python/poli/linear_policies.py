@@ -320,7 +320,7 @@ class DeterministicLinearPolicy(StochasticPolicy):
     def __init__(self, input_dim, output_dim):
         super(DeterministicLinearPolicy, self).__init__(indim=input_dim,
                                                         outdim=output_dim)
-        self.A = np.zeros((input_dim, output_dim))
+        self.A = np.zeros((output_dim, input_dim))
 
     def sample_action(self, state):
         return np.dot(self.A, state)

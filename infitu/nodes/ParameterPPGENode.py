@@ -39,11 +39,9 @@ class ParameterPPGENode(object):
         self._active_ppge = poli.parse_policy_wrapper(raw_input_dim=0,
                                                       output_dim=param_dim,
                                                       info=rospy.get_param('~ppge'))
-        self._active_ppge.policy.sds = np.full(param_dim, 0.1)
         self._learner_ppge = poli.parse_policy_wrapper(raw_input_dim=0,
                                                        output_dim=param_dim,
                                                        info=rospy.get_param('~ppge'))
-        self._learner_ppge.policy.sds = np.full(param_dim, 0.1)
 
         policy_rate = rospy.get_param('~policy_rate')
         self._policy_timer = rospy.Timer(period=rospy.Duration(1.0 / policy_rate),

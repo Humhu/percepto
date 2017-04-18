@@ -6,10 +6,15 @@ import scipy.stats as sps
 from policies import StochasticPolicy
 
 class ParameterDistribution(StochasticPolicy):
-    def __init__(self, input_dim, output_dim):
+    def __init__(self, input_dim, output_dim, sds=None):
         super(ParameterDistribution, self).__init__(indim=0, outdim=output_dim)
         self._mean = np.zeros(output_dim)
         self._logvars = np.zeros(output_dim)
+
+        if sds is not None:
+            if not np.iterable(sds):
+                sds = np.full(len(self._logvars), float(sds))
+            self.sds = sds
 
     def sample_action(self, state=None):
         return np.random.normal(loc=self.mean, scale=self.sds)
