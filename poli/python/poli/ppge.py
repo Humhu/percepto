@@ -1,4 +1,4 @@
-"""ais module contains code for policy-gradient parameter exploration (PPGE)
+"""This module contains code for policy-gradient parameter exploration (PPGE)
 """
 
 import numpy as np
@@ -6,10 +6,10 @@ import scipy.stats as sps
 from policies import StochasticPolicy
 
 class ParameterDistribution(StochasticPolicy):
-    def __init__(self, dim):
-        super(ParameterDistribution, self).__init__(indim=0, outdim=dim)
-        self._mean = np.zeros(dim)
-        self._logvars = np.zeros(dim)
+    def __init__(self, input_dim, output_dim):
+        super(ParameterDistribution, self).__init__(indim=0, outdim=output_dim)
+        self._mean = np.zeros(output_dim)
+        self._logvars = np.zeros(output_dim)
 
     def sample_action(self, state=None):
         return np.random.normal(loc=self.mean, scale=self.sds)

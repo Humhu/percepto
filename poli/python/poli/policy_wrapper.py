@@ -2,13 +2,29 @@
 together, as well as functions for constructing them from spec dicts."""
 
 import numpy as np
-import poli.policies as pp
 import poli.feature_preprocessing as pfpp
 import poli.output_constraints as poc
 
-def parse_policy_wrapper(raw_input_dim, output_dim, info):
+from linear_policies import LinearPolicy, FixedLinearPolicy, DeterministicLinearPolicy
+from ppge import ParameterDistribution
 
-    info = info['policy']
+def parse_policy(spec):
+    """Parses a policy specification dict.
+    """
+    if 'type' not in spec:
+        raise ValueError('Specification must include type!')
+
+    policy_type = spec.pop('type')
+    lookup = {'linear': LinearPolicy,
+              'fixed_linear': FixedLinearPolicy,
+              'ppge': ParameterDistribution}
+    if policy_type not in lookup:
+        raise ValueError('Policy type %s not valid type: %s' %
+                         (policy_type, str(lookup.keys())))
+    return lookup[policy_type](**spec)
+
+
+def parse_policy_wrapper(raw_input_dim, output_dim, info):
 
     # Parse input preprocessing
     input_dim = raw_input_dim
@@ -56,7 +72,7 @@ def parse_policy_wrapper(raw_input_dim, output_dim, info):
     # Parse policy
     info['input_dim'] = input_dim
     info['output_dim'] = output_dim
-    policy = pp.parse_policy(info)
+    policy = parse_policy(info)
 
     return PolicyWrapper(policy=policy,
                          state_proc=state_proc,

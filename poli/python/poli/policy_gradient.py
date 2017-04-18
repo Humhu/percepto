@@ -182,7 +182,7 @@ def _compute_discounted(data, mode, gamma=1.0, horizon=None):
     from_start : Compute the cumulative rewards from t=0 to t=i
     to_end     : Compute the cumulative rewards from t=i to t=T
     """
-    data = np.asarray(data)
+    data = np.atleast_1d(data)
 
     if horizon is None or horizon > len(data):
         horizon = len(data)

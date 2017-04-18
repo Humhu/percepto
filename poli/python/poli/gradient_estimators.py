@@ -50,7 +50,7 @@ class EpisodicPolicyGradientEstimator(object):
     ----------
     policy               : Policy object
         The policy to modify and learn
-    traj_mode       : string ('reinforce', 'pgt', 'gpomdp')
+    traj_mode       : string ('reinforce', gpomdp', 'per', 'ppge')
         Algorithm to use for processing trajectories
     batch_size           : integer (default 0)
         Number of samples to use per gradient calculation. 0 means all samples.
@@ -101,8 +101,6 @@ class EpisodicPolicyGradientEstimator(object):
 
         self.min_ess = float(min_ess)
         self.max_grad_flip_prob = float(max_grad_flip_prob)
-        #self.max_dev_ratio = float(max_dev_ratio)
-        #self.max_grad_dev = float(max_grad_dev)
 
         self._pool = Parallel(n_jobs=n_threads)
 
@@ -243,7 +241,7 @@ class EpisodicPolicyGradientEstimator(object):
         print 'Grad sign flip probs: %s' % np.array_str(cdf_vals)
         pass_cdf = np.all(cdf_vals <= self.max_grad_flip_prob)
         # Must pass one of two conditions
-        if pass_min_ess or pass_cdf:
+        if pass_min_ess and pass_cdf:
             return rew, grad
         else:
             print 'Gradient does not pass tests, skipping...'

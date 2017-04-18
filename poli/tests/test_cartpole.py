@@ -12,24 +12,6 @@ env = gym.make('CartPole-v1')
 env.reset()
 a_scale = env.action_space.high - env.action_space.low
 
-
-class DeterministicLinearPolicy(object):
-    def __init__(self, indim, outdim):
-        self.A = np.zeros((outdim, indim))
-
-    def sample_action(self, state):
-        return np.dot(self.A, state)
-
-    def get_theta(self):
-        return self.A.flatten()
-
-    def set_theta(self, a):
-        self.A = np.reshape(a, self.A.shape)
-
-    def logprob(self, s, a):
-        return 0
-
-
 def execute(state, policy, enable_safety):
     x, xdot, th, thdot, _ = state
     # print '%f %f' % (th, thdot)
@@ -197,7 +179,7 @@ if __name__ == '__main__':
     # policy.B = B
     init_theta = policy.get_theta()
 
-    dpolicy = DeterministicLinearPolicy(indim=xdim, outdim=adim)
+    dpolicy = poli.DeterministicLinearPolicy(input_dim=xdim, output_dim=adim)
     dpolicy.A = A
 
     # TODO How do we pick good step sizes?

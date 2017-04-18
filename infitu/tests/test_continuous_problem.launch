@@ -9,7 +9,68 @@
         </rosparam>
     </node>
 
-    <node pkg="infitu" type="ParameterPolicyNode.py" name="policy" output="screen">
+    <node pkg="infitu" type="ParameterPPGENode.py" name="policy" output="screen">
+        <rosparam>
+            out_file: /tmp/ppge_test.pkl
+            max_eps: 500
+
+            interface:
+                acc0:
+                    param_name: acc_0
+                    base_namespace: /test_problem
+                    lower_limit: -1
+                    upper_limit: 1
+                acc1:
+                    param_name: acc_1
+                    base_namespace: /test_problem
+                    lower_limit: -1
+                    upper_limit: 1
+
+            input_stream: cart_state
+            policy_rate: 3.0
+            learn_rate: 0.5
+            
+            deterministic_policy:
+                type: linear
+                input_processing:
+                    enable_homogeneous: true
+                output_processing:
+                    type: box
+                    lims: 1
+
+            ppge:
+                type: ppge
+                output_processing:
+                    type: box
+                    lims: 10
+
+            learning:
+                reward_topic: test_problem/reward
+                break_topic: test_problem/breaks
+                remove_traj_ll: -3
+                episode_recording:
+                    mixing_mode: integrate
+                    interpolation_mode: linear
+                    integration_mode: traps
+                gradient_estimation:
+                    type: episodic_policy_gradient
+                    traj_mode: ppge
+                    batch_size: 30
+                    buffer_size: 0
+                    min_ess: 30
+                    use_natural_gradient: true
+                    use_baseline: true
+                    sampling_args:
+                        normalize: true
+                        log_weight_lim: 3
+                optimizer:
+                    type: gradient_descent
+                    step_size: 1.0
+                    max_linf_norm: 0.1
+        </rosparam>
+    </node>
+
+    <!--<node pkg="infitu" type="ParameterPolicyNode.py" name="policy" output="screen">
         <rosparam>
             interface:
                 acc0:
@@ -29,19 +90,11 @@
             
             policy:
                 type: linear
-            input_processing:
-                enable_homogeneous: true
-                <!--normalization:
-                    mode: moments
-                    min_samples: 30
-                    keep_updating: False
-                    num_sds: 3.0
-                augmentation:
-                    type: polynomial
-                    max_order: 1-->
-            output_processing:
-                type: box
-                lims: 1
+                input_processing:
+                    enable_homogeneous: true
+                output_processing:
+                    type: box
+                    lims: 1
             regularization:
                 scale: 1E-1
             learning:
@@ -66,5 +119,5 @@
                     max_iters: 10
         </rosparam>
     </node>
-    
+    -->
 </launch>

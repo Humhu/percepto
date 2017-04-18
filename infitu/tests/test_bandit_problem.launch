@@ -31,7 +31,6 @@
                     buffer_size: 100
                     use_natural_gradient: true
                     use_baseline: true
-                    seed: 1
                 optimizer:
                     type: gradient_descent
                     step_size: 1E-1
