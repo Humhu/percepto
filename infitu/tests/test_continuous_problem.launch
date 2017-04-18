@@ -43,7 +43,7 @@
                 output_processing:
                     type: box
                     lims: 10
-                sds: 0.3
+                sds: 0.2
 
             learning:
                 reward_topic: test_problem/reward
@@ -56,9 +56,9 @@
                 gradient_estimation:
                     type: episodic_policy_gradient
                     traj_mode: ppge
-                    batch_size: 30
+                    batch_size: 60
                     buffer_size: 0
-                    min_ess: 30
+                    min_ess: 60
                     use_natural_gradient: true
                     use_baseline: true
                     sampling_args:

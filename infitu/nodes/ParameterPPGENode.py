@@ -90,6 +90,7 @@ class ParameterPPGENode(object):
         self._max_eps = rospy.get_param('~max_episodes', float('inf'))
         self._eps_counter = 0
 
+        self.actions = []
         self.sum_returns = []
         out_file = rospy.get_param('~out_file')
         self._out_file = open(out_file, 'w')
@@ -137,9 +138,9 @@ class ParameterPPGENode(object):
                                                            action=new_params)
 
         with self.policy_lock:
-            old_params = self._policy_wrapper.policy.get_theta()
             self._policy_wrapper.policy.set_theta(new_params)
             print 'New A: %s' % np.array_str(self._policy_wrapper.policy.A)
+            self.actions.append(self._policy_wrapper.policy.A)
 
         # Report policy trial
         self.recorder.report_state_action(time=t,
@@ -187,8 +188,7 @@ class ParameterPPGENode(object):
 
         if self._eps_counter >= self._max_eps:
             rospy.loginfo('Max episodes achieved.')
-            AB = (self._learner_ppge.policy.mean, self._learner_ppge.policy.sds)
-            pickle.dump((AB, self.sum_returns), self._out_file)
+            pickle.dump((self.actions, self.sum_returns), self._out_file)
             sys.exit(0)
 
 
