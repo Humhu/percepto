@@ -3,8 +3,11 @@
 import abc
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.gaussian_process import GaussianProcessRegressor as GPRegressor
-from sklearn.gaussian_process.kernels import ConstantKernel, WhiteKernel, Matern
+
+from GPy.models import GPRegression
+#from sklearn.gaussian_process import GaussianProcessRegressor as GPRegressor
+#from sklearn.gaussian_process.kernels import ConstantKernel, WhiteKernel, Matern
+
 from gp_extras.kernels import HeteroscedasticKernel
 
 
@@ -171,67 +174,75 @@ class GaussianProcessRewardModel(RewardModel):
     """
 
     def __init__(self, min_samples=10, batch_retries=20, refine_ll_delta=1.0,
-                 refine_retries=1, hetero_centers=[], hetero_gamma=5.0, **kwargs):
+                 refine_retries=1, **kwargs):
 
-        if len(hetero_centers) == 0:
-            noise = WhiteKernel(1.0, (1e-3, 1e3))
-        else:
-            noise = HeteroscedasticKernel.construct(hetero_centers,
-                                                    1.0, (1e-3, 1e3),
-                                                    gamma=hetero_gamma,
-                                                    gamma_bounds='fixed')
-
-        # TODO Option for Matern vs RBF
-        self._kernel_base = ConstantKernel(
-            1.0, (1e-3, 1e3)) * Matern(1.0, (1e-3, 1e3), nu=1.5)
-        self._kernel_noisy = self._kernel_base + noise
-
-        self.gp = GPRegressor(kernel=self._kernel_noisy,
-                              kernel_noiseless=self._kernel_base,
-                              **kwargs)
+        self.gp = None  # Init later
         self.hp_min_samples = min_samples
         self.hp_batch_retries = batch_retries
         self.hp_refine_ll_delta = refine_ll_delta
         self.hp_refine_retries = refine_retries
         self.hp_init = False
         self.last_ll = None
+        self.kwargs = kwargs
+        self.inputs = []
+        self.outputs = []
 
-        # TODO Track the y mean and update it during batch operations
+    def _initialize(self):
+        x = np.asarray(self.inputs)
+        y = np.asarray(self.outputs).reshape(-1, 1)
+        self.gp = GPRegression(x, y, **self.kwargs)
 
     def report_sample(self, x, reward):
-        self.gp.add_data(x, reward, incremental=True)
+        self.inputs.append(x)
+        self.outputs.append(reward)
+        if self.gp is None:
+            self._initialize()
+        else:
+            x = np.asarray(self.inputs)
+            y = np.asarray(self.outputs).reshape(-1, 1)
+            self.gp.set_XY(x, y)
 
-        num_samples = len(self.gp.training_y)
+        num_samples = len(self.inputs)
         if not self.hp_init and num_samples > self.hp_min_samples:
-            self.gp.batch_update(num_restarts=self.hp_batch_retries)
-            self.hp_init = True
-            self.last_ll = self.gp.log_marginal_likelihood()
+            self.batch_optimize(self.hp_batch_retries)
 
         # Wait until we've initialized
         if not self.hp_init:
             return
 
-        current_ll = self.gp.log_marginal_likelihood()
+        current_ll = self.gp.log_likelihood()
         if current_ll > self.last_ll:
             self.last_ll = current_ll
         elif current_ll < self.last_ll - self.hp_refine_ll_delta:
-            self.gp.batch_update(num_restarts=self.hp_refine_retries)
-            self.last_ll = self.gp.log_marginal_likelihood()
+            self.batch_optimize(self.hp_refine_retries)
+
+    def batch_optimize(self, n_restarts):
+        if len(self.inputs) < self.hp_min_samples:
+            raise RuntimeError('Cannot optimize with %d samples < min %d' %
+                               (len(self.inputs), self.hp_min_samples))
+        if self.gp is None:
+            self._initialize()
+
+        self.gp.optimize_restarts(optimizer='bfgs',
+                                  messages=False,
+                                  num_restarts=n_restarts)
+        self.hp_init = True
+        self.last_ll = self.gp.log_likelihood()
 
     def predict(self, x, return_std=False):
-        x = np.atleast_2d(x)
-        if len(x.shape) > 2:
-            raise ValueError('x must be at most 2D')
-        # TODO return-std might have a bug, use return_cov instead?
-        pred_mean, pred_std = self.gp.predict(x, return_std=True)
+        if self.gp is None:
+            raise RuntimeError('Model is not fitted yet!')
+
+        x = np.asarray(x)
+        pred_mean, pred_std = self.gp.predict_noiseless(x)
         if return_std:
             return np.squeeze(pred_mean), np.squeeze(pred_std)
         else:
             return np.squeeze(pred_mean)
 
     def clear(self):
-        # TODO
-        pass
+        self.inputs = []
+        self.outputs = []
 
     def fit(self, X, y):
         """Initialize the model from lists of inputs and corresponding rewards.
@@ -244,28 +255,14 @@ class GaussianProcessRewardModel(RewardModel):
         if len(X) != len(y):
             raise RuntimeError('X and Y lengths must be the same!')
 
-        self.gp.fit(X, y, num_restarts=self.hp_batch_retries,
-                    optimize_hyperparams=True)
-        self.last_ll = self.gp.log_marginal_likelihood()
-        self.hp_init = True
-
-    @property
-    def kernel_noiseless(self):
-        return self._kernel_base
-
-    @property
-    def kernel_noisy(self):
-        return self._kernel_noisy
+        self.inputs = list(X)
+        self.outputs = list(y)
+        self._initialize()
+        self.batch_optimize(self.hp_batch_retries)
 
     @property
     def num_samples(self):
-        return len(self.gp.training_X)
-
-    def get_parameters(self):
-        return self.gp.theta
-
-    def set_parameters(self, t):
-        self.gp.theta = t
+        return len(self.inputs)
 
     @property
     def model(self):
