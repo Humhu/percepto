@@ -112,10 +112,10 @@ if __name__ == '__main__':
     problem = TestModalProblem(x_dim=x_dim, a_dim=a_dim, n_modes=n_modes)
 
     # reward_model = NNR(r=3.0, k=10, def_mean = 0, def_sd=10)
-    # reward_model = optim.GaussianProcessRewardModel()
-    reward_model = GPyRegressor()
-    optimizer = optim.CMAOptimizer(mode='max', num_restarts=3, verbose=-9, verb_log=0, bounds=[-1, 1],
-                                   maxfevals=300)
+    reward_model = optim.GaussianProcessRewardModel()
+    # reward_model = GPyRegressor()
+    # optimizer = optim.CMAOptimizer(mode='max', num_restarts=3, verbose=-9, verb_log=0, bounds=[-1, 1],
+                                #    maxfevals=300)
     mp = poli.ModalPolicy(reward_model=reward_model)
 
     n_init = 30
