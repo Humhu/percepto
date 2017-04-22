@@ -45,7 +45,7 @@ class RewardModel(object):
         return
 
     @abc.abstractmethod
-    def predict_reward(self, x):
+    def predict(self, x):
         """Predict the reward and standard deviation of an input's rewards.
 
         Parameters:
@@ -106,7 +106,7 @@ class TabularRewardModel(RewardModel):
             self._table[x] = []
             self._table[x].append(reward)
 
-    def predict_reward(self, x):
+    def predict(self, x):
         if not hasattr(x, '__iter__'):
             x = [x]
 
@@ -218,19 +218,22 @@ class GaussianProcessRewardModel(RewardModel):
             self.gp.batch_update(num_restarts=self.hp_refine_retries)
             self.last_ll = self.gp.log_marginal_likelihood()
 
-    def predict_reward(self, x):
+    def predict(self, x, return_std=False):
         x = np.atleast_2d(x)
         if len(x.shape) > 2:
             raise ValueError('x must be at most 2D')
         # TODO return-std might have a bug, use return_cov instead?
         pred_mean, pred_std = self.gp.predict(x, return_std=True)
-        return np.squeeze(pred_mean), np.squeeze(pred_std)
+        if return_std:
+            return np.squeeze(pred_mean), np.squeeze(pred_std)
+        else:
+            return np.squeeze(pred_mean)
 
     def clear(self):
         # TODO
         pass
 
-    def batch_initialize(self, X, Y):
+    def fit(self, X, y):
         """Initialize the model from lists of inputs and corresponding rewards.
 
         Parameters
@@ -238,10 +241,10 @@ class GaussianProcessRewardModel(RewardModel):
         X : Iterable of inputs
         Y : Iterable of corresponding rewards
         """
-        if len(X) != len(Y):
+        if len(X) != len(y):
             raise RuntimeError('X and Y lengths must be the same!')
 
-        self.gp.fit(X, Y, num_restarts=self.hp_batch_retries,
+        self.gp.fit(X, y, num_restarts=self.hp_batch_retries,
                     optimize_hyperparams=True)
         self.last_ll = self.gp.log_marginal_likelihood()
         self.hp_init = True
@@ -307,7 +310,7 @@ class RandomForestRewardModel(RewardModel):
 
         self._forest.fit(self._X, self._Y)
 
-    def predict_reward(self, x):
+    def predict(self, x):
         x = np.atleast_2d(x)
         if len(x.shape) > 2:
             raise ValueError('x must be at most 2D')

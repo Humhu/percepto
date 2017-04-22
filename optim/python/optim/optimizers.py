@@ -97,6 +97,7 @@ class CMAOptimizer(Optimizer):
 
         self.num_restarts = num_restarts
         self.opts = cma.CMAOptions()
+        self.opts['bounds'] = [None, None] # For some reason the default is a string!
         for key, value in kwargs.iteritems():
             if key not in self.opts:
                 raise ValueError('No option %s for CMA' % key)
@@ -136,7 +137,7 @@ class CMAOptimizer(Optimizer):
            #     queries = es.ask()
            #     es.tell(queries, func(queries))
             best.update(es.best)
-        return best.x, best.f
+        return best.x, self.k * best.f
 
 class BFGSOptimizer(Optimizer):
     def __init__(self, mode, num_restarts=0, **kwargs):
@@ -175,12 +176,12 @@ class BFGSOptimizer(Optimizer):
         for i in range(self.num_restarts + 1):
             res = spo.minimize(fun=obj, x0=x0, method='L-BFGS-B', jac=False,
                                bounds=bounds, options=self.kwargs)
-            print res.fun
             if res.fun < best_y:
                 best_y = res.fun
                 best_x = res.x
+            # TODO How to sample x0 for non-finite bounds?
             x0 = np.random.uniform(self.lower_bounds, self.upper_bounds, size=len(x0))
-        return best_x, best_y
+        return best_x, self.k * best_y
 
 class GradientDescent(Optimizer):
     # TODO Add bounds

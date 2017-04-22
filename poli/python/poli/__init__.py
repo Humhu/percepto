@@ -10,3 +10,4 @@ from policy_gradient import *
 from policy_wrapper import *
 from data_samplers import *
 from ppge import *
+from modal import *
