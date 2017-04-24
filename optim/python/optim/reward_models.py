@@ -192,6 +192,9 @@ class GaussianProcessRewardModel(RewardModel):
         y = np.asarray(self.outputs).reshape(-1, 1)
         self.gp = GPRegression(x, y, **self.kwargs)
 
+    def average_log_likelihood(self):
+        return self.gp.log_likelihood() / len(self.outputs)
+
     def report_sample(self, x, reward):
         self.inputs.append(x)
         self.outputs.append(reward)
@@ -210,7 +213,7 @@ class GaussianProcessRewardModel(RewardModel):
         if not self.hp_init:
             return
 
-        current_ll = self.gp.log_likelihood()
+        current_ll = self.average_log_likelihood()
         if current_ll > self.last_ll:
             self.last_ll = current_ll
         elif current_ll < self.last_ll - self.hp_refine_ll_delta:
@@ -227,7 +230,7 @@ class GaussianProcessRewardModel(RewardModel):
                                   messages=False,
                                   num_restarts=n_restarts)
         self.hp_init = True
-        self.last_ll = self.gp.log_likelihood()
+        self.last_ll = self.average_log_likelihood()
 
     def predict(self, x, return_std=False):
         if self.gp is None:
