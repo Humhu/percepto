@@ -6,6 +6,19 @@ import numpy as np
 import cma
 import scipy.optimize as spo
 
+def floatify(spec):
+    """Takes a dictionary and tries to convert strings to
+    a float
+    """
+    for k in spec.iterkeys():
+        try:
+            if isinstance(spec[k], dict):
+                floatify(spec[k])
+            elif isinstance(spec[k], str):
+                spec[k] = float(spec[k])
+        except ValueError:
+            pass
+
 def parse_optimizers(spec):
     """Takes a specification dictionary and returns an optimizer.
 
@@ -24,6 +37,7 @@ def parse_optimizers(spec):
         raise ValueError('Specification must include type!')
 
     optimizer_type = spec.pop('type')
+    floatify(spec)
 
     lookup = {'cma_es': CMAOptimizer,
               'gradient_descent': GradientDescent,

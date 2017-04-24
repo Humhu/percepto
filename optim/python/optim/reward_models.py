@@ -10,6 +10,7 @@ from GPy.models import GPRegression
 
 from gp_extras.kernels import HeteroscedasticKernel
 
+import rospy
 
 def parse_reward_model(spec):
     """Takes a specification dictionary and returns an initialized reward model.
@@ -174,7 +175,7 @@ class GaussianProcessRewardModel(RewardModel):
     """
 
     def __init__(self, min_samples=10, batch_retries=20, refine_ll_delta=1.0,
-                 refine_retries=1, **kwargs):
+                 refine_retries=1, verbose=False, **kwargs):
 
         self.gp = None  # Init later
         self.hp_min_samples = min_samples
@@ -186,6 +187,7 @@ class GaussianProcessRewardModel(RewardModel):
         self.kwargs = kwargs
         self.inputs = []
         self.outputs = []
+        self.verbose = bool(verbose)
 
     def _initialize(self):
         x = np.asarray(self.inputs)
@@ -214,6 +216,9 @@ class GaussianProcessRewardModel(RewardModel):
             return
 
         current_ll = self.average_log_likelihood()
+        if self.verbose:
+            rospy.loginfo('Prev LL: %f Curr LL: %f', self.last_ll, current_ll)
+
         if current_ll > self.last_ll:
             self.last_ll = current_ll
         elif current_ll < self.last_ll - self.hp_refine_ll_delta:
@@ -226,9 +231,16 @@ class GaussianProcessRewardModel(RewardModel):
         if self.gp is None:
             self._initialize()
 
+        if self.verbose:
+            rospy.loginfo('Batch optimizing with %d restarts...', n_restarts)
+
         self.gp.optimize_restarts(optimizer='bfgs',
                                   messages=False,
                                   num_restarts=n_restarts)
+
+        if self.verbose:
+            rospy.loginfo('Optimization complete. Model:\n%s', str(self.gp))
+
         self.hp_init = True
         self.last_ll = self.average_log_likelihood()
 
@@ -237,6 +249,8 @@ class GaussianProcessRewardModel(RewardModel):
             raise RuntimeError('Model is not fitted yet!')
 
         x = np.asarray(x)
+        if len(x.shape) == 1:
+            x = x.reshape(1, -1)
         pred_mean, pred_std = self.gp.predict_noiseless(x)
         if return_std:
             return np.squeeze(pred_mean), np.squeeze(pred_std)

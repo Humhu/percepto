@@ -93,5 +93,5 @@ class UCBAcquisition(object):
         self._exploration_rate = b
 
     def __call__(self, x):
-        pred_mean, pred_sd = self.model.predict_reward(x)
+        pred_mean, pred_sd = self.model.predict(x, return_std=True)
         return pred_mean + self.exploration_rate * pred_sd
