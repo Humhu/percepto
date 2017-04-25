@@ -24,24 +24,29 @@ class EmpiricalParameterEvaluator:
             setter_topic, SetParameters, True)
 
         # Create evaluation trigger proxy
-        evaluation_topic = rospy.get_param('~start_evaluation_service')
-        wait_for_service(evaluation_topic)
-        self.evaluation_proxy = rospy.ServiceProxy(
-            evaluation_topic, StartEvaluation, True)
+        self.evaluation_proxy = None
+        evaluation_topic = rospy.get_param('~start_evaluation_service', None)
+        if evaluation_topic is not None:
+            wait_for_service(evaluation_topic)
+            self.evaluation_proxy = rospy.ServiceProxy(evaluation_topic,
+                                                       StartEvaluation,
+                                                       True)
 
         # Check for evaluation teardown
         self.teardown_proxy = None
-        if rospy.has_param('~start_teardown_service'):
-            teardown_topic = rospy.get_param('~start_teardown_service')
+        teardown_topic = rospy.get_param('~start_teardown_service', None)
+        if teardown_topic is not None:
             wait_for_service(teardown_topic)
-            self.teardown_proxy = rospy.ServiceProxy(teardown_topic, StartTeardown, True)
+            self.teardown_proxy = rospy.ServiceProxy(
+                teardown_topic, StartTeardown, True)
 
         # Create filter reset proxy
-        reset_topic = rospy.get_param('~reset_filter_service', None)
         self.reset_proxy = None
+        reset_topic = rospy.get_param('~reset_filter_service', None)
         if reset_topic is not None:
             wait_for_service(reset_topic)
-            self.reset_proxy = rospy.ServiceProxy(reset_topic, ResetFilter, True)
+            self.reset_proxy = rospy.ServiceProxy(
+                reset_topic, ResetFilter, True)
 
         recording_topics = rospy.get_param('~recorders')
         self.recorders = {}
@@ -54,9 +59,11 @@ class EmpiricalParameterEvaluator:
             raise ValueError('Critique not a registered recorder!')
 
         # Create critique service
-        self.evaluation_delay = rospy.Duration(rospy.get_param('~evaluation_delay', 0.0))
-        self.critique_service = rospy.Service(
-            '~get_critique', GetCritique, self.CritiqueCallback)
+        eval_delay = rospy.get_param('~evaluation_delay', 0.0)
+        self.evaluation_delay = rospy.Duration(eval_delay)
+        self.critique_service = rospy.Service('~get_critique',
+                                              GetCritique,
+                                              self.CritiqueCallback)
 
     def StartRecording(self):
         """Start evaluation recording. Returns success."""
@@ -102,7 +109,7 @@ class EmpiricalParameterEvaluator:
         """Reset the state estimator. Returns success."""
         if self.reset_proxy is None:
             return True
-            
+
         resreq = ResetFilterRequest()
         resreq.time_to_wait = 0
         resreq.filter_time = rospy.Time.now()
@@ -114,6 +121,9 @@ class EmpiricalParameterEvaluator:
         return True
 
     def RunEvaluation(self):
+        if self.evaluation_proxy is None:
+            return True
+
         try:
             self.evaluation_proxy.call()
         except rospy.ServiceException:
@@ -122,9 +132,11 @@ class EmpiricalParameterEvaluator:
         return True
 
     def StartTeardown(self):
+        if self.teardown_proxy is None:
+            return True
+
         try:
-            if self.teardown_proxy is not None:
-                self.teardown_proxy.call()
+            self.teardown_proxy.call()
         except rospy.ServiceException:
             rospy.logerr('Could not teardown.')
             return False
