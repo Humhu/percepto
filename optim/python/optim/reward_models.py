@@ -49,19 +49,21 @@ class RewardModel(object):
         return
 
     @abc.abstractmethod
-    def predict(self, x):
+    def predict(self, x, return_std=False):
         """Predict the reward and standard deviation of an input's rewards.
 
         Parameters:
         -----------
-        x: hashable
+        x:          hashable
             The input value to predict.
+        return_std: bool (default False)
+            Whether to return the standard deviation
 
         Returns:
         --------
         mean: numeric
             The estimated x reward mean
-        variance: numeric
+        std:  numeric
             The estimated x reward standard deviation
         """
         return
@@ -195,7 +197,8 @@ class GaussianProcessRewardModel(RewardModel):
         self.gp = GPRegression(x, y, **self.kwargs)
 
     def average_log_likelihood(self):
-        return self.gp.log_likelihood() / len(self.outputs)
+        # NOTE For some reason this returns the negative log-likelihood
+        return -self.gp.log_likelihood() / len(self.outputs)
 
     def report_sample(self, x, reward):
         self.inputs.append(x)
@@ -224,7 +227,10 @@ class GaussianProcessRewardModel(RewardModel):
         elif current_ll < self.last_ll - self.hp_refine_ll_delta:
             self.batch_optimize(self.hp_refine_retries)
 
-    def batch_optimize(self, n_restarts):
+    def batch_optimize(self, n_restarts=None):
+        if n_restarts is None:
+            n_restarts = self.hp_batch_retries
+            
         if len(self.inputs) < self.hp_min_samples:
             raise RuntimeError('Cannot optimize with %d samples < min %d' %
                                (len(self.inputs), self.hp_min_samples))
@@ -251,7 +257,8 @@ class GaussianProcessRewardModel(RewardModel):
         x = np.asarray(x)
         if len(x.shape) == 1:
             x = x.reshape(1, -1)
-        pred_mean, pred_std = self.gp.predict_noiseless(x)
+        pred_mean, pred_var = self.gp.predict_noiseless(x)
+        pred_std = np.sqrt(pred_var)
         if return_std:
             return np.squeeze(pred_mean), np.squeeze(pred_std)
         else:

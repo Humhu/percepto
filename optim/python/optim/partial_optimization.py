@@ -1,7 +1,10 @@
 """Classes and functions for optimizing subsets of variables (partial optimization)
 """
 
-class PartialOptimizationWrapper(object):
+import numpy as np
+from reward_models import RewardModel
+
+class PartialModelWrapper(RewardModel):
     """Wraps an objective function to allow optimization with partial input specification.
 
     Parameters
@@ -9,49 +12,39 @@ class PartialOptimizationWrapper(object):
     func : callable
         The objective function to wrap
     """
-    def __init__(self, func):
-        self.func = func
-        self.x_part = []
-        self.part_inds = []
+    def __init__(self, base_model):
+        self.base = base_model
+        self._base_input = None
+        self._active_inds = None
 
-    def get_partial_input(self):
-        """Return the current partial input specification.
-        """
-        return self.x_part
+    @property
+    def active_inds(self):
+        return self._active_inds
 
-    def set_partial_input(self, x):
-        """Specify the partial input for this wrapper.
+    @active_inds.setter
+    def active_inds(self, inds):
+        self._active_inds = np.array(inds, dtype=np.int32)
 
-        Parameters
-        ----------
-        x : iterable
-            Iterable with 'None' in positions that are unspecified
-        """
-        self.x_part = x
-        self.part_inds = [i for i, v in self.x_part if v is None]
+    @property
+    def base_input(self):
+        return self._base_input
+
+    @base_input.setter
+    def base_input(self, ival):
+        self._base_input = ival
+
+    def report_sample(self, x, reward):
+        xfull = self.generate_full_input(x)
+        self.base.report_sample(xfull, reward)
+
+    def predict(self, x, return_std=False):
+        xfull = self.generate_full_input(x)
+        return self.base.predict(xfull, return_std=return_std)
+
+    def clear(self):
+        return self.base.clear()
 
     def generate_full_input(self, x):
-        """Generates a fully-specified input by filling in the empty partial positions
-        with the elements of x, in order.
-
-        Parameters
-        ----------
-        x : iterable
-            Elements to fill in the None positions of the partial input.
-
-        Returns
-        -------
-        x_full : list
-            List copy of fully-specified input
-        """
-        if len(x) != len(self.part_inds):
-            raise ValueError('Expected %d inputs but got %d' % (len(x), len(self.part_inds)))
-        x_full = list(self.x_part)
-        x_full[self.part_inds] = x
-        return x_full
-
-    def __call__(self, x):
-        """Returns the objective function evaluated with the partial input
-        empty positions filled by x in order of occurrence.
-        """
-        return self.func(self.generate_full_input(x))
+        xfull = np.array(self._base_input)
+        xfull[self._active_inds] = x
+        return xfull
