@@ -37,9 +37,11 @@ class EmpiricalParameterEvaluator:
             self.teardown_proxy = rospy.ServiceProxy(teardown_topic, StartTeardown, True)
 
         # Create filter reset proxy
-        reset_topic = rospy.get_param('~reset_filter_service')
-        wait_for_service(reset_topic)
-        self.reset_proxy = rospy.ServiceProxy(reset_topic, ResetFilter, True)
+        reset_topic = rospy.get_param('~reset_filter_service', None)
+        self.reset_proxy = None
+        if reset_topic is not None:
+            wait_for_service(reset_topic)
+            self.reset_proxy = rospy.ServiceProxy(reset_topic, ResetFilter, True)
 
         recording_topics = rospy.get_param('~recorders')
         self.recorders = {}
@@ -98,7 +100,9 @@ class EmpiricalParameterEvaluator:
     # TODO Move this out to somewhere else?
     def ResetFilter(self):
         """Reset the state estimator. Returns success."""
-
+        if self.reset_proxy is None:
+            return True
+            
         resreq = ResetFilterRequest()
         resreq.time_to_wait = 0
         resreq.filter_time = rospy.Time.now()
