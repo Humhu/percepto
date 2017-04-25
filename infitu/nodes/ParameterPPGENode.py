@@ -62,7 +62,7 @@ class ParameterPPGENode(object):
         self.recorder = None
         learning_info = rospy.get_param('~learning')
 
-        self.remove_traj_ll = float(learning_info['remove_traj_ll'])
+        self.remove_traj_ll = float(learning_info['traj_remove_logprob'])
 
         grad_info = learning_info['gradient_estimation']
         self.grad_est = poli.parse_gradient_estimator(spec=grad_info,
@@ -169,7 +169,6 @@ class ParameterPPGENode(object):
                                          logprobs=logprobs)
 
         rospy.loginfo('Have %d episodes', self.grad_est.num_samples)
-        rospy.loginfo('Beginning optimization...')
 
         init_gamma = self._learner_ppge.policy.get_theta()
         gamma, reward = self.optimizer.step(x_init=init_gamma,

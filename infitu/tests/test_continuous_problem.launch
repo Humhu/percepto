@@ -12,7 +12,7 @@
     <node pkg="infitu" type="ParameterPPGENode.py" name="policy" output="screen">
         <rosparam>
             out_file: /tmp/ppge_test.pkl
-            max_eps: 500
+            max_episodes: 500
 
             interface:
                 acc0:
@@ -48,7 +48,7 @@
             learning:
                 reward_topic: test_problem/reward
                 break_topic: test_problem/breaks
-                remove_traj_ll: -2
+                traj_remove_logprob: -2
                 episode_recording:
                     mixing_mode: integrate
                     interpolation_mode: linear
