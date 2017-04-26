@@ -6,12 +6,7 @@ from percepto_msgs.srv import GetCritique, GetCritiqueRequest, GetCritiqueRespon
 from percepto_msgs.srv import SetParameters, SetParametersRequest
 from infitu.srv import StartEvaluation, StartTeardown, SetRecording
 from fieldtrack.srv import ResetFilter, ResetFilterRequest
-
-
-def wait_for_service(srv):
-    rospy.loginfo('Waiting for service %s', srv)
-    rospy.wait_for_service(srv)
-    rospy.loginfo('Service now available %s', srv)
+from argus_utils import wait_for_service
 
 
 class EmpiricalParameterEvaluator:
