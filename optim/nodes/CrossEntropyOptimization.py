@@ -7,6 +7,7 @@ import numpy as np
 from percepto_msgs.srv import GetCritique, GetCritiqueRequest, GetCritiqueResponse
 from collections import deque
 
+# TODO Update
 class CrossEntropyOptimizer:
     """Cross entropy numerical optimizer node.
 

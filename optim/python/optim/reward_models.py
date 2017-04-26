@@ -12,6 +12,7 @@ from gp_extras.kernels import HeteroscedasticKernel
 
 import rospy
 
+
 def parse_reward_model(spec):
     """Takes a specification dictionary and returns an initialized reward model.
     """
@@ -177,11 +178,12 @@ class GaussianProcessRewardModel(RewardModel):
     """
 
     def __init__(self, min_samples=10, batch_retries=20, refine_ll_delta=1.0,
-                 refine_retries=1, verbose=False, **kwargs):
+                 refine_retries=1, verbose=False, enable_refine=True, **kwargs):
 
         self.gp = None  # Init later
-        self.hp_min_samples = min_samples
+        self.min_samples = min_samples
         self.hp_batch_retries = batch_retries
+        self.enable_refine = enable_refine
         self.hp_refine_ll_delta = refine_ll_delta
         self.hp_refine_retries = refine_retries
         self.hp_init = False
@@ -196,9 +198,15 @@ class GaussianProcessRewardModel(RewardModel):
         y = np.asarray(self.outputs).reshape(-1, 1)
         self.gp = GPRegression(x, y, **self.kwargs)
 
+    @property
+    def num_samples(self):
+        return len(self.inputs)
+
     def average_log_likelihood(self):
         # NOTE For some reason this returns the negative log-likelihood
-        return -self.gp.log_likelihood() / len(self.outputs)
+        if self.gp is None or self.num_samples < self.min_samples:
+            return None
+        return -self.gp.log_likelihood() / self.num_samples
 
     def report_sample(self, x, reward):
         self.inputs.append(x)
@@ -210,10 +218,6 @@ class GaussianProcessRewardModel(RewardModel):
             y = np.asarray(self.outputs).reshape(-1, 1)
             self.gp.set_XY(x, y)
 
-        num_samples = len(self.inputs)
-        if not self.hp_init and num_samples > self.hp_min_samples:
-            self.batch_optimize(self.hp_batch_retries)
-
         # Wait until we've initialized
         if not self.hp_init:
             return
@@ -224,16 +228,16 @@ class GaussianProcessRewardModel(RewardModel):
 
         if current_ll > self.last_ll:
             self.last_ll = current_ll
-        elif current_ll < self.last_ll - self.hp_refine_ll_delta:
+        elif current_ll < self.last_ll - self.hp_refine_ll_delta and self.enable_refine:
             self.batch_optimize(self.hp_refine_retries)
 
     def batch_optimize(self, n_restarts=None):
+        if self.num_samples < self.min_samples:
+            return
+            
         if n_restarts is None:
             n_restarts = self.hp_batch_retries
-            
-        if len(self.inputs) < self.hp_min_samples:
-            raise RuntimeError('Cannot optimize with %d samples < min %d' %
-                               (len(self.inputs), self.hp_min_samples))
+
         if self.gp is None:
             self._initialize()
 

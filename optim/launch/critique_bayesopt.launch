@@ -1,0 +1,53 @@
+<launch>
+
+<arg name="input_dim"/>
+<arg name="max_evals"/>
+
+<arg name="init_samples" default="30"/>
+<arg name="verbose" default="false"/>
+<arg name="out_path" default="out.pkl"/>
+<arg name="prog_path" default="prog.pkl"/>
+<arg name="resume" default="true"/>
+<arg name="critic_service" default="evaluator/get_critique"/>
+<arg name="verbose" default="true"/>
+<arg name="beta" default="1.0"/>
+
+<node pkg="optim" type="BayesianOptimizer.py" name="optimizer" output="screen" required="true">
+    <param name="output_path" value="$(arg out_path)"/>
+    <param name="load_path" value="$(arg load_path)" if="$(arg resume)"/>
+    <param name="progress_path" value="$(arg prog_path)"/>
+
+    <param name="convergence/max_evaluations" value="$(arg max_evals)"/>
+    <param name="dim" value="$(arg input_dim)"/>
+    <param name="exploration_rate" value="$(arg beta)"/>
+    <param name="initialization/num_samples" value="$(arg init_samples)"/>
+
+    <param name="interface/topic" value="$(arg critic_service)"/>
+    <param name="interface/verbose" value="$(arg verbose)"/>
+    <param name="reward_model/verbose" value="$(arg verbose)"/>
+    <rosparam>
+        lower_bounds: -1
+        upper_bounds: 1
+        sequential_mode: false
+
+        reward_model:
+            type: gaussian_process
+            batch_retries: 10
+            enable_refine: false
+            refine_ll_delta: 0.1
+            refine_retries: 3
+
+        auxiliary_optimizer:
+            type: bfgs
+            mode: max
+            num_restarts: 10
+            ftol: 1e-6
+            gtol: 1e-6
+            maxiter: 500
+
+        initialization:
+            method: uniform
+    </rosparam>
+</node>
+
+</launch>

@@ -1,0 +1,27 @@
+<launch>
+
+<arg name="reward_topic" default="ape/reward"/>
+<arg name="output_path"/>
+<arg name="num_samples" default="30"/>
+<arg name="action_dim"/>
+<arg name="param_service" default="parameter_interface/set_parameters"/>
+<arg name="random_seed" default="1"/>
+<arg name="step_time" default="5"/>
+<arg name="mode" default="joint"/>
+
+<node pkg="infitu" type="StepResponse.py" name="sampler" output="screen" required="true">
+    <remap from="reward" to="$(arg reward_topic)"/>
+    <param name="output_path" value="$(arg output_path)"/>
+    <param name="num_samples" value="$(arg num_samples)"/>
+    <param name="action_dim" value="$(arg action_dim)"/>
+    <param name="set_parameters_service" value="$(arg param_service)"/>
+    <param name="random_seed" value="$(arg random_seed"/>
+    <param name="step_time" value="$(arg step_time"/>
+    <papram name="mode" value="$(arg mode)"/>
+    <rosparam>
+        action_lower_bound: -1
+        action_upper_bound: 1
+    </rosparam>
+</node>
+
+</launch>

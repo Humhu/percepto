@@ -1,14 +1,15 @@
 #!/usr/bin/env python
 
+import math
+from itertools import izip
 import dill
 import pickle
-import math
 
-from itertools import izip
 import numpy as np
 import rospy
 import optim
 import matplotlib.pyplot as plt
+
 
 class BayesianOptimizer(object):
     """Iteratively samples and updates a reward model (response surface) to optimize a function.
@@ -55,8 +56,9 @@ class BayesianOptimizer(object):
             self.reward_model.active_inds = np.random.randint(low=0,
                                                               high=self.input_dim)
             self.reward_model.base_input = self.aux_x_init
-            self.full_aux_init = self.aux_x_init            
-            self.aux_x_init = np.atleast_1d(self.aux_x_init[self.reward_model.active_inds])
+            self.full_aux_init = self.aux_x_init
+            self.aux_x_init = np.atleast_1d(
+                self.aux_x_init[self.reward_model.active_inds])
             self.full_lower_bounds = self.lower_bounds
             self.full_upper_bounds = self.upper_bounds
             self.lower_bounds = self.full_lower_bounds[self.reward_model.active_inds]
@@ -75,8 +77,7 @@ class BayesianOptimizer(object):
 
         # TODO Parse selection approach + parameters
         self.acq_func = optim.UCBAcquisition(self.reward_model)
-        self.acq_func.exploration_rate = rospy.get_param(
-            '~exploration_rate', 1.0)
+        self.beta_base = rospy.get_param('~exploration_rate', 1.0)
 
         self.rounds = []
         init_info = rospy.get_param('~initialization')
@@ -89,8 +90,10 @@ class BayesianOptimizer(object):
                                                               self.upper_bounds)
         elif init_method == 'grid':
             if not self.enable_sequential:
-                raise ValueError('Grid initialization only valid for sequential mode')
-            self.grid = np.linspace(self.lower_bounds, self.upper_bounds, num=self.num_init)
+                raise ValueError(
+                    'Grid initialization only valid for sequential mode')
+            self.grid = np.linspace(
+                self.lower_bounds, self.upper_bounds, num=self.num_init)
             self.init_sample_func = lambda: self.grid[self.round_index]
         else:
             raise ValueError(
@@ -106,7 +109,8 @@ class BayesianOptimizer(object):
         next_inds = next_inds[next_inds != self.reward_model.active_inds]
         self.reward_model.active_inds = np.random.choice(next_inds)
         self.reward_model.base_input = current_optima
-        self.aux_x_init = np.atleast_1d(self.full_aux_init[self.reward_model.active_inds])
+        self.aux_x_init = np.atleast_1d(
+            self.full_aux_init[self.reward_model.active_inds])
 
         self.lower_bounds = self.full_lower_bounds[self.reward_model.active_inds]
         self.upper_bounds = self.full_upper_bounds[self.reward_model.active_inds]
@@ -151,11 +155,14 @@ class BayesianOptimizer(object):
     def pick_next_sample(self):
         """Selects the next sample to explore by optimizing the acquisition function.
         """
+        self.acq_func.exploration_rate = self.beta_base * \
+            math.log(len(self.rounds) + 1)
         x, acq = self.aux_optimizer.optimize(x_init=self.aux_x_init,
                                              func=self.acq_func)
         if self.enable_sequential:
             x = self.reward_model.generate_full_input(x)
-        rospy.loginfo('Next sample %s with acquisition value %f', str(x), acq)
+        rospy.loginfo('Next sample %s with beta %f and acquisition value %f',
+                      str(x), self.acq_func.exploration_rate, acq)
         return x
 
     def finished(self):
@@ -196,6 +203,7 @@ class BayesianOptimizer(object):
             if not self.is_initialized:
                 next_sample = self.pick_initial_sample()
                 rospy.loginfo('Initializing with %s', str(next_sample))
+
             else:
                 if not model_initialized:
                     self.optimize_reward_model()
@@ -212,7 +220,7 @@ class BayesianOptimizer(object):
             self.rounds.append((next_sample, reward, feedback))
 
             if self.enable_sequential and \
-            self.round_index >= self.num_init +  self.iters_per_round:
+                    self.round_index >= self.num_init + self.iters_per_round:
                 self.update_sequential_ind()
                 model_initialized = False
 

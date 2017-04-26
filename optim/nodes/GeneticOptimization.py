@@ -9,6 +9,7 @@ from percepto_msgs.srv import GetCritique, GetCritiqueRequest, GetCritiqueRespon
 import optim.genetic as optgen
 from itertools import izip
 
+# TODO Update
 class GeneticOptimizer:
     """Evolutionary optimization optimizer.
 

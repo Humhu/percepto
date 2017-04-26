@@ -21,6 +21,7 @@ class CMAOptimizer:
 
     ROS Parameters
     --------------
+    #TODO Update
     ~initial_mean : N-length numeric array
         The CMA search initial mean. The dimensionality N of the optimization input 
         is inferred from this array.
@@ -61,8 +62,8 @@ class CMAOptimizer:
 
         # Specify either input dimension and assume zero mean, or full mean
         init_mean = rospy.get_param('~initial_mean', 0.0)
-        if rospy.has_param('~input_dimension'):
-            in_dim = rospy.get_param('~input_dimension')
+        if rospy.has_param('~input_dim'):
+            in_dim = rospy.get_param('~input_dim')
             init_mean = init_mean * np.ones(in_dim)
         else:
             init_mean = np.array(init_mean)
@@ -96,8 +97,11 @@ class CMAOptimizer:
 
         # TODO
         verbose = rospy.get_param('~verbose', False)
+        cma_options['verb_log'] = 0
         if not verbose:
             cma_options['verbose'] = -9
+        else:
+            cma_options['verb_disp'] = 1
         #cma_options['verb_disp'] = 1
         # cma_options['verb_plot'] = 0 # NOTE Fails to pickle!
 
