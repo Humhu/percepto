@@ -112,7 +112,7 @@ class NumericParameterInterface(object):
             resout += '\n\t%s: %f (%f)' % (name, actual, actual_raw)
 
             if vi != actual:
-                warnout.append( 'Set param %s to %f but got actual %f' % (name, v_raw, actual_raw) )
+                warnouts.append( 'Set param %s to %f but got actual %f' % (name, v_raw, actual_raw) )
 
         if self._verbose:
             rospy.loginfo(out)

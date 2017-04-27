@@ -15,10 +15,11 @@
     <param name="num_samples" value="$(arg num_samples)"/>
     <param name="action_dim" value="$(arg action_dim)"/>
     <param name="set_parameters_service" value="$(arg param_service)"/>
-    <param name="random_seed" value="$(arg random_seed"/>
-    <param name="step_time" value="$(arg step_time"/>
-    <papram name="mode" value="$(arg mode)"/>
+    <param name="random_seed" value="$(arg random_seed)"/>
+    <param name="step_time" value="$(arg step_time)"/>
+    <param name="mode" value="$(arg mode)"/>
     <rosparam>
+        enable_adaptive_sampling: false
         action_lower_bound: -1
         action_upper_bound: 1
     </rosparam>
