@@ -30,7 +30,6 @@ class ContinuousParameterInterface(object):
     def get_param_callback(self, req):
         req = GetParametersResponse()
         req.parameters = self.interface.get_values()
-        req.names = self.interface.parameter_names
         return req
 
 

@@ -73,8 +73,10 @@ class NumericParameterInterface(object):
         def unscale_func(x):
             x = min(max(x, -1), 1)
             return x * scale + offset
+        def scale_func(x):
+            return (x - offset) / scale
 
-        self._setters.append((name, param_name, setter, unscale_func))
+        self._setters.append((name, param_name, setter, unscale_func, scale_func))
         self._setters.sort(key=lambda x: x[0])
 
     def set_values(self, v, names=None):
@@ -92,6 +94,8 @@ class NumericParameterInterface(object):
             names = self.parameter_names
 
         out = 'Setting values:'
+        resout = 'Actual values:'
+        warnouts = []
         ref_names = self.parameter_names
         for vi, v_name in izip(v, names):
             try:
@@ -99,17 +103,25 @@ class NumericParameterInterface(object):
             except ValueError:
                 rospy.logerr('Parameter %s not in interface', v_name)
 
-            name, _, setter, scale_func = self._setters[ind]
-            vscaled = scale_func(vi)
+            name, _, setter, unscale_func, scale_func = self._setters[ind]
+            v_raw = unscale_func(vi)
 
-            out += '\n\t%s: %f (%f)' % (name, vi, vscaled)
-            setter.set_value(vscaled)
+            out += '\n\t%s: %f (%f)' % (name, vi, v_raw)
+            actual_raw = setter.set_value(v_raw)
+            actual = scale_func(actual_raw)
+            resout += '\n\t%s: %f (%f)' % (name, actual, actual_raw)
+
+            if vi != actual:
+                warnout.append( 'Set param %s to %f but got actual %f' % (name, v_raw, actual_raw) )
 
         if self._verbose:
             rospy.loginfo(out)
+            rospy.loginfo(resout)
+            for w in warnouts:
+                rospy.logwarn(w)
 
-    def get_values(self):
-        return [s[2].get_value() for s in self._setters]
+    def get_values(self, normalized=True):
+        return [s[4](s[2].get_value()) for s in self._setters]
 
     @property
     def num_parameters(self):
