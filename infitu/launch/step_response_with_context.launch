@@ -29,7 +29,7 @@
         action_lower_bound: -1
         action_upper_bound: 1
 
-        enable_adaptive_sampling: true
+        enable_adaptive_sampling: false
         optimizer:
             mode: min
             type: bfgs
