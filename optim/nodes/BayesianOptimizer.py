@@ -8,6 +8,8 @@ import pickle
 import numpy as np
 import rospy
 import optim
+import broadcast
+
 import matplotlib.pyplot as plt
 
 
@@ -23,14 +25,14 @@ class BayesianOptimizer(object):
         model_info = rospy.get_param('~reward_model')
         self.reward_model = optim.parse_reward_model(model_info)
 
-        self.enable_sequential = rospy.get_param('~sequential_mode', False)
-        if self.enable_sequential:
-            rospy.loginfo('Enabling sequential optimization')
-            self.iters_per_round = rospy.get_param('~iters_per_round')
-            self.base_reward_model = self.reward_model
+        # Parse input stream if available
+        stream_name = rospy.get_param('~input_stream', None)
+        self.stream_rx = None
+        if stream_name is not None:
+            self.stream_rx = broadcast.Receiver(stream_name)
+            self.full_reward_model = self.reward_model
             self.reward_model = optim.PartialModelWrapper(
-                base_model=self.base_reward_model)
-            self.loop_counter = 0
+                self.full_reward_model)
 
         # Parse acquisition optimizer
         optimizer_info = rospy.get_param('~auxiliary_optimizer')
@@ -51,20 +53,6 @@ class BayesianOptimizer(object):
         self.aux_optimizer.upper_bounds = self.upper_bounds
         self.aux_x_init = 0.5 * (self.lower_bounds + self.upper_bounds)
         self.aux_x_init[np.logical_not(np.isfinite(self.aux_x_init))] = 0
-
-        if self.enable_sequential:
-            self.reward_model.active_inds = np.random.randint(low=0,
-                                                              high=self.input_dim)
-            self.reward_model.base_input = self.aux_x_init
-            self.full_aux_init = self.aux_x_init
-            self.aux_x_init = np.atleast_1d(
-                self.aux_x_init[self.reward_model.active_inds])
-            self.full_lower_bounds = self.lower_bounds
-            self.full_upper_bounds = self.upper_bounds
-            self.lower_bounds = self.full_lower_bounds[self.reward_model.active_inds]
-            self.upper_bounds = self.full_upper_bounds[self.reward_model.active_inds]
-            self.aux_optimizer.lower_bounds = self.lower_bounds
-            self.aux_optimizer.upper_bounds = self.upper_bounds
 
         self.visualize = rospy.get_param('~visualize', False)
         if self.visualize:
@@ -88,46 +76,28 @@ class BayesianOptimizer(object):
         if init_method == 'uniform':
             self.init_sample_func = lambda: np.random.uniform(self.lower_bounds,
                                                               self.upper_bounds)
-        elif init_method == 'grid':
-            if not self.enable_sequential:
-                raise ValueError(
-                    'Grid initialization only valid for sequential mode')
-            self.grid = np.linspace(
-                self.lower_bounds, self.upper_bounds, num=self.num_init)
-            self.init_sample_func = lambda: self.grid[self.round_index]
         else:
             raise ValueError(
                 'Invalid initial distribution method %s' % init_method)
 
         self.max_evals = rospy.get_param('~convergence/max_evaluations')
 
-    def update_sequential_ind(self):
-        current_optima = self.get_current_optima()
+    def get_context(self):
+        if self.stream_rx is None:
+            return None
 
-        next_inds = np.arange(self.input_dim)
-        # TODO Robustify to allow for multiple active inds
-        next_inds = next_inds[next_inds != self.reward_model.active_inds]
-        self.reward_model.active_inds = np.random.choice(next_inds)
-        self.reward_model.base_input = current_optima
-        self.aux_x_init = np.atleast_1d(
-            self.full_aux_init[self.reward_model.active_inds])
-
-        self.lower_bounds = self.full_lower_bounds[self.reward_model.active_inds]
-        self.upper_bounds = self.full_upper_bounds[self.reward_model.active_inds]
-        self.aux_optimizer.lower_bounds = self.lower_bounds
-        self.aux_optimizer.upper_bounds = self.upper_bounds
-
-        rospy.loginfo('Next ind: %d', self.reward_model.active_inds)
-        rospy.loginfo('Current optima: %s', np.array_str(
-            self.reward_model.base_input))
-        self.loop_counter += 1
+        while not rospy.is_shutdown():
+            context = self.stream_rx.read_stream(rospy.Time.now(),
+                                                 mode='closest_before')[1]
+            if context is None:
+                rospy.logerr('Could not read context')
+                rospy.sleep(1.0)
+            else:
+                return context
 
     @property
     def round_index(self):
-        if self.enable_sequential:
-            return len(self.rounds) - self.loop_counter * (self.num_init + self.iters_per_round)
-        else:
-            return len(self.rounds)
+        return len(self.rounds)
 
     @property
     def is_initialized(self):
@@ -138,8 +108,6 @@ class BayesianOptimizer(object):
         a random distribution.
         """
         x = np.atleast_1d(self.init_sample_func())
-        if self.enable_sequential:
-            x = self.reward_model.generate_full_input(x)
         return x
 
     def get_current_optima(self):
@@ -148,19 +116,15 @@ class BayesianOptimizer(object):
         x, acq = self.aux_optimizer.optimize(x_init=self.aux_x_init,
                                              func=self.acq_func)
         self.acq_func.exploration_rate = curr_beta
-        if self.enable_sequential:
-            x = self.reward_model.generate_full_input(x)
         return x
 
-    def pick_next_sample(self):
+    def pick_action(self):
         """Selects the next sample to explore by optimizing the acquisition function.
         """
         self.acq_func.exploration_rate = self.beta_base * \
             math.log(len(self.rounds) + 1)
         x, acq = self.aux_optimizer.optimize(x_init=self.aux_x_init,
                                              func=self.acq_func)
-        if self.enable_sequential:
-            x = self.reward_model.generate_full_input(x)
         rospy.loginfo('Next sample %s with beta %f and acquisition value %f',
                       str(x), self.acq_func.exploration_rate, acq)
         return x
@@ -188,10 +152,14 @@ class BayesianOptimizer(object):
         plt.draw()
 
     def optimize_reward_model(self):
-        if self.enable_sequential:
-            self.base_reward_model.batch_optimize()
+        self.reward_model.batch_optimize()
+
+    def report_sample(self, context, action, reward):
+        if self.stream_rx is None:
+            self.reward_model.report_sample(x=action, reward=reward)
         else:
-            self.reward_model.batch_optimize()
+            x = np.hstack((action, context))
+            self.reward_model.report_sample(x=x, reward=reward)
 
     def execute(self, interface):
         """Begin execution of the specified problem.
@@ -200,29 +168,30 @@ class BayesianOptimizer(object):
         while not rospy.is_shutdown() and not self.finished():
             rospy.loginfo('Round %d...', len(self.rounds))
 
+            context = self.get_context()
+            if self.stream_rx is not None:
+                a_init = np.zeros(self.input_dim)
+                self.reward_model.set_base_input(np.hstack((a_init, context)))
+                self.reward_model.set_active_inds(range(self.input_dim))
+
             if not self.is_initialized:
-                next_sample = self.pick_initial_sample()
-                rospy.loginfo('Initializing with %s', str(next_sample))
+                action = self.pick_initial_sample()
+                rospy.loginfo('Initializing with %s', str(action))
 
             else:
                 if not model_initialized:
                     self.optimize_reward_model()
                     model_initialized = True
 
-                next_sample = self.pick_next_sample()
-                pred_mean, pred_sd = self.reward_model.predict(
-                    next_sample, return_std=True)
+                action = self.pick_action()
+                pred_mean, pred_sd = self.reward_model.predict(action,
+                                                               return_std=True)
                 rospy.loginfo('Picked sample %s with predicted mean %f +- %f',
-                              str(next_sample), pred_mean, pred_sd)
+                              str(action), pred_mean, pred_sd)
 
-            reward, feedback = interface(next_sample)
-            self.reward_model.report_sample(x=next_sample, reward=reward)
-            self.rounds.append((next_sample, reward, feedback))
-
-            if self.enable_sequential and \
-                    self.round_index >= self.num_init + self.iters_per_round:
-                self.update_sequential_ind()
-                model_initialized = False
+            reward, feedback = interface(action)
+            self.report_sample(context=context, action=action, reward=reward)
+            self.rounds.append((context, action, reward, feedback))
 
             if self.visualize:
                 self.visualize_rewards()
@@ -261,5 +230,5 @@ if __name__ == '__main__':
         pickle.dump(optimizer, prog_file)
 
     # Save output
-    x_best = optimizer.pick_next_sample()
+    x_best = optimizer.pick_action()
     pickle.dump((x_best, optimizer.rounds), out_file)
