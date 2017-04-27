@@ -1,9 +1,10 @@
 <launch>
 
-<arg name="reward_topic" default="ape/reward"/>
 <arg name="output_path"/>
-<arg name="num_samples" default="30"/>
 <arg name="action_dim"/>
+
+<arg name="reward_topic" default="ape/reward"/>
+<arg name="num_samples" default="30"/>
 <arg name="param_service" default="parameter_interface/set_parameters"/>
 <arg name="random_seed" default="1"/>
 <arg name="step_time" default="5"/>
