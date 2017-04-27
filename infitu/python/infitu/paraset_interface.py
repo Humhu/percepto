@@ -14,9 +14,24 @@ def parse_interface(info):
         verbose = bool(info.pop('verbose'))
     else:
         verbose = False
-    
+
     interface = NumericParameterInterface(verbose=verbose)
+
+    if 'param_order' in info:
+        param_order = info.pop('param_order')
+    else:
+        param_order = info.keys()
+
+    ordered_items = [None] * len(info)
     for name, v in info.iteritems():
+        try:
+            ind = param_order.index(name)
+        except ValueError:
+            rospy.logerr('Could not find parameter %s in ordering %s',
+                         name, str(param_order))
+        ordered_items[ind] = (name, v)
+
+    for name, v in ordered_items:
         param_name = v['param_name']
         base_topic = v['base_namespace']
         limits = (v['lower_limit'], v['upper_limit'])
@@ -25,6 +40,7 @@ def parse_interface(info):
                                 base_topic=base_topic,
                                 limits=limits)
     return interface
+
 
 class NumericParameterInterface(object):
     """Wraps and normalizes a set of numeric runtime parameters,
@@ -43,6 +59,9 @@ class NumericParameterInterface(object):
 
         The internal list of parameters will be sorted after adding.
         """
+        if self._verbose:
+            rospy.loginfo('Adding parameter %s' % name)
+
         setter = paraset.RuntimeParamSetter(param_type=float,
                                             name=param_name,
                                             base_topic=base_topic)
@@ -58,8 +77,10 @@ class NumericParameterInterface(object):
         self._setters.append((name, param_name, setter, unscale_func))
         self._setters.sort(key=lambda x: x[0])
 
-    def set_values(self, v):
+    def set_values(self, v, names=None):
         """Sets all parameters according to vector input v.
+
+        Optionally, assign the parameters with corresponding ordered names.
 
         Elements of v outside of -1, 1 will be truncated
         """
@@ -67,19 +88,37 @@ class NumericParameterInterface(object):
             raise ValueError('Expected %d elements, got %d' %
                              (len(self._setters), len(v)))
 
+        if names is None:
+            names = self.parameter_names
+
         out = 'Setting values:'
-        for vi, setinfo in izip(v, self._setters):
-            name, param_name, setter, scale_func = setinfo
+        ref_names = self.parameter_names
+        for vi, v_name in izip(v, names):
+            try:
+                ind = ref_names.index(v_name)
+            except ValueError:
+                rospy.logerr('Parameter %s not in interface', v_name)
+
+            name, _, setter, scale_func = self._setters[ind]
             vscaled = scale_func(vi)
 
             out += '\n\t%s: %f (%f)' % (name, vi, vscaled)
             setter.set_value(vscaled)
-        
+
         if self._verbose:
             rospy.loginfo(out)
+
+    def get_values(self):
+        return [s[2].get_value() for s in self._setters]
 
     @property
     def num_parameters(self):
         """The number of parameters wrapped in this interface.
         """
         return len(self._setters)
+
+    @property
+    def parameter_names(self):
+        """An ordered list of the parameter names
+        """
+        return [s[0] for s in self._setters]
