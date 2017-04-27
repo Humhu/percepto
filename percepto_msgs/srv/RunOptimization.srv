@@ -1,0 +1,19 @@
+# Service to trigger an optimization
+#
+# Request Fields
+# --------------
+# warm_start : whether to use previous information/solution 
+#
+# Response Fields
+# ---------------
+# success    : whether the optimization succeeded
+# solution   : the solution variables
+# objective  : the final solution objective value
+
+bool warm_start
+
+---
+
+bool success
+float64[] solution
+float64 objective
