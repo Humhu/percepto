@@ -8,7 +8,7 @@ import sys
 import cma
 import numpy as np
 import optim
-from percepto_msgs.srv import GetCritique, GetCritiqueRequest, GetCritiqueResponse
+from percepto_msgs.srv import RunOptimization, RunOptimizationResponse
 
 
 class CMAOptimizer:
@@ -108,82 +108,110 @@ class CMAOptimizer:
         self.prog_path = rospy.get_param('~progress_path', None)
         self.out_path = rospy.get_param('~output_path')
 
-        self.cma_optimizer = cma.CMAEvolutionStrategy(
-            init_mean, init_stds, cma_options)
+        def init_cma():
+            return cma.CMAEvolutionStrategy(init_mean,
+                                            init_stds,
+                                            cma_options)
+        self.create_cma = init_cma
+        self.cma_optimizer = None
 
         # Initialize state
         self.rounds = []
-        self.iter_counter = 0
+        self.round_index = 0
+        self.interface = None
 
-    def Save(self, status):
-        if self.prog_path is not None:
-            rospy.loginfo('Saving progress at %s...', self.prog_path)
-            prog = open(self.prog_path, 'wb')
-            pickle.dump(self, prog)
-            prog.close()
+        self.opt_server = rospy.Service('~run_optimization', RunOptimization,
+                                        self.opt_callback)
 
-        rospy.loginfo('Saving output at %s...', self.out_path)
-        out = open(self.out_path, 'wb')
-        pickle.dump((status, self.rounds), out)
-        out.close()
+    def opt_callback(self, req):
+        self.round_index = 0
+        if not req.warm_start:
+            # NOTE Probably never want to keep the optimizer?
+            self.cma_optimizer = None
 
-    def Resume(self, eval_cb):
+        res = RunOptimizationResponse()
+        try:
+            res.solution, res.objective = self.execute()
+            res.success = True
+        except:
+            res.success = False
+        return res
+
+    def execute(self):
         """Resumes execution from the current state.
         """
+        if self.cma_optimizer is None:
+            self.cma_optimizer = self.create_cma()
+
         while not rospy.is_shutdown() and not self.cma_optimizer.stop():
 
             current_inputs = self.cma_optimizer.ask()
             current_outputs = []
-            current_feedbacks = []
+            current_feedbacks = {}
             # Evaluate all inputs requested by CMA
             for ind, inval in enumerate(current_inputs):
-                rospy.loginfo('Iteration %d input %d/%d', self.iter_counter,
+                rospy.loginfo('Iteration %d input %d/%d', self.round_index,
                               ind,
                               len(current_inputs))
-                curr_outval, curr_feedback = eval_cb(inval)
+                curr_outval, curr_feedback = self.interface(inval)
                 current_outputs.append(curr_outval)
-                current_feedbacks.append(curr_feedback)
+                for k, v in curr_feedback:
+                    if k not in current_feedbacks:
+                        current_feedbacks[k] = []
+                    current_feedbacks[k].append(v)
 
-            # CMA feedback and visualization
             # cma performs minimization, so we have to report the negated
             # rewards
             self.cma_optimizer.tell(current_inputs, -np.array(current_outputs))
             self.cma_optimizer.logger.add()
             self.cma_optimizer.disp()
-            # cma.show()
-            # self.cma_optimizer.logger.plot()
 
             # Record iteration data
-            self.rounds.append([self.iter_counter,
-                                current_inputs,
+            self.rounds.append([current_inputs,
                                 current_outputs,
                                 current_feedbacks])
-            self.iter_counter += 1
-            self.Save(status='in_progress')
+            self.round_index += 1
 
-        rospy.loginfo('Execution completed!')
-        self.Save(status=self.cma_optimizer.stop())
+        return self.cma_optimizer.result()[0], self.cma_optimizer.result()[1]
 
 
 if __name__ == '__main__':
     rospy.init_node('cma_optimizer')
 
-    # See if we're resuming
-    if rospy.has_param('~load_path'):
-        data_path = rospy.get_param('~load_path')
-        data_log = open(data_path, 'rb')
-        rospy.loginfo('Found load data at %s...', data_path)
-        cmaopt = pickle.load(data_log)
+    out_path = rospy.get_param('~output_path')
+    out_file = open(out_path, 'w')
+
+    load_path = rospy.get_param('~load_path', None)
+    if load_path is not None:
+        optimizer = pickle.load(open(load_path))
     else:
-        rospy.loginfo('No resume data specified. Starting new optimization...')
-        cmaopt = CMAOptimizer()
+        optimizer = CMAOptimizer()
+
+    prog_path = rospy.get_param('~progress_path', None)
+    if prog_path is not None:
+        prog_file = open(prog_path, 'w')
+    else:
+        prog_file = None
+        rospy.logwarn(
+            'No progress path specified. Will not save optimization progress!')
 
     # Create interface to optimization problem
-    critique_topic = rospy.get_param('~critic_service')
-    verbose = rospy.get_param('~verbose', False)
-    interface = optim.CritiqueInterface(critique_topic, verbose=verbose)
+    interface_info = rospy.get_param('~interface')
+    optimizer.interface = optim.CritiqueInterface(**interface_info)
 
-    def eval_cb(x): return interface(x)
+    run_on_start = rospy.get_param('run_on_start', False)
+    try:
+        if run_on_start:
+            res = optimizer.execute()
+        else:
+            rospy.spin()
+    except rospy.ROSInterruptException:
+        pass
 
-    # Register callback so that the optimizer can save progress
-    cmaopt.Resume(eval_cb=eval_cb)
+    # Save progress
+    if prog_file is not None:
+        optimizer.interface = None
+        pickle.dump(optimizer, prog_file)
+
+    # Save output
+    pickle.dump((res, optimizer.rounds), out_file)
