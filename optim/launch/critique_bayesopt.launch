@@ -11,6 +11,8 @@
 <arg name="critic_service" default="evaluator/get_critique"/>
 <arg name="verbose" default="true"/>
 <arg name="beta" default="1.0"/>
+<arg name="enable_context" default="false"/>
+<arg name="context_stream" default="void"/>
 
 <node pkg="optim" type="BayesianOptimizer.py" name="optimizer" output="screen" required="true">
     <param name="output_path" value="$(arg out_path)"/>
@@ -25,6 +27,8 @@
     <param name="interface/topic" value="$(arg critic_service)"/>
     <param name="interface/verbose" value="$(arg verbose)"/>
     <param name="reward_model/verbose" value="$(arg verbose)"/>
+
+    <param name="input_stream" value="$(arg context_stream)" if="$(arg enable_context)"/>
     <rosparam>
         lower_bounds: -1
         upper_bounds: 1
