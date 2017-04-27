@@ -152,7 +152,10 @@ class BayesianOptimizer(object):
         plt.draw()
 
     def optimize_reward_model(self):
-        self.reward_model.batch_optimize()
+        if self.stream_rx is None:
+            self.reward_model.batch_optimize()
+        else:
+            self.full_reward_model.batch_optimize()
 
     def report_sample(self, context, action, reward):
         if self.stream_rx is None:
@@ -171,8 +174,8 @@ class BayesianOptimizer(object):
             context = self.get_context()
             if self.stream_rx is not None:
                 a_init = np.zeros(self.input_dim)
-                self.reward_model.set_base_input(np.hstack((a_init, context)))
-                self.reward_model.set_active_inds(range(self.input_dim))
+                self.reward_model.base_input = np.hstack((a_init, context))
+                self.reward_model.active_inds = range(self.input_dim)
 
             if not self.is_initialized:
                 action = self.pick_initial_sample()

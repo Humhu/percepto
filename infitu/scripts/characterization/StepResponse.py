@@ -282,6 +282,8 @@ class StepResponse:
             self.reward_traces.append(rewards)
             self.contexts.append(context)
 
+            pre_action = action
+
 
 if __name__ == '__main__':
     rospy.init_node('step_response_characterizer')
