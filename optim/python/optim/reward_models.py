@@ -7,8 +7,7 @@ from sklearn.ensemble import RandomForestRegressor
 from GPy.models import GPRegression
 #from sklearn.gaussian_process import GaussianProcessRegressor as GPRegressor
 #from sklearn.gaussian_process.kernels import ConstantKernel, WhiteKernel, Matern
-
-from gp_extras.kernels import HeteroscedasticKernel
+#from gp_extras.kernels import HeteroscedasticKernel
 
 import rospy
 

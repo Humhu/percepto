@@ -5,7 +5,7 @@
 
 <arg name="init_samples" default="30"/>
 <arg name="verbose" default="false"/>
-<arg name="out_path" default="out.pkl"/>
+<arg name="output_path" default="out.pkl"/>
 <arg name="prog_path" default="prog.pkl"/>
 <arg name="resume" default="true"/>
 <arg name="critic_service" default="evaluator/get_critique"/>
@@ -15,7 +15,7 @@
 <arg name="context_stream" default="void"/>
 
 <node pkg="optim" type="BayesianOptimizer.py" name="optimizer" output="screen" required="true">
-    <param name="output_path" value="$(arg out_path)"/>
+    <param name="output_path" value="$(arg output_path)"/>
     <param name="load_path" value="$(arg load_path)" if="$(arg resume)"/>
     <param name="progress_path" value="$(arg prog_path)"/>
 

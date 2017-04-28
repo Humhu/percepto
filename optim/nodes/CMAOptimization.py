@@ -155,7 +155,7 @@ class CMAOptimizer:
                               len(current_inputs))
                 curr_outval, curr_feedback = self.interface(inval)
                 current_outputs.append(curr_outval)
-                for k, v in curr_feedback:
+                for k, v in curr_feedback.iteritems():
                     if k not in current_feedbacks:
                         current_feedbacks[k] = []
                     current_feedbacks[k].append(v)
@@ -199,9 +199,10 @@ if __name__ == '__main__':
     interface_info = rospy.get_param('~interface')
     optimizer.interface = optim.CritiqueInterface(**interface_info)
 
-    run_on_start = rospy.get_param('run_on_start', False)
+    run_on_start = rospy.get_param('~run_on_start', False)
     try:
         if run_on_start:
+            rospy.loginfo('Running on start...')
             res = optimizer.execute()
         else:
             rospy.spin()
