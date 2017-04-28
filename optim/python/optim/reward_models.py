@@ -180,7 +180,6 @@ class GaussianProcessRewardModel(RewardModel):
     def __init__(self, min_samples=10, batch_retries=20, refine_ll_delta=1.0,
                  refine_retries=1, verbose=False, enable_refine=True, **kwargs):
 
-        self.gp = None  # Init later
         self.min_samples = min_samples
         self.hp_batch_retries = batch_retries
         self.enable_refine = enable_refine
@@ -189,9 +188,11 @@ class GaussianProcessRewardModel(RewardModel):
         self.hp_init = False
         self.last_ll = None
         self.kwargs = kwargs
+        self.verbose = bool(verbose)
+        
+        self.gp = None  # Init later
         self.inputs = []
         self.outputs = []
-        self.verbose = bool(verbose)
 
     def _initialize(self):
         x = np.asarray(self.inputs)
@@ -271,6 +272,7 @@ class GaussianProcessRewardModel(RewardModel):
     def clear(self):
         self.inputs = []
         self.outputs = []
+        self.gp = None
 
     def fit(self, X, y):
         """Initialize the model from lists of inputs and corresponding rewards.

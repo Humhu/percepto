@@ -11,6 +11,7 @@ import optim
 import broadcast
 
 import matplotlib.pyplot as plt
+from percepto_msgs.srv import RunOptimization, RunOptimizationResponse
 
 
 class BayesianOptimizer(object):
@@ -27,12 +28,25 @@ class BayesianOptimizer(object):
 
         # Parse input stream if available
         stream_name = rospy.get_param('~input_stream', None)
-        self.stream_rx = None
-        if stream_name is not None:
+        self.use_context = (stream_name is not None)
+
+        if self.use_context:
             self.stream_rx = broadcast.Receiver(stream_name)
-            self.full_reward_model = self.reward_model
-            self.reward_model = optim.PartialModelWrapper(
-                self.full_reward_model)
+
+            # TODO naive contextual mode?
+            #self.full_reward_model = self.reward_model
+            #self.reward_model = optim.PartialModelWrapper(self.full_reward_model)
+
+            self.contexts = []
+            self.acq_func = optim.ContextualUCBAcquisition(model=self.reward_model,
+                                                           mode='empirical',
+                                                           context=self.contexts)
+        else:
+            # TODO Parse selection approach + parameters
+            self.stream_rx = None
+            self.acq_func = optim.UCBAcquisition(self.reward_model)
+
+        self.beta_base = rospy.get_param('~exploration_rate', 1.0)
 
         # Parse acquisition optimizer
         optimizer_info = rospy.get_param('~auxiliary_optimizer')
@@ -63,10 +77,7 @@ class BayesianOptimizer(object):
             else:
                 plt.ion()
 
-        # TODO Parse selection approach + parameters
-        self.acq_func = optim.UCBAcquisition(self.reward_model)
-        self.beta_base = rospy.get_param('~exploration_rate', 1.0)
-
+        self.round_index = 0
         self.rounds = []
         init_info = rospy.get_param('~initialization')
         self.num_init = init_info['num_samples']
@@ -82,8 +93,26 @@ class BayesianOptimizer(object):
 
         self.max_evals = rospy.get_param('~convergence/max_evaluations')
 
+        self.opt_server = rospy.Service('~run_optimization', RunOptimization,
+                                        self.opt_callback)
+
+        self.interface = None
+
+    def opt_callback(self, req):
+        self.round_index = 0
+        if not req.warm_start:
+            self.reward_model.clear()
+
+        res = RunOptimizationResponse()
+        try:
+            res.solution, res.objective = self.execute()
+            res.success = True
+        except:
+            res.success = False
+        return res
+
     def get_context(self):
-        if self.stream_rx is None:
+        if not self.use_context:
             return None
 
         while not rospy.is_shutdown():
@@ -94,10 +123,6 @@ class BayesianOptimizer(object):
                 rospy.sleep(1.0)
             else:
                 return context
-
-    @property
-    def round_index(self):
-        return len(self.rounds)
 
     @property
     def is_initialized(self):
@@ -116,13 +141,13 @@ class BayesianOptimizer(object):
         x, acq = self.aux_optimizer.optimize(x_init=self.aux_x_init,
                                              func=self.acq_func)
         self.acq_func.exploration_rate = curr_beta
-        return x
+        return x, acq
 
     def pick_action(self):
         """Selects the next sample to explore by optimizing the acquisition function.
         """
         self.acq_func.exploration_rate = self.beta_base * \
-            math.log(len(self.rounds) + 1)
+            math.log(self.round_index + 1)
         x, acq = self.aux_optimizer.optimize(x_init=self.aux_x_init,
                                              func=self.acq_func)
         rospy.loginfo('Next sample %s with beta %f and acquisition value %f',
@@ -132,7 +157,7 @@ class BayesianOptimizer(object):
     def finished(self):
         """Returns whether the optimization is complete.
         """
-        return len(self.rounds) >= self.max_evals
+        return self.round_index >= self.max_evals
 
     def visualize_rewards(self):
         plt.figure('Reward Visualization')
@@ -152,24 +177,24 @@ class BayesianOptimizer(object):
         plt.draw()
 
     def optimize_reward_model(self):
-        if self.stream_rx is None:
-            self.reward_model.batch_optimize()
-        else:
+        if self.use_context:
             self.full_reward_model.batch_optimize()
+        else:
+            self.reward_model.batch_optimize()
 
     def report_sample(self, context, action, reward):
-        if self.stream_rx is None:
-            self.reward_model.report_sample(x=action, reward=reward)
-        else:
+        if self.use_context:
             x = np.hstack((action, context))
             self.reward_model.report_sample(x=x, reward=reward)
+        else:
+            self.reward_model.report_sample(x=action, reward=reward)
 
-    def execute(self, interface):
+    def execute(self):
         """Begin execution of the specified problem.
         """
         model_initialized = False
         while not rospy.is_shutdown() and not self.finished():
-            rospy.loginfo('Round %d...', len(self.rounds))
+            rospy.loginfo('Round %d...', self.round_index)
 
             context = self.get_context()
             if self.stream_rx is not None:
@@ -192,19 +217,19 @@ class BayesianOptimizer(object):
                 rospy.loginfo('Picked sample %s with predicted mean %f +- %f',
                               str(action), pred_mean, pred_sd)
 
-            reward, feedback = interface(action)
+            reward, feedback = self.interface(action)
             self.report_sample(context=context, action=action, reward=reward)
             self.rounds.append((context, action, reward, feedback))
+            self.round_index += 1
 
             if self.visualize:
                 self.visualize_rewards()
 
+        return optimizer.get_current_optima()
+
 
 if __name__ == '__main__':
     rospy.init_node('bayesian_optimizer')
-
-    interface_info = rospy.get_param('~interface')
-    interface = optim.CritiqueInterface(**interface_info)
 
     out_path = rospy.get_param('~output_path')
     out_file = open(out_path, 'w')
@@ -223,15 +248,22 @@ if __name__ == '__main__':
         rospy.logwarn(
             'No progress path specified. Will not save optimization progress!')
 
+    interface_info = rospy.get_param('~interface')
+    optimizer.interface = optim.CritiqueInterface(**interface_info)
+
+    run_on_start = rospy.get_param('run_on_start', False)
     try:
-        optimizer.execute(interface)
+        if run_on_start:
+            res = optimizer.execute()
+        else:
+            rospy.spin()
     except rospy.ROSInterruptException:
         pass
 
     # Save progress
     if prog_file is not None:
+        optimizer.interface = None
         pickle.dump(optimizer, prog_file)
 
     # Save output
-    x_best = optimizer.pick_action()
-    pickle.dump((x_best, optimizer.rounds), out_file)
+    pickle.dump((res, optimizer.rounds), out_file)

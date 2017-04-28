@@ -3,6 +3,7 @@
 import numpy as np
 import optim.reward_models as rewards
 import cma
+from sklearn.neighbors import KernelDensity
 
 class ArmSelector(object):
     """Base class for all continuous-valued arm selectors.
@@ -95,3 +96,27 @@ class UCBAcquisition(object):
     def __call__(self, x):
         pred_mean, pred_sd = self.model.predict(x, return_std=True)
         return pred_mean + self.exploration_rate * pred_sd
+
+class ContextualUCBAcquisition(UCBAcquisition):
+    """An upper confidence bound on expected reward over empirical contexts.
+    """
+    def __init__(self, model, mode, contexts, **kwargs):
+        super(ContextualUCBAcquisition, self).__init__(model)
+        
+        self.contexts = contexts # reference
+        self.mode = mode
+        if self.mode == 'empirical':
+            pass
+        elif self.mode == 'kde':
+            raise ValueError('kde mode not supported yet!')
+            #self.kde = KernelDensity(**kwargs)
+        else:
+            raise ValueError('Unknown mode: %s' % self.mode)
+
+    def __call__(self, x):
+        if self.mode == 'empirical':
+            N = len(self.contexts)
+            acts = np.tile(x, (N,1))
+            X = np.hstack((self.contexts, acts))
+            pred_mean, pred_sd = self.model.predict(X)
+            return pred_mean + self.exploration_rate * pred_sd
