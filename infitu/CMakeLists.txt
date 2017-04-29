@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
                     relearn
                     paraset
                     poli
+                    dynamnic_reconfigure
 )
 
 add_service_files( FILES
@@ -43,6 +44,7 @@ catkin_package( INCLUDE_DIRS    include
                                 relearn
                                 paraset
                                 poli
+                                dynamic_reconfigure
 
                 DEPENDS         Boost
                                 system_lib
@@ -66,17 +68,6 @@ add_dependencies(      infitu
 )
 target_link_libraries( infitu ${catkin_LIBRARIES} )
 
-add_executable(        continuous_parameter_interface 
-                       nodes/continuous_parameter_interface.cpp 
-)
-add_dependencies(      continuous_parameter_interface 
-                       infitu_gencfg 
-                       ${catkin_EXPORTED_TARGETS} 
-)
-target_link_libraries( continuous_parameter_interface 
-                       infitu
-                       ${catkin_LIBRARIES} 
-)
 
 install( TARGETS             infitu
          ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}

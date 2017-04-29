@@ -1,13 +1,13 @@
 """Contains classes that provide wrappers around sets of runtime parameters.
 """
 
-import rospy
-import numpy as np
-import paraset
 from itertools import izip
+import rospy
+import paraset
+from infitu.utils import *
 
 
-def parse_interface(info):
+def parse_paraset_interface(info):
     """Parses a dictionary to produce a NumericParameterInterface.
     """
     if 'verbose' in info:
@@ -51,13 +51,13 @@ class NumericParameterInterface(object):
     """
 
     def __init__(self, verbose=False):
-        self._setters = []
+        self.names = []
+        self.setters = []
+        self.normalizers = []
         self._verbose = verbose
 
     def add_parameter(self, name, param_name, base_topic, limits):
         """Adds another parameter to this interface.
-
-        The internal list of parameters will be sorted after adding.
         """
         if self._verbose:
             rospy.loginfo('Adding parameter %s' % name)
@@ -65,54 +65,74 @@ class NumericParameterInterface(object):
         setter = paraset.RuntimeParamSetter(param_type=float,
                                             name=param_name,
                                             base_topic=base_topic)
-        scale = (limits[1] - limits[0]) / 2.0
-        offset = (limits[1] + limits[0]) / 2.0
-        if scale < 0:
-            raise ValueError('Limits must be [low, high]')
+        normalizer = ParameterNormalizer(min_val=limits[0],
+                                         max_val=limits[1],
+                                         enable_rounding=False)
 
-        def unscale_func(x):
-            x = min(max(x, -1), 1)
-            return x * scale + offset
-        def scale_func(x):
-            return (x - offset) / scale
+        self.names.append(name)
+        self.setters.append(setter)
+        self.normalizers.append(normalizer)
 
-        self._setters.append((name, param_name, setter, unscale_func, scale_func))
-        self._setters.sort(key=lambda x: x[0])
+    def process_element(self, v, name, normalized):
+        try:
+            ind = self.names.index(name)
+        except ValueError:
+            raise ValueError('Param %s not registered!' % name)
 
-    def set_values(self, v, names=None):
+        setter = self.setters[ind]
+        normalizer = self.normalizers[ind]
+
+        vpre = v
+        v = normalizer.check_bounds(v, normalized)
+
+        if normalized:
+            vpre_raw = normalizer.unnormalize(vpre)
+            v_norm = v
+            v_raw = normalizer.unnormalize(v)
+        else:
+            vpre_raw = vpre
+            v_raw = v
+            v_norm = normalizer.normalize(v)
+
+        if vpre_raw != v_raw:
+            rospy.logwarn('Bounding requested %s raw %f to (%f, %f)',
+                          name, vpre_raw, normalizer.min_val, normalizer.max_val)
+
+        return v_raw, v_norm, setter, normalizer
+
+    def set_values(self, v, names=None, normalized=True):
         """Sets all parameters according to vector input v.
 
         Optionally, assign the parameters with corresponding ordered names.
 
         Elements of v outside of -1, 1 will be truncated
         """
-        if len(v) != len(self._setters):
-            raise ValueError('Expected %d elements, got %d' %
-                             (len(self._setters), len(v)))
 
         if names is None:
             names = self.parameter_names
 
+        if len(v) != len(names):
+            raise ValueError('Expected %d elements, got %d' %
+                             (len(names), len(v)))
+
         out = 'Setting values:'
         resout = 'Actual values:'
         warnouts = []
-        ref_names = self.parameter_names
-        for vi, v_name in izip(v, names):
-            try:
-                ind = ref_names.index(v_name)
-            except ValueError:
-                rospy.logerr('Parameter %s not in interface', v_name)
+        for vi, v_name in zip(v, names):
 
-            name, _, setter, unscale_func, scale_func = self._setters[ind]
-            v_raw = unscale_func(vi)
+            proc = self.process_element(v=vi,
+                                        name=v_name,
+                                        normalized=normalized)
+            v_raw, v_norm, setter, normalizer = proc
 
-            out += '\n\t%s: %f (%f)' % (name, vi, v_raw)
+            out += '\n\t%s: %f (%f)' % (v_name, v_raw, v_norm)
             actual_raw = setter.set_value(v_raw)
-            actual = scale_func(actual_raw)
-            resout += '\n\t%s: %f (%f)' % (name, actual, actual_raw)
+            actual = normalizer.normalize(actual_raw)
+            resout += '\n\t%s: %f (%f)' % (v_name, actual_raw, actual)
 
-            if vi != actual:
-                warnouts.append( 'Set param %s to %f but got actual %f' % (name, v_raw, actual_raw) )
+            if v_raw != actual_raw:
+                warnouts.append('Set param %s to %f but got actual %f' % (
+                    v_name, v_raw, actual_raw))
 
         if self._verbose:
             rospy.loginfo(out)
@@ -121,16 +141,20 @@ class NumericParameterInterface(object):
                 rospy.logwarn(w)
 
     def get_values(self, normalized=True):
-        return [s[4](s[2].get_value()) for s in self._setters]
+        if normalized:
+            return [nn.normalize(ss.get_value())
+                    for nn, ss in izip(self.normalizers, self.setters)]
+        else:
+            return [s[2].get_value() for s in self.setters]
 
     @property
     def num_parameters(self):
         """The number of parameters wrapped in this interface.
         """
-        return len(self._setters)
+        return len(self.names)
 
     @property
     def parameter_names(self):
         """An ordered list of the parameter names
         """
-        return [s[0] for s in self._setters]
+        return list(self.names)
