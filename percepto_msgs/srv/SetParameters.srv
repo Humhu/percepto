@@ -1,4 +1,10 @@
 # Service to set policy parameters
+#
+# Request Fields
+# --------------
+# parameters : The ordered values of the parameters
+# names      : The ordered names of the parameters (optional)
 
 float64[] parameters
+string[] names
 ---

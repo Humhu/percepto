@@ -1,4 +1,10 @@
 # Service to retrieve policy parameters
+#
+# Response Fields
+# ---------------
+# parameters : ordered values of the parameters
+# names      : ordered names of the parameters
 
 ---
 float64[] parameters
+string[] names
