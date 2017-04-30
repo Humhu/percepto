@@ -25,9 +25,15 @@ if __name__ == '__main__':
     pre_actions = np.array(data['pre_actions'])
     actions = np.array(data['actions'])
     reward_traces = data['reward_traces']
-    contexts = np.array(data['contexts'])
-    pre_actions_contexts = np.hstack((pre_actions, contexts))
-    actions_contexts = np.hstack((actions, contexts))
+
+    has_contexts = ('contexts' in data)
+    if has_contexts:
+        contexts = np.array(data['contexts'])
+        pre_actions_contexts = np.hstack((pre_actions, contexts))
+        actions_contexts = np.hstack((actions, contexts))
+    else:
+        pre_actions_contexts = pre_actions
+        actions_contexts = actions
 
     # 1.1 Normalize reward trace values
     trace_times = [zip(*tr)[0] for tr in reward_traces]
@@ -67,13 +73,19 @@ if __name__ == '__main__':
 
     # 3. Compute MI across action dimensions, reward values
     a_dim = actions.shape[1]
-    x_dim = contexts.shape[1]
+    if has_contexts:
+        x_dim = contexts.shape[1]
+    else:
+        x_dim = 0
+        
     dim_pre_act_mi = [[mde.mutinf(n_bins=11, x=pre_actions[:,j], y=norm_reward_traces[:,i])
                   for i in range(num_trace_times)] for j in range(a_dim)]
     dim_post_act_mi = [[mde.mutinf(n_bins=11, x=actions[:,j], y=norm_reward_traces[:,i])
                   for i in range(num_trace_times)] for j in range(a_dim)]
-    dim_contexts_mi = [[mde.mutinf(n_bins=11, x=contexts[:,j], y=norm_reward_traces[:,i])
-                  for i in range(num_trace_times)] for j in range(x_dim)]
+    
+    if has_contexts:
+        dim_contexts_mi = [[mde.mutinf(n_bins=11, x=contexts[:,j], y=norm_reward_traces[:,i])
+                    for i in range(num_trace_times)] for j in range(x_dim)]
 
     def cmap(i):
         return cm.Accent(float(i) / (a_dim + x_dim))
@@ -81,6 +93,7 @@ if __name__ == '__main__':
     for i in range(a_dim):
         plt.plot(norm_trace_times, dim_post_act_mi[i], color=cmap(i))
         plt.text(norm_trace_times[-1], dim_post_act_mi[i][-1], 'action %d' % i)
-    for i in range(x_dim):
-        plt.plot(norm_trace_times, dim_contexts_mi[i], color=cmap(i))
-        plt.text(norm_trace_times[-1], dim_contexts_mi[i][-1], 'context %d' % i)
+    if has_contexts:
+        for i in range(x_dim):
+            plt.plot(norm_trace_times, dim_contexts_mi[i], color=cmap(i))
+            plt.text(norm_trace_times[-1], dim_contexts_mi[i][-1], 'context %d' % i)

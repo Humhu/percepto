@@ -145,7 +145,7 @@ class NumericParameterInterface(object):
             return [nn.normalize(ss.get_value())
                     for nn, ss in izip(self.normalizers, self.setters)]
         else:
-            return [s[2].get_value() for s in self.setters]
+            return [s.get_value() for s in self.setters]
 
     @property
     def num_parameters(self):

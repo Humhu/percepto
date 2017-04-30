@@ -2,35 +2,30 @@
 
 import rospy
 from threading import Lock
-from percepto_msgs.srv import GetCritique, GetCritiqueRequest, GetCritiqueResponse
+from percepto_msgs.srv import GetBlockCritique, GetBlockCritiqueRequest, GetBlockCritiqueResponse
 from percepto_msgs.srv import SetParameters, SetParametersRequest
 from infitu.srv import StartEvaluation, StartTeardown, SetRecording
 from fieldtrack.srv import ResetFilter, ResetFilterRequest
 from argus_utils import wait_for_service
 
 
-class EmpiricalParameterEvaluator:
+class BlockParameterEvaluator:
 
     def __init__(self):
-        self.index_mode = rospy.get_param('~indexing_mode')
-        if self.index_mode == 'as_is':
-
-        elif self.index_mode == 'block':
-            # Parse block definitions
-            block_info = rospy.get_param('~blocks')
-            self.blocks = {}
-            for name, params in block_info:
-                if name in self.blocks:
-                    raise ValueError('Block name %d repeated' % name)
-                self.blocks[name] = params
-        elif self.index_mode == 'individual':
-
         # Create parameter setter proxy
         setter_topic = rospy.get_param('~parameter_set_service')
         wait_for_service(setter_topic)
         self.setter_proxy = rospy.ServiceProxy(setter_topic,
                                                SetParameters,
                                                True)
+
+        # Parse block definitions
+        block_info = rospy.get_param('~blocks')
+        self.blocks = {}
+        for name, params in block_info:
+            if name in self.blocks:
+                raise ValueError('Block name %d repeated' % name)
+            self.blocks[name] = params
 
         # Create evaluation trigger proxy
         self.mode = rospy.get_param('~evaluation_mode')
@@ -67,8 +62,9 @@ class EmpiricalParameterEvaluator:
         self.recorders = {}
         for name, topic in recording_topics.iteritems():
             wait_for_service(topic)
-            self.recorders[name] = rospy.ServiceProxy(
-                topic, SetRecording, True)
+            self.recorders[name] = rospy.ServiceProxy(topic,
+                                                      SetRecording,
+                                                      True)
         self.critique_record = rospy.get_param('~critique_record')
         if self.critique_record not in self.recorders:
             raise ValueError('Critique not a registered recorder!')
@@ -77,7 +73,7 @@ class EmpiricalParameterEvaluator:
         eval_delay = rospy.get_param('~evaluation_delay', 0.0)
         self.evaluation_delay = rospy.Duration(eval_delay)
         self.critique_service = rospy.Service('~get_critique',
-                                              GetCritique,
+                                              GetBlockCritique,
                                               self.critique_callback)
 
     def start_recording(self):
@@ -107,7 +103,7 @@ class EmpiricalParameterEvaluator:
 
         return (critique, feedback)
 
-    def set_parameters(self, inval):
+    def set_parameters(self, inval, block):
         """Set the parameters to be evaluated. Returns success."""
 
         preq = SetParametersRequest()
@@ -190,9 +186,9 @@ class EmpiricalParameterEvaluator:
 
 
 if __name__ == '__main__':
-    rospy.init_node('empirical_parameter_evaluator')
+    rospy.init_node('block_parameter_evaluator')
     try:
-        epe = EmpiricalParameterEvaluator()
+        epe = BlockParameterEvaluator()
         rospy.spin()
     except rospy.ROSInterruptException:
         pass

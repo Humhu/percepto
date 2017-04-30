@@ -155,9 +155,9 @@ class NumericDynaReconfigInterface(object):
         config = self.client.get_configuration()
 
         if not normalized:
-            return [config[n] for n in self.names]
+            return [config[n] for n in self.param_names]
         else:
-            return [nz.normalize(config[n]) for n, nz in izip(self.names, self.normalizers)]
+            return [nz.normalize(config[n]) for n, nz in izip(self.param_names, self.normalizers)]
 
     @property
     def num_parameters(self):
