@@ -3,7 +3,8 @@
 # Request Fields
 # --------------
 # time            : The time at which the critique should occur (may not be used)
-# input           : The input for which the critique is requested (may not be used)
+# input           : The ordered input for which the critique is requested (may not be used)
+# names           : The ordered names corresponding to the input (may not be used)
 #
 # Response Fields
 # ---------------
@@ -13,6 +14,7 @@
 
 time time
 float64[] input
+string[] names
 ---
 float64 critique
 string[] feedback_names
