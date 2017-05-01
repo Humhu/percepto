@@ -14,7 +14,7 @@ class EmpiricalParameterEvaluator:
     def __init__(self):
         self.index_mode = rospy.get_param('~indexing_mode')
         if self.index_mode == 'as_is':
-
+            pass #TODO
         elif self.index_mode == 'block':
             # Parse block definitions
             block_info = rospy.get_param('~blocks')
@@ -24,6 +24,7 @@ class EmpiricalParameterEvaluator:
                     raise ValueError('Block name %d repeated' % name)
                 self.blocks[name] = params
         elif self.index_mode == 'individual':
+            pass # TODO
 
         # Create parameter setter proxy
         setter_topic = rospy.get_param('~parameter_set_service')

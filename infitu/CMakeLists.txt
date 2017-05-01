@@ -14,7 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
                     relearn
                     paraset
                     poli
-                    dynamnic_reconfigure
+                    dynamic_reconfigure
 )
 
 add_service_files( FILES
