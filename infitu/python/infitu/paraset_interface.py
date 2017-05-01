@@ -34,11 +34,12 @@ def parse_paraset_interface(info):
     for name, v in ordered_items:
         param_name = v['param_name']
         base_topic = v['base_namespace']
-        limits = (v['lower_limit'], v['upper_limit'])
+        normalizer = parse_normalizer(v)
+
         interface.add_parameter(name=name,
                                 param_name=param_name,
                                 base_topic=base_topic,
-                                limits=limits)
+                                normalizer=normalizer)
     return interface
 
 
@@ -56,7 +57,7 @@ class NumericParameterInterface(object):
         self.normalizers = []
         self._verbose = verbose
 
-    def add_parameter(self, name, param_name, base_topic, limits):
+    def add_parameter(self, name, param_name, base_topic, normalizer):
         """Adds another parameter to this interface.
         """
         if self._verbose:
@@ -65,9 +66,6 @@ class NumericParameterInterface(object):
         setter = paraset.RuntimeParamSetter(param_type=float,
                                             name=param_name,
                                             base_topic=base_topic)
-        normalizer = ParameterNormalizer(min_val=limits[0],
-                                         max_val=limits[1],
-                                         enable_rounding=False)
 
         self.names.append(name)
         self.setters.append(setter)
