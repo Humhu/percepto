@@ -251,7 +251,7 @@ if __name__ == '__main__':
     interface_info = rospy.get_param('~interface')
     optimizer.interface = optim.CritiqueInterface(**interface_info)
 
-    run_on_start = rospy.get_param('run_on_start', False)
+    run_on_start = rospy.get_param('run_on_start', True)
     try:
         if run_on_start:
             res = optimizer.execute()

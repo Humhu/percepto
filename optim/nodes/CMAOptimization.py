@@ -200,6 +200,7 @@ if __name__ == '__main__':
     optimizer.interface = optim.CritiqueInterface(**interface_info)
 
     run_on_start = rospy.get_param('~run_on_start', False)
+    res = None
     try:
         if run_on_start:
             rospy.loginfo('Running on start...')

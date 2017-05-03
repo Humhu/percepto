@@ -1,6 +1,6 @@
 """Wrappers for rospy support
 """
-import rospy
+import rospy, time
 from itertools import izip
 from percepto_msgs.srv import GetCritique, GetCritiqueRequest
 
@@ -23,13 +23,14 @@ class CritiqueInterface(object):
     verbose : bool (default False)
         Whether to print each evaluation result
     """
-    def __init__(self, topic, verbose=False):
+    def __init__(self, topic, verbose=False, n_retries=5):
         rospy.loginfo('Waiting for critique service: %s', topic)
         rospy.wait_for_service(topic)
         rospy.loginfo('Connected to service: %s', topic)
         self.proxy = rospy.ServiceProxy(topic, GetCritique)
 
         self.verbose = verbose
+        self.n_retries = n_retries
 
     def raw_call(self, x, n=None):
         req = GetCritiqueRequest()
@@ -40,9 +41,16 @@ class CritiqueInterface(object):
         if self.verbose:
             rospy.loginfo('Evaluating %s...', _stringify_names(x, n))
 
-        try:
-            res = self.proxy.call(req)
-        except rospy.ServiceException:
+        succ = False
+        for i in range(self.n_retries):
+            try:
+                res = self.proxy.call(req)
+                succ = True
+                break
+            except rospy.ServiceException:
+                pass
+
+        if not succ:
             rospy.logerr('Could not evaluate: %s ', str(x))
             raise RuntimeError('Could not evaluate')
 

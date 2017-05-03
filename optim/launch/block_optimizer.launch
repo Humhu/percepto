@@ -1,0 +1,35 @@
+<launch>
+
+    <node pkg="optim" type="BlockOptimizationWrapper.py" name="block_wrapper">
+        <rosparam>
+            interface:
+                topic:
+                verbose:
+            blocks:
+                detector: 
+                    parameters: [a, b]
+                    initial: [0, 0]
+                tracker: 
+                    parameters: [c, d]
+                    initial: [0, 0]
+                estimator: 
+                    parameters: [e]
+                    initial: [0]
+
+        </rosparam>
+    </node>
+
+    <node pkg="optim" type="BlockOptimizer.py" name="block_optimizer">
+        <rosparam>
+            convergence:
+                max_iters: 30
+            order: [detector, tracker, estimator]
+            use_warm_starts: false
+            blocks:
+                detector: topic
+                tracker: topic
+                estimator: topic
+        </rosparam>
+    </node>
+
+</launch>

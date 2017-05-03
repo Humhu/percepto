@@ -3,13 +3,12 @@
 <arg name="input_dim"/>
 <arg name="max_evals"/>
 
-<arg name="init_samples" default="30"/>
+<arg name="num_init_samples" default="30"/>
 <arg name="verbose" default="false"/>
 <arg name="output_path" default="out.pkl"/>
 <arg name="prog_path" default="prog.pkl"/>
 <arg name="resume" default="true"/>
 <arg name="critic_service" default="evaluator/get_critique"/>
-<arg name="verbose" default="true"/>
 <arg name="beta" default="1.0"/>
 <arg name="enable_context" default="false"/>
 <arg name="context_stream" default="void"/>
@@ -22,7 +21,7 @@
     <param name="convergence/max_evaluations" value="$(arg max_evals)"/>
     <param name="dim" value="$(arg input_dim)"/>
     <param name="exploration_rate" value="$(arg beta)"/>
-    <param name="initialization/num_samples" value="$(arg init_samples)"/>
+    <param name="initialization/num_samples" value="$(arg num_init_samples)"/>
 
     <param name="interface/topic" value="$(arg critic_service)"/>
     <param name="interface/verbose" value="$(arg verbose)"/>
