@@ -15,8 +15,8 @@ public:
 	SumSquaredErrorReward( ros::NodeHandle& nh, ros::NodeHandle& ph )
 	{
 		_rewardPub = ph.advertise<percepto_msgs::RewardStamped>( "reward", 10 );
-		_odomSub = nh.subscribe( "odom", 10, &SumSquaredErrorReward::OdomCallback, this );
-		_truthSub = nh.subscribe( "odom_truth", 10, &SumSquaredErrorReward::TruthCallback, this );
+		_odomSub = nh.subscribe( "odom", 10, &SumSquaredErrorReward::EstCallback, this );
+		_truthSub = nh.subscribe( "odom_truth", 10, &SumSquaredErrorReward::RefCallback, this );
 
 		GetParam( ph, "log_rewards", _logRewards, false );
 		GetParam( ph, "min_reward", _minReward, -std::numeric_limits<double>::infinity() );
@@ -28,14 +28,14 @@ public:
 		_lastInit = false;
 	}
 
-	void TruthCallback( const nav_msgs::Odometry::ConstPtr& msg )
+	void RefCallback( const nav_msgs::Odometry::ConstPtr& msg )
 	{
 		_lastPose = MsgToPose( msg->pose.pose );
 		_lastVel = MsgToTangent( msg->twist.twist );
 		_lastInit = true;
 	}
 
-	void OdomCallback( const nav_msgs::Odometry::ConstPtr& msg )
+	void EstCallback( const nav_msgs::Odometry::ConstPtr& msg )
 	{
 		if( !_lastInit ) { return; }
 
@@ -44,8 +44,15 @@ public:
 
 		PoseSE3::TangentVector poseErr = PoseSE3::Log( pose * _lastPose.Inverse() );
 		PoseSE3::TangentVector velErr = vel - _lastVel;
+		PoseSE3::TangentVector poseSquaredErr = poseErr.array() * poseErr.array();
+		PoseSE3::TangentVector velSquaredErr = velErr.array() * velErr.array();
 
-		double reward = _posErrWeights.dot( poseErr ) + _velErrWeights.dot( velErr );
+		double reward = _posErrWeights.dot( poseSquaredErr ) + _velErrWeights.dot( velSquaredErr );
+
+		ROS_INFO_STREAM( "poseErr: " << poseErr.transpose() );
+		ROS_INFO_STREAM( "velErr: " << velErr.transpose() );
+		ROS_INFO_STREAM( "raw reward: " << reward );
+
 		reward = std::max( std::min( reward, _maxReward ), _minReward );
 		if( _logRewards )
 		{
