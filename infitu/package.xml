@@ -14,7 +14,6 @@
   <build_depend>message_generation</build_depend>
   <build_depend>argus_utils</build_depend>
   <build_depend>std_msgs</build_depend>
-  <build_depend>relearn</build_depend>
   <build_depend>paraset</build_depend>
   <build_depend>poli</build_depend>
   <build_depend>dynamic_reconfigure</build_depend>
@@ -23,7 +22,6 @@
   <run_depend>message_runtime</run_depend>
   <run_depend>argus_utils</run_depend>
   <run_depend>std_msgs</run_depend>
-  <run_depend>relearn</run_depend>
   <run_depend>paraset</run_depend>
   <run_depend>poli</run_depend>
   <run_depend>dynamic_reconfigure</run_depend>

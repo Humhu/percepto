@@ -64,6 +64,14 @@ target_link_libraries( infitu ${catkin_LIBRARIES} )
 add_executable( ape_reward_node nodes/rewards/ape_reward.cpp )
 target_link_libraries( ape_reward_node infitu )
 
+add_executable( sse_reward_node nodes/rewards/sse_reward.cpp )
+target_link_libraries( sse_reward_node infitu )
+
+add_executable( oll_reward_node nodes/rewards/obs_log_likelihood_reward.cpp )
+target_link_libraries( oll_reward_node infitu )
+
+add_executable( reward_accumulator_node nodes/rewards/reward_accumulator.cpp )
+target_link_libraries( reward_accumulator_node infitu )
 
 install( TARGETS             infitu
          ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
