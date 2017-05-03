@@ -6,17 +6,18 @@
 <arg name="num_init_samples" default="30"/>
 <arg name="verbose" default="false"/>
 <arg name="output_path" default="out.pkl"/>
-<arg name="prog_path" default="prog.pkl"/>
+<arg name="progress_path" default="prog.pkl"/>
 <arg name="resume" default="true"/>
 <arg name="critic_service" default="evaluator/get_critique"/>
 <arg name="beta" default="1.0"/>
-<arg name="enable_context" default="false"/>
 <arg name="context_stream" default="void"/>
+<arg name="context_mode" default="ignore"/>
+<arg name="run_on_start" default="true"/>
 
 <node pkg="optim" type="BayesianOptimizer.py" name="optimizer" output="screen" required="true">
     <param name="output_path" value="$(arg output_path)"/>
     <param name="load_path" value="$(arg load_path)" if="$(arg resume)"/>
-    <param name="progress_path" value="$(arg prog_path)"/>
+    <param name="progress_path" value="$(arg progress_path)"/>
 
     <param name="convergence/max_evaluations" value="$(arg max_evals)"/>
     <param name="dim" value="$(arg input_dim)"/>
@@ -27,11 +28,16 @@
     <param name="interface/verbose" value="$(arg verbose)"/>
     <param name="reward_model/verbose" value="$(arg verbose)"/>
 
-    <param name="input_stream" value="$(arg context_stream)" if="$(arg enable_context)"/>
+    <param name="run_on_start" value="$(arg run_on_start)"/>
+    <param name="context_mode" value="$(arg context_mode)"/>
+    <param name="input_stream" value="$(arg context_stream)"/>
     <rosparam>
         lower_bounds: -1
         upper_bounds: 1
         sequential_mode: false
+
+        context_normalization:
+            mode: minmax
 
         reward_model:
             type: gaussian_process

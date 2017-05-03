@@ -93,8 +93,11 @@ class UCBAcquisition(object):
             raise RuntimeWarning('Negative value %f for exploration_rate' % b)
         self._exploration_rate = b
 
+    def predict(self, x):
+        return self.model.predict(x, return_std=True)
+
     def __call__(self, x):
-        pred_mean, pred_sd = self.model.predict(x, return_std=True)
+        pred_mean, pred_sd = self.predict(x)
         return pred_mean + self.exploration_rate * pred_sd
 
 class ContextualUCBAcquisition(UCBAcquisition):
@@ -113,10 +116,14 @@ class ContextualUCBAcquisition(UCBAcquisition):
         else:
             raise ValueError('Unknown mode: %s' % self.mode)
 
-    def __call__(self, x):
+    def predict(self, x):
         if self.mode == 'empirical':
             N = len(self.contexts)
             acts = np.tile(x, (N,1))
-            X = np.hstack((self.contexts, acts))
-            pred_mean, pred_sd = self.model.predict(X)
-            return pred_mean + self.exploration_rate * pred_sd
+            X = np.hstack((acts, self.contexts))
+            pred_mean, pred_sd = self.model.predict(X, return_std=True)
+        return np.mean(pred_mean), np.mean(pred_sd)
+
+    def __call__(self, x):
+        pred_mean, pred_sd = self.predict(x)
+        return pred_mean + self.exploration_rate * pred_sd

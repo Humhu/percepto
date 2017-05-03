@@ -28,25 +28,12 @@ class BayesianOptimizer(object):
 
         # Parse input stream if available
         stream_name = rospy.get_param('~input_stream', None)
-        self.use_context = (stream_name is not None)
-
-        if self.use_context:
+        if stream_name is not None:
             self.stream_rx = broadcast.Receiver(stream_name)
-
-            # TODO naive contextual mode?
-            #self.full_reward_model = self.reward_model
-            #self.reward_model = optim.PartialModelWrapper(self.full_reward_model)
-
-            self.contexts = []
-            self.acq_func = optim.ContextualUCBAcquisition(model=self.reward_model,
-                                                           mode='empirical',
-                                                           context=self.contexts)
         else:
-            # TODO Parse selection approach + parameters
             self.stream_rx = None
-            self.acq_func = optim.UCBAcquisition(self.reward_model)
 
-        self.beta_base = rospy.get_param('~exploration_rate', 1.0)
+        self.context_mode = rospy.get_param('~context_mode', 'ignore')
 
         # Parse acquisition optimizer
         optimizer_info = rospy.get_param('~auxiliary_optimizer')
@@ -68,6 +55,31 @@ class BayesianOptimizer(object):
         self.aux_x_init = 0.5 * (self.lower_bounds + self.upper_bounds)
         self.aux_x_init[np.logical_not(np.isfinite(self.aux_x_init))] = 0
 
+        if self.context_mode == 'optimize':
+            if stream_name is None:
+                raise ValueError(
+                    'Cannot run in optimize context mode without input stream')
+            self.full_reward_model = self.reward_model
+            self.reward_model = optim.PartialModelWrapper(
+                self.full_reward_model)
+            self.reward_model.active_inds = range(self.input_dim)
+            self.reward_model.base_input = np.zeros(
+                self.input_dim + self.stream_rx.stream_feature_size)
+            self.acq_func = optim.UCBAcquisition(self.reward_model)
+
+        elif self.context_mode == 'marginalize':
+            if stream_name is None:
+                raise ValueError(
+                    'Cannot run in marginalize context mode without input stream')
+            self.contexts = []
+            self.acq_func = optim.ContextualUCBAcquisition(model=self.reward_model,
+                                                           mode='empirical',
+                                                           contexts=self.contexts)
+        elif self.context_mode == 'ignore':
+            self.acq_func = optim.UCBAcquisition(self.reward_model)
+
+        self.beta_base = rospy.get_param('~exploration_rate', 1.0)
+
         self.visualize = rospy.get_param('~visualize', False)
         if self.visualize:
             if self.input_dim != 1:
@@ -77,7 +89,8 @@ class BayesianOptimizer(object):
             else:
                 plt.ion()
 
-        self.round_index = 0
+        self.model_initialized = False
+        self.init_buffer = []
         self.rounds = []
         init_info = rospy.get_param('~initialization')
         self.num_init = init_info['num_samples']
@@ -91,6 +104,15 @@ class BayesianOptimizer(object):
             raise ValueError(
                 'Invalid initial distribution method %s' % init_method)
 
+        norm_params = rospy.get_param('~context_normalization', None)
+        if norm_params is not None and self.stream_rx is not None:
+            norm_params['dim'] = self.stream_rx.stream_feature_size
+            norm_params['min_samples'] = self.num_init
+            norm_params['keep_updating'] = False
+            self.normalizer = optim.OnlineFeatureNormalizer(**norm_params)
+        else:
+            self.normalizer = None
+
         self.max_evals = rospy.get_param('~convergence/max_evaluations')
 
         self.opt_server = rospy.Service('~run_optimization', RunOptimization,
@@ -99,7 +121,6 @@ class BayesianOptimizer(object):
         self.interface = None
 
     def opt_callback(self, req):
-        self.round_index = 0
         if not req.warm_start:
             self.reward_model.clear()
 
@@ -112,7 +133,7 @@ class BayesianOptimizer(object):
         return res
 
     def get_context(self):
-        if not self.use_context:
+        if self.stream_rx is None:
             return None
 
         while not rospy.is_shutdown():
@@ -121,12 +142,12 @@ class BayesianOptimizer(object):
             if context is None:
                 rospy.logerr('Could not read context')
                 rospy.sleep(1.0)
-            else:
-                return context
+
+            return context
 
     @property
-    def is_initialized(self):
-        return self.round_index >= self.num_init
+    def is_initializing(self):
+        return len(self.init_buffer) < self.num_init
 
     def pick_initial_sample(self):
         """Selects the next sample for initialization by sampling from
@@ -143,21 +164,28 @@ class BayesianOptimizer(object):
         self.acq_func.exploration_rate = curr_beta
         return x, acq
 
-    def pick_action(self):
+    def pick_action(self, context):
         """Selects the next sample to explore by optimizing the acquisition function.
         """
+        if self.normalizer is not None:
+            context = self.normalizer.process(context)
+
+        if self.context_mode == 'optimize':
+            self.reward_model.base_input[self.input_dim:] = context
+
         self.acq_func.exploration_rate = self.beta_base * \
-            math.log(self.round_index + 1)
+            math.log(len(self.rounds) + 1)
         x, acq = self.aux_optimizer.optimize(x_init=self.aux_x_init,
                                              func=self.acq_func)
         rospy.loginfo('Next sample %s with beta %f and acquisition value %f',
                       str(x), self.acq_func.exploration_rate, acq)
-        return x
+        rmean, rsd = self.acq_func.predict(x)
+        return x, rmean, rsd
 
     def finished(self):
         """Returns whether the optimization is complete.
         """
-        return self.round_index >= self.max_evals
+        return len(self.rounds) >= self.max_evals
 
     def visualize_rewards(self):
         plt.figure('Reward Visualization')
@@ -176,51 +204,89 @@ class BayesianOptimizer(object):
         plt.plot(x_past, r_past, 'b.')
         plt.draw()
 
-    def optimize_reward_model(self):
-        if self.use_context:
+    def initialize_reward_model(self):
+        if self.model_initialized:
+            raise RuntimeError('Model already initialized!')
+
+        if self.normalizer is not None:
+            for c, a, r, f in self.init_buffer:
+                self.normalizer.process(c)
+        self.normalizer.set_updating(False)
+
+        for c, a, r, f in self.init_buffer:
+            c = self.normalizer.process(c)
+            self.report_sample(context=c, action=a, reward=r, feedback=f)
+
+        if self.context_mode == 'optimize':
             self.full_reward_model.batch_optimize()
         else:
             self.reward_model.batch_optimize()
 
-    def report_sample(self, context, action, reward):
-        if self.use_context:
+        self.model_initialized = True
+
+    def report_initialization(self, context, action, reward, feedback):
+        self.init_buffer.append((context, action, reward, feedback))
+
+        if not self.is_initializing:
+            self.initialize_reward_model()
+
+    def report_sample(self, context, action, reward, feedback):
+        if self.normalizer is not None:
+            raw_context = context
+            context = self.normalizer.process(context)
+
+        if self.context_mode == 'marginalize':
+            self.contexts.append(context)
             x = np.hstack((action, context))
             self.reward_model.report_sample(x=x, reward=reward)
-        else:
+        elif self.context_mode == 'optimize':
+            x = np.hstack((action, context))
+            self.reward_model.report_sample(x=x, reward=reward)
+        elif self.context_mode == 'ignore':
             self.reward_model.report_sample(x=action, reward=reward)
+
+        self.rounds.append((raw_context, context, action, reward, feedback))
 
     def execute(self):
         """Begin execution of the specified problem.
         """
-        model_initialized = False
         while not rospy.is_shutdown() and not self.finished():
-            rospy.loginfo('Round %d...', self.round_index)
+
+            if self.is_initializing:
+                rospy.loginfo('Init %d/%d...', len(self.init_buffer), self.num_init)
+            else:
+                rospy.loginfo('Round %d/%d...', len(self.rounds), self.max_evals)
 
             context = self.get_context()
-            if self.stream_rx is not None:
-                a_init = np.zeros(self.input_dim)
-                self.reward_model.base_input = np.hstack((a_init, context))
-                self.reward_model.active_inds = range(self.input_dim)
+            if self.normalizer is not None:
+                cnorm = self.normalizer.process(context)
+            else:
+                cnorm = None
 
-            if not self.is_initialized:
+            if cnorm is not None:
+                rospy.loginfo('Context: %s (%s)', str(context), str(cnorm))
+            else:
+                rospy.loginfo('Context: %s', str(context))
+
+            # Decide what to do
+            if self.is_initializing:
                 action = self.pick_initial_sample()
                 rospy.loginfo('Initializing with %s', str(action))
-
             else:
-                if not model_initialized:
-                    self.optimize_reward_model()
-                    model_initialized = True
-
-                action = self.pick_action()
-                pred_mean, pred_sd = self.reward_model.predict(action,
-                                                               return_std=True)
+                action, rmean, rsd = self.pick_action(context=context)
                 rospy.loginfo('Picked sample %s with predicted mean %f +- %f',
-                              str(action), pred_mean, pred_sd)
+                              str(action), rmean, rsd)
 
+            # Do it
             reward, feedback = self.interface(action)
-            self.report_sample(context=context, action=action, reward=reward)
-            self.rounds.append((context, action, reward, feedback))
-            self.round_index += 1
+
+            # Record the results
+            if self.is_initializing:
+                self.report_initialization(context=context, action=action,
+                                           reward=reward, feedback=feedback)
+            else:
+                self.report_sample(context=context, action=action,
+                                   reward=reward, feedback=feedback)
 
             if self.visualize:
                 self.visualize_rewards()
@@ -251,7 +317,7 @@ if __name__ == '__main__':
     interface_info = rospy.get_param('~interface')
     optimizer.interface = optim.CritiqueInterface(**interface_info)
 
-    run_on_start = rospy.get_param('run_on_start', True)
+    run_on_start = rospy.get_param('~run_on_start', False)
     try:
         if run_on_start:
             res = optimizer.execute()
