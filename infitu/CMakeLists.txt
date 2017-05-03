@@ -11,7 +11,6 @@ find_package(catkin REQUIRED COMPONENTS
                     message_generation
                     argus_utils
                     std_msgs
-                    relearn
                     paraset
                     poli
                     dynamic_reconfigure
@@ -19,6 +18,7 @@ find_package(catkin REQUIRED COMPONENTS
 
 add_service_files( FILES
                    StartEvaluation.srv
+                   StartSetup.srv				   
                    StartTeardown.srv
                    SetRecording.srv
 )
@@ -30,9 +30,6 @@ generate_messages()
 # Use Boost for most utilities, threading
 find_package(Boost REQUIRED COMPONENTS random)
 
-# Use Eigen for matrices, linear algebra
-find_package(Eigen3 REQUIRED)
-
 catkin_package( INCLUDE_DIRS    include
 
                 LIBRARIES       infitu
@@ -41,19 +38,16 @@ catkin_package( INCLUDE_DIRS    include
                                 message_runtime
                                 argus_utils
                                 std_msgs
-                                relearn
                                 paraset
                                 poli
                                 dynamic_reconfigure
 
                 DEPENDS         Boost
                                 system_lib
-                                Eigen3
 )
 
 
 include_directories(   include
-                       ${EIGEN3_INCLUDE_DIR}
                        ${Boost_INCLUDE_DIRS}
                        ${catkin_INCLUDE_DIRS}
 )
@@ -63,10 +57,12 @@ add_library(           infitu
                        #src/DiscretePolicy.cpp 
 )
 add_dependencies(      infitu 
-                       infitu_gencfg 
                        ${catkin_EXPORTED_TARGETS} 
 )
 target_link_libraries( infitu ${catkin_LIBRARIES} )
+
+add_executable( ape_reward_node nodes/rewards/ape_reward.cpp )
+target_link_libraries( ape_reward_node infitu )
 
 
 install( TARGETS             infitu

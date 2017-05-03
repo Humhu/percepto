@@ -18,9 +18,6 @@ find_package(catkin REQUIRED
 # Use Boost for most utilities, threading
 find_package(Boost REQUIRED COMPONENTS random)
 
-# Use Eigen for matrices, linear algebra
-find_package(Eigen3 REQUIRED)
-
 catkin_package(
 	INCLUDE_DIRS 	include
 						
@@ -48,12 +45,11 @@ add_library( poli
 			#src/DiscretePolicyModules.cpp
 			src/PoliCommon.cpp
 			src/PolicyInfoManager.cpp )
-add_dependencies( poli poli_gencfg ${poli_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
+add_dependencies( poli ${poli_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
 target_link_libraries( poli
 					   ${catkin_LIBRARIES} )
 
 include_directories( include
-${EIGEN3_INCLUDE_DIR}
 					 ${Boost_INCLUDE_DIRS}
 					 ${catkin_INCLUDE_DIRS}
 )

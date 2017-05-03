@@ -13,7 +13,6 @@ find_package(catkin REQUIRED
 					argus_utils
 					argus_msgs
 					lookup
-					broadcast
 					visualization_msgs
 					modprop
 					optim
@@ -21,7 +20,6 @@ find_package(catkin REQUIRED
 )
 include_directories( ${catkin_INCLUDE_DIRS} )
 
-# Use Boost for most utilities, threading
 find_package(Boost REQUIRED)
 include_directories( ${Boost_INCLUDE_DIRS} )
 list( APPEND covreg_LIBS ${Boost_LIBRARIES} )
@@ -31,7 +29,6 @@ include_directories( ${EIGEN3_INCLUDE_DIR} )
 
 add_message_files( FILES
 	CovarianceEstimatorInfo.msg
-	NeuralNetworkInfo.msg
 	OptimizerStatus.msg
 )
 
@@ -56,7 +53,6 @@ catkin_package(
 					argus_utils
 					argus_msgs
 					lookup
-					broadcast
 					visualization_msgs
 					modprop
 					optim
@@ -74,7 +70,6 @@ add_library( covreg
 	src/ClipOptimizer.cpp
 	src/CovarianceEstimator.cpp
 	src/CovarianceManager.cpp
-	src/EstimatorInfoParsers.cpp
 	src/InnovationLikelihoodProblem.cpp
 	src/KalmanFilterEpisode.cpp
 	src/KalmanFilterModules.cpp
@@ -101,17 +96,9 @@ target_link_libraries( covreg
 #                        ${covreg_LIBS}
 #                        covreg )
 
-add_executable( performance_estimator nodes/performance_estimator.cpp )
-add_dependencies( performance_estimator covreg_gencfg )
-target_link_libraries( performance_estimator
-                       ${catkin_LIBRARIES}
-                       ${covreg_LIBS}
-                       covreg )
-
 ## Mark executables and/or libraries for installation
 install(TARGETS covreg 
                 #covariance_repeater 
-                performance_estimator 
                 #optimizer_node
 	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}

@@ -24,11 +24,6 @@ find_package( Boost REQUIRED COMPONENTS random )
 list( APPEND optim_LIBRARIES ${Boost_LIBRARIES} )
 list( APPEND optim_INCLUDES ${Boost_INCLUDE_DIRS} )
 
-# Find Eigen linear algebra library
-find_package( Eigen3 REQUIRED )
-message( STATUS "Eigen found at: ${EIGEN3_INCLUDE_DIR}" )
-list( APPEND optim_INCLUDES ${EIGEN3_INCLUDE_DIR} )
-
 set( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/" )
 
 # Find GNU Scientific Library
@@ -66,7 +61,6 @@ catkin_package(
                     
     DEPENDS         Boost 
                     system_lib
-                    Eigen3
 )
 
 include_directories( ${optim_INCLUDES} ${catkin_INCLUDE_DIRS} include )

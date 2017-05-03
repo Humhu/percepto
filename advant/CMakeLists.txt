@@ -17,9 +17,6 @@ find_package(catkin REQUIRED
 # Use Boost for most utilities, threading
 find_package(Boost REQUIRED COMPONENTS random)
 
-# Use Eigen for matrices, linear algebra
-find_package(Eigen3 REQUIRED)
-
 catkin_package(
                INCLUDE_DIRS 	include
 
@@ -36,7 +33,6 @@ catkin_package(
                )
 
 include_directories( include
-                    ${EIGEN3_INCLUDE_DIR}
                     ${Boost_INCLUDE_DIRS}
                     ${catkin_INCLUDE_DIRS}
                     )
