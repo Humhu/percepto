@@ -27,12 +27,13 @@ class BayesianOptimizer(object):
         self.reward_model = optim.parse_reward_model(model_info)
 
         # Parse input stream if available
+        print 'Finding input stream'
         stream_name = rospy.get_param('~input_stream', None)
         if stream_name is not None:
             self.stream_rx = broadcast.Receiver(stream_name)
         else:
             self.stream_rx = None
-
+        print 'Found input stream'
         self.context_mode = rospy.get_param('~context_mode', 'ignore')
 
         # Parse acquisition optimizer
@@ -211,7 +212,7 @@ class BayesianOptimizer(object):
         if self.normalizer is not None:
             for c, a, r, f in self.init_buffer:
                 self.normalizer.process(c)
-        self.normalizer.set_updating(False)
+            self.normalizer.set_updating(False)
 
         for c, a, r, f in self.init_buffer:
             c = self.normalizer.process(c)
@@ -296,7 +297,6 @@ class BayesianOptimizer(object):
 
 if __name__ == '__main__':
     rospy.init_node('bayesian_optimizer')
-
     out_path = rospy.get_param('~output_path')
     out_file = open(out_path, 'w')
 

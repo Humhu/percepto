@@ -10,7 +10,10 @@
 <arg name="resume" default="true"/>
 <arg name="critic_service" default="evaluator/get_critique"/>
 <arg name="beta" default="1.0"/>
+
+<arg name="enable_context" default="false"/>
 <arg name="context_stream" default="void"/>
+
 <arg name="context_mode" default="ignore"/>
 <arg name="run_on_start" default="true"/>
 
@@ -30,7 +33,7 @@
 
     <param name="run_on_start" value="$(arg run_on_start)"/>
     <param name="context_mode" value="$(arg context_mode)"/>
-    <param name="input_stream" value="$(arg context_stream)"/>
+    <param name="input_stream" value="$(arg context_stream)" if="$(arg enable_context)"/>
     <rosparam>
         lower_bounds: -1
         upper_bounds: 1
