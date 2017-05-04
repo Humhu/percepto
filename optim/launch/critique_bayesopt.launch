@@ -29,12 +29,16 @@
 
     <param name="interface/topic" value="$(arg critic_service)"/>
     <param name="interface/verbose" value="$(arg verbose)"/>
+
     <param name="reward_model/verbose" value="$(arg verbose)"/>
 
     <param name="run_on_start" value="$(arg run_on_start)"/>
     <param name="context_mode" value="$(arg context_mode)"/>
     <param name="input_stream" value="$(arg context_stream)" if="$(arg enable_context)"/>
     <rosparam>
+        interface:
+            n_retries: 10
+
         lower_bounds: -1
         upper_bounds: 1
         sequential_mode: false

@@ -1,8 +1,10 @@
 """Wrappers for rospy support
 """
-import rospy, time
+import rospy
+import time
 from itertools import izip
 from percepto_msgs.srv import GetCritique, GetCritiqueRequest
+
 
 def _stringify_names(x, n):
     if n is None:
@@ -11,6 +13,7 @@ def _stringify_names(x, n):
     for xi, ni in zip(x, n):
         s += '\n\t%s: %f' % (ni, xi)
     return s
+
 
 class CritiqueInterface(object):
     """Provides an optimization problem interface by wrapping
@@ -23,11 +26,13 @@ class CritiqueInterface(object):
     verbose : bool (default False)
         Whether to print each evaluation result
     """
+
     def __init__(self, topic, verbose=False, n_retries=5):
         rospy.loginfo('Waiting for critique service: %s', topic)
         rospy.wait_for_service(topic)
         rospy.loginfo('Connected to service: %s', topic)
         self.proxy = rospy.ServiceProxy(topic, GetCritique)
+        self.topic = topic
 
         self.verbose = verbose
         self.n_retries = n_retries
@@ -42,17 +47,19 @@ class CritiqueInterface(object):
             rospy.loginfo('Evaluating %s...', _stringify_names(x, n))
 
         succ = False
-        for i in range(self.n_retries):
+        for i in range(self.n_retries + 1):
             try:
                 res = self.proxy.call(req)
                 succ = True
                 break
             except rospy.ServiceException:
-                pass
+                rospy.logwarn('Failed to evaluate: %s on %s, retrying...',
+                              str(x), self.topic)
+                time.sleep(1.0)
 
         if not succ:
-            rospy.logerr('Could not evaluate: %s ', str(x))
-            raise RuntimeError('Could not evaluate')
+            rospy.logerr('Could not evaluate: %s. All retries failed', str(x))
+            return None
 
         if self.verbose:
             msg = 'Evaluated: %s\n' % _stringify_names(x, n)

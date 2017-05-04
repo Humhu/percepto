@@ -215,7 +215,8 @@ class BayesianOptimizer(object):
             self.normalizer.set_updating(False)
 
         for c, a, r, f in self.init_buffer:
-            c = self.normalizer.process(c)
+            if self.normalizer is not None:
+                c = self.normalizer.process(c)
             self.report_sample(context=c, action=a, reward=r, feedback=f)
 
         if self.context_mode == 'optimize':

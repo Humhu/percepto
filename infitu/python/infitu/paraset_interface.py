@@ -10,12 +10,20 @@ from infitu.utils import *
 def parse_paraset_interface(info):
     """Parses a dictionary to produce a NumericParameterInterface.
     """
+    verbose = False
     if 'verbose' in info:
         verbose = bool(info.pop('verbose'))
-    else:
-        verbose = False
 
-    interface = NumericParameterInterface(verbose=verbose)
+    persistent = True
+    if 'persistent' in info:
+        persistent = bool(info.pop('persistent'))
+
+    n_retries = 1
+    if 'n_retries' in info:
+        n_retries = int(info.pop('n_retries'))
+
+    interface = NumericParameterInterface(verbose=verbose,
+                                          persistent=persistent)
 
     if 'param_order' in info:
         param_order = info.pop('param_order')
@@ -32,13 +40,17 @@ def parse_paraset_interface(info):
         ordered_items[ind] = (name, v)
 
     for name, v in ordered_items:
-        param_name = v['param_name']
-        base_topic = v['base_namespace']
+        param_names = v['param_name']
+        if isinstance(param_names, str):
+            param_names = [param_names]
+        base_topics = v['base_namespace']
+        if isinstance(base_topics, str):
+            base_topics = [base_topics]
         normalizer = parse_normalizer(v)
 
         interface.add_parameter(name=name,
-                                param_name=param_name,
-                                base_topic=base_topic,
+                                param_names=param_names,
+                                base_topics=base_topics,
                                 normalizer=normalizer)
     return interface
 
@@ -51,24 +63,34 @@ class NumericParameterInterface(object):
     to an input range of -1 to 1.
     """
 
-    def __init__(self, verbose=False):
+    def __init__(self, verbose=False, persistent=True, n_retries=5):
         self.names = []
+        self.pnames = []
         self.setters = []
         self.normalizers = []
         self._verbose = verbose
+        self._persistent = persistent
+        self._n_retries = n_retries
 
-    def add_parameter(self, name, param_name, base_topic, normalizer):
+    def add_parameter(self, name, param_names, base_topics, normalizer):
         """Adds another parameter to this interface.
         """
         if self._verbose:
             rospy.loginfo('Adding parameter %s' % name)
 
-        setter = paraset.RuntimeParamSetter(param_type=float,
-                                            name=param_name,
-                                            base_topic=base_topic)
+        setters = []
+        full_names = []
+        for pname, btop in zip(param_names, base_topics):
+            setters.append(paraset.RuntimeParamSetter(param_type=float,
+                                                      name=pname,
+                                                      base_topic=btop,
+                                                      persistent=self._persistent,
+                                                      n_retries=self._n_retries))
+            full_names.append(btop + '/' + pname)
 
         self.names.append(name)
-        self.setters.append(setter)
+        self.pnames.append(full_names)
+        self.setters.append(setters)
         self.normalizers.append(normalizer)
 
     def process_element(self, v, name, normalized):
@@ -77,7 +99,8 @@ class NumericParameterInterface(object):
         except ValueError:
             raise ValueError('Param %s not registered!' % name)
 
-        setter = self.setters[ind]
+        pnames = self.pnames[ind]
+        setters = self.setters[ind]
         normalizer = self.normalizers[ind]
 
         vpre = v
@@ -96,7 +119,7 @@ class NumericParameterInterface(object):
             rospy.logwarn('Bounding requested %s raw %f to (%f, %f)',
                           name, vpre_raw, normalizer.min_val, normalizer.max_val)
 
-        return v_raw, v_norm, setter, normalizer
+        return v_raw, v_norm, pnames, setters, normalizer
 
     def set_values(self, v, names=None, normalized=True):
         """Sets all parameters according to vector input v.
@@ -121,16 +144,18 @@ class NumericParameterInterface(object):
             proc = self.process_element(v=vi,
                                         name=v_name,
                                         normalized=normalized)
-            v_raw, v_norm, setter, normalizer = proc
+            v_raw, v_norm, pnames, setters, normalizer = proc
 
-            out += '\n\t%s: %f (%f)' % (v_name, v_raw, v_norm)
-            actual_raw = setter.set_value(v_raw)
-            actual = normalizer.normalize(actual_raw)
-            resout += '\n\t%s: %f (%f)' % (v_name, actual_raw, actual)
+            for pname, setter in zip(pnames, setters):
+                out += '\n\t%s (%s): %f (%f)' % (v_name, pname, v_raw, v_norm)
+                actual_raw = setter.set_value(v_raw)
+                actual = normalizer.normalize(actual_raw)
+                resout += '\n\t%s (%s): %f (%f)' % (v_name,
+                                                    pname, actual_raw, actual)
 
-            if v_raw != actual_raw:
-                warnouts.append('Set param %s to %f but got actual %f' % (
-                    v_name, v_raw, actual_raw))
+                if v_raw != actual_raw:
+                    warnouts.append('Set param %s to %f but got actual %f' % (
+                        pname, v_raw, actual_raw))
 
         if self._verbose:
             rospy.loginfo(out)
@@ -139,11 +164,12 @@ class NumericParameterInterface(object):
                 rospy.logwarn(w)
 
     def get_values(self, normalized=True):
+        # TODO Handle multi-setters properly
         if normalized:
-            return [nn.normalize(ss.get_value())
+            return [nn.normalize(ss[0].get_value())
                     for nn, ss in izip(self.normalizers, self.setters)]
         else:
-            return [s.get_value() for s in self.setters]
+            return [s[0].get_value() for s in self.setters]
 
     @property
     def num_parameters(self):
