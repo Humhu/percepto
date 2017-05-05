@@ -49,10 +49,6 @@ public:
 
 		double reward = _posErrWeights.dot( poseSquaredErr ) + _velErrWeights.dot( velSquaredErr );
 
-		ROS_INFO_STREAM( "poseErr: " << poseErr.transpose() );
-		ROS_INFO_STREAM( "velErr: " << velErr.transpose() );
-		ROS_INFO_STREAM( "raw reward: " << reward );
-
 		reward = std::max( std::min( reward, _maxReward ), _minReward );
 		if( _logRewards )
 		{
