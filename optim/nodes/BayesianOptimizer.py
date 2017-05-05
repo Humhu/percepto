@@ -233,6 +233,7 @@ class BayesianOptimizer(object):
             self.initialize_reward_model()
 
     def report_sample(self, context, action, reward, feedback):
+        raw_context = None
         if self.normalizer is not None:
             raw_context = context
             context = self.normalizer.process(context)

@@ -176,8 +176,8 @@ class GaussianProcessRewardModel(RewardModel):
     Refer to sklearn.gaussian_process.GaussianProcessRegressor's __init__
     """
 
-    def __init__(self, min_samples=10, batch_retries=20, refine_ll_delta=1.0,
-                 refine_retries=1, verbose=False, enable_refine=True, **kwargs):
+    def __init__(self, min_samples=10, batch_retries=19, refine_ll_delta=1.0,
+                 refine_retries=0, verbose=False, enable_refine=True, **kwargs):
 
         self.min_samples = min_samples
         self.hp_batch_retries = batch_retries
@@ -188,7 +188,7 @@ class GaussianProcessRewardModel(RewardModel):
         self.last_ll = None
         self.kwargs = kwargs
         self.verbose = bool(verbose)
-        
+
         self.gp = None  # Init later
         self.inputs = []
         self.outputs = []
@@ -229,14 +229,14 @@ class GaussianProcessRewardModel(RewardModel):
         if current_ll > self.last_ll:
             self.last_ll = current_ll
         elif current_ll < self.last_ll - self.hp_refine_ll_delta and self.enable_refine:
-            self.batch_optimize(self.hp_refine_retries)
+            self.batch_optimize(self.hp_refine_retries + 1)
 
     def batch_optimize(self, n_restarts=None):
         if self.num_samples < self.min_samples:
             return
-            
+
         if n_restarts is None:
-            n_restarts = self.hp_batch_retries
+            n_restarts = self.hp_batch_retries + 1
 
         if self.gp is None:
             self._initialize()
