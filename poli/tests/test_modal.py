@@ -11,30 +11,6 @@ from GPy.models import GPRegression
 import matplotlib.pyplot as plt
 import matplotlib.cm as mcm
 
-class GPyRegressor(object):
-    def __init__(self):
-        self.reg = None
-
-    def fit(self, X, y):
-        X = np.asarray(X)
-        y = np.asarray(y)
-
-        if self.reg is None:
-            self.reg = GPRegression(X, y, normalizer=None)
-        else:
-            self.reg.set_XY(X, y)
-
-        self.reg.optimize(optimizer='bfgs', messages=False)
-        print self.reg
-
-    def predict(self, X, return_std=True):
-        X = np.asarray(X)
-
-        u, v = self.reg.predict_noiseless(X)
-        if return_std:
-            return np.squeeze(u), np.squeeze(v)
-        else:
-            return np.squeeze(u)
 
 class NNR(object):
     def __init__(self, r=1.0, k=10, def_mean=0, def_sd=float('inf'), off=0.1):
@@ -96,7 +72,7 @@ class TestModalProblem(object):
         ind = np.argmin(dists)
 
         noise = np.random.normal(scale=0.1)
-        reward = -np.log(np.linalg.norm(self.offsets[ind] - a))# + noise
+        reward = -np.log(np.linalg.norm(self.offsets[ind] - a)) + noise
         reward = max(min(reward, 5), -5)
 
         self.current_context = np.random.uniform(low=-1, high=1, size=x_dim)
@@ -106,27 +82,25 @@ class TestModalProblem(object):
 if __name__ == '__main__':
 
     x_dim = 2
-    a_dim = 2
+    a_dim = 1
     n_modes = 3
 
     problem = TestModalProblem(x_dim=x_dim, a_dim=a_dim, n_modes=n_modes)
-
-    # reward_model = NNR(r=3.0, k=10, def_mean = 0, def_sd=10)
-    reward_model = optim.GaussianProcessRewardModel()
-    # reward_model = GPyRegressor()
-    # optimizer = optim.CMAOptimizer(mode='max', num_restarts=3, verbose=-9, verb_log=0, bounds=[-1, 1],
-                                #    maxfevals=300)
-    mp = poli.ModalPolicy(reward_model=reward_model)
+    mp = poli.ModalPolicy()
 
     n_init = 30
     n_opt_iters = 5
-    n_trials = 500
+    n_trials = 1000
     opt_per = 10
+    rewards = []
+    states_seen = []
 
     for i in range(n_init):
         s = problem.context
         a = np.random.uniform(-1, 1, a_dim)
         r = problem.step(a)
+        states_seen.append(s)
+        rewards.append(r)
 
         print 's: %s a: %s r: %f' % (np.array_str(s), np.array_str(a), r)
 
@@ -138,7 +112,7 @@ if __name__ == '__main__':
             print '\tc: %s r: %f' % (np.array_str(cc), r)
 
     mp.initialize_modes(n_modes * 2)
-    mp.optimize(n_opt_iters, beta=2)
+    mp.optimize(n_opt_iters, beta=1)
     print_cluster()
 
     # plotting
@@ -153,19 +127,33 @@ if __name__ == '__main__':
         zz = mp.clusters.predict(X)
         Z = np.reshape(zz, xx.shape)
         plt.gca().clear()
-        plt.pcolormesh(xx, yy, Z, cmap=mcm.Reds)
-        plt.plot(problem.centers[:,0], problem.centers[:,1], 'bo')
+        plt.gca().set_xlim((-1,1))
+        plt.gca().set_ylim((-1,1))
+        plt.pcolormesh(xx, yy, Z, cmap=mcm.PiYG)
+        #plt.contourf(xx, yy, Z, np.unique(zz), antialiased=False)
+        plt.plot(problem.centers[:,0], problem.centers[:,1], 'kx', markersize=5, mew=3)
+        s = np.array(states_seen)
+        plt.scatter(x=s[:,0], y=s[:,1], marker='.', color='k')
         plt.draw()
 
     for i in range(n_trials):
         s = problem.context
         a = mp.get_action(s)
         r = problem.step(a)
+        rewards.append(r)
+        states_seen.append(s)
 
         print 's: %s a: %s r: %f' % (np.array_str(s), np.array_str(a), r)
 
         # if i % opt_per == 0:
         mp.report_sample(s=s, a=a, r=r)
-        mp.optimize(1, beta=2)
+        mp.optimize(1, beta=1)
         print_cluster()
         update_plot()
+
+
+    plt.figure('Reward trace')
+    plt.title('Rewards vs time')
+    plt.plot(rewards, 'r-')
+    plt.xlabel('Iteration')
+    plt.ylabel('Reward')
