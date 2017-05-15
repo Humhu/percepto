@@ -6,7 +6,7 @@
 
 #include <ctime>
 
-namespace percepto
+namespace argus
 {
 
 class RuntimeTerminationChecker

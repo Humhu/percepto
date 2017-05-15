@@ -3,7 +3,7 @@
 #include "modprop/ModpropTypes.h"
 #include <memory>
 
-namespace percepto
+namespace argus
 {
 
 // Interface for all optimization problems

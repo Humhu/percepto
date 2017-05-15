@@ -1,9 +1,7 @@
 #include "optim/L1ConstrainedSearchStepper.h"
 #include "argus_utils/utils/ParamUtils.h"
 
-using namespace argus;
-
-namespace percepto
+namespace argus
 {
 
 L1ConstrainedSearchStepper::L1ConstrainedSearchStepper() 

@@ -8,7 +8,7 @@
 #include <Eigen/Cholesky>
 #include <deque>
 
-namespace percepto
+namespace argus
 {
 
 class NaturalOptimizationProblem

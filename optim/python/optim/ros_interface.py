@@ -38,17 +38,27 @@ class CritiqueInterface(object):
         self.n_retries = n_retries
 
     def raw_call(self, x, n=None):
-        req = GetCritiqueRequest()
-        req.input = x
-        if n is not None:
-            req.names = n
+        if isinstance(x, GetCritiqueRequest):
+            req = x
+            x = req.input
+            n = req.names
+        else:
+            req = GetCritiqueRequest()
+            req.input = x
+            if n is not None:
+                req.names = n
 
         if self.verbose:
             rospy.loginfo('Evaluating %s...', _stringify_names(x, n))
 
         succ = False
-        for i in range(self.n_retries + 1):
+        counter = 0
+        while True:
             try:
+                if self.n_retries > 0 and counter > self.n_retries:
+                    break
+                counter += 1
+
                 res = self.proxy.call(req)
                 succ = True
                 break

@@ -2,9 +2,7 @@
 #include "argus_utils/utils/ParamUtils.h"
 #include <sstream>
 
-using namespace argus;
-
-namespace percepto
+namespace argus
 {
 
 IterationTerminationChecker::IterationTerminationChecker()

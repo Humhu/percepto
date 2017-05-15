@@ -3,9 +3,7 @@
 
 #include <sstream>
 
-using namespace argus;
-
-namespace percepto
+namespace argus
 {
 
 GradientTerminationChecker::GradientTerminationChecker()

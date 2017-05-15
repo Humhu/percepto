@@ -2,7 +2,7 @@
 
 #include "optim/BacktrackingSearchStepper.h"
 
-namespace percepto
+namespace argus
 {
 
 class ConstrainedOptimizationProblem

@@ -4,7 +4,7 @@
 #include "optim/OptimInterfaces.h"
 #include <deque>
 
-namespace percepto
+namespace argus
 {
 
 struct OptimizationResults
