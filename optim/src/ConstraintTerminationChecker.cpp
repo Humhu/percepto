@@ -1,6 +1,6 @@
 #include "optim/ConstraintTerminationChecker.h"
 
-namespace percepto
+namespace argus
 {
 
 ConstraintTerminationChecker::ConstraintTerminationChecker() {}

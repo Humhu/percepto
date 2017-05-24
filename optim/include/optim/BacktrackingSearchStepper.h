@@ -4,7 +4,7 @@
 #include <ros/ros.h>
 #include <yaml-cpp/yaml.h>
 
-namespace percepto
+namespace argus
 {
 
 // Backtracking stepper that reduces the step size until a termination criteria

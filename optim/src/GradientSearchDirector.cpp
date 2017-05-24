@@ -1,6 +1,6 @@
 #include "optim/GradientSearchDirector.h"
 
-namespace percepto
+namespace argus
 {
 
 GradientSearchDirector::GradientSearchDirector() {}

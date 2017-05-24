@@ -3,9 +3,7 @@
 #include <iostream>
 #include <sstream>
 
-using namespace argus;
-
-namespace percepto
+namespace argus
 {
 
 NaturalOptimizationProblem::NaturalOptimizationProblem() {}

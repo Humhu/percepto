@@ -1,9 +1,7 @@
 #include "optim/AdamSearchDirector.h"
 #include "argus_utils/utils/ParamUtils.h"
 
-using namespace argus;
-
-namespace percepto
+namespace argus
 {
 
 AdamSearchDirector::AdamSearchDirector()

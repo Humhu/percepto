@@ -73,7 +73,7 @@ class ModalPolicy(object):
         probs = self.clusters.predict_proba(s)
         ind = np.random.choice(self.active_clusters,
                                size=1,
-                               p=np.squeeze(probs))
+                               p=np.atleast_1d(np.squeeze(probs)))
         a = [self.cluster_actions[i] for i in ind]
 
         return np.squeeze(a)

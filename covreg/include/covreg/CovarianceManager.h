@@ -1,6 +1,5 @@
 #pragma once
 
-#include "broadcast/BroadcastMultiReceiver.h"
 #include "covreg/CovarianceEstimator.h"
 #include "covreg/QueryCovariance.h"
 
@@ -37,7 +36,6 @@ private:
 	std::string _sourceName;
 	ros::Subscriber _paramSub;
 	std::shared_ptr<CovarianceEstimator> _estimator;
-	argus::BroadcastMultiReceiver _receiver;
 
 	mutable argus::Mutex _estimatorMutex;
 

@@ -51,9 +51,9 @@ set( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/"
 catkin_python_setup()
 
 catkin_package(
-    INCLUDE_DIRS    include
+    # INCLUDE_DIRS    include
 
-    LIBRARIES       optim
+    # LIBRARIES       optim
                     
     CATKIN_DEPENDS  roscpp 
                     modprop
@@ -65,40 +65,38 @@ catkin_package(
 
 include_directories( ${optim_INCLUDES} ${catkin_INCLUDE_DIRS} include )
 
-add_library( optim 
-             src/AdamSearchDirector.cpp
-             src/ConstrainedBacktrackingSearchStepper.cpp
-             src/ConstraintTerminationChecker.cpp
-             src/BacktrackingSearchStepper.cpp
-             src/FixedSearchStepper.cpp
-             src/GradientSearchDirector.cpp
-             src/GradientTerminationChecker.cpp
-             src/IterationTerminationChecker.cpp
-             src/L1ConstrainedSearchStepper.cpp
-             src/L2ConstrainedSearchStepper.cpp
-             src/ModularOptimizer.cpp
-             src/NaturalSearchDirector.cpp
-             src/OptimizationProfiler.cpp
-             src/OptimizerParser.cpp
-             src/RuntimeTerminationChecker.cpp )
-target_link_libraries( optim ${catkin_LIBRARIES} ${optim_LIBRARIES})
+# add_library( optim 
+#              src/AdamSearchDirector.cpp
+#              src/ConstrainedBacktrackingSearchStepper.cpp
+#              src/ConstraintTerminationChecker.cpp
+#              src/BacktrackingSearchStepper.cpp
+#              src/FixedSearchStepper.cpp
+#              src/GradientSearchDirector.cpp
+#              src/GradientTerminationChecker.cpp
+#              src/IterationTerminationChecker.cpp
+#              src/L1ConstrainedSearchStepper.cpp
+#              src/L2ConstrainedSearchStepper.cpp
+#              src/ModularOptimizer.cpp
+#              src/NaturalSearchDirector.cpp
+#              src/OptimizationProfiler.cpp
+#              src/OptimizerParser.cpp
+#              src/RuntimeTerminationChecker.cpp )
+# target_link_libraries( optim ${catkin_LIBRARIES} ${optim_LIBRARIES})
 
-add_executable( test_optimization tests/OptimizationTest.cpp )
-target_link_libraries( test_optimization 
-                       optim
-                       ${modprop_LIBRARIES}
-                       ${catkin_LIBRARIES}  )
+# add_executable( test_optimization tests/OptimizationTest.cpp )
+# target_link_libraries( test_optimization 
+#                        optim
+#                        ${modprop_LIBRARIES}
+#                        ${catkin_LIBRARIES}  )
 
-add_executable( test_net tests/NetworkTest.cpp )
-target_link_libraries( test_net 
-                       optim
-                       ${modprop_LIBRARIES}
-                       ${catkin_LIBRARIES}  )
+# add_executable( test_net tests/NetworkTest.cpp )
+# target_link_libraries( test_net 
+#                        optim
+#                        ${modprop_LIBRARIES}
+#                        ${catkin_LIBRARIES}  )
 
-install( TARGETS optim
-                 test_optimization
-                 test_net
-    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
+# install( TARGETS optim
+#     ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+#     LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+#     RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+# )

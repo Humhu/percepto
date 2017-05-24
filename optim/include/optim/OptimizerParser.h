@@ -2,7 +2,7 @@
 #include <yaml-cpp/yaml.h>
 #include <ros/ros.h>
 
-namespace percepto
+namespace argus
 {
 
 ModularOptimizer::Ptr parse_modular_optimizer( const ros::NodeHandle& ph );

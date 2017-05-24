@@ -19,9 +19,9 @@ find_package(catkin REQUIRED
 find_package(Boost REQUIRED COMPONENTS random)
 
 catkin_package(
-	INCLUDE_DIRS 	include
+	# INCLUDE_DIRS 	include
 						
-	LIBRARIES		poli
+	# LIBRARIES		poli
 
 	CATKIN_DEPENDS 	roscpp 
 					argus_utils
@@ -37,28 +37,28 @@ catkin_package(
 
 catkin_python_setup()
 
-add_library( poli
-			src/ContinuousPolicy.cpp
-			src/ContinuousPolicyManager.cpp
-			src/ContinuousPolicyModules.cpp
-			#src/DiscretePolicyManager.cpp
-			#src/DiscretePolicyModules.cpp
-			src/PoliCommon.cpp
-			src/PolicyInfoManager.cpp )
-add_dependencies( poli ${poli_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
-target_link_libraries( poli
-					   ${catkin_LIBRARIES} )
+# add_library( poli
+# 			src/ContinuousPolicy.cpp
+# 			src/ContinuousPolicyManager.cpp
+# 			src/ContinuousPolicyModules.cpp
+# 			#src/DiscretePolicyManager.cpp
+# 			#src/DiscretePolicyModules.cpp
+# 			src/PoliCommon.cpp
+# 			src/PolicyInfoManager.cpp )
+# add_dependencies( poli ${poli_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} )
+# target_link_libraries( poli
+					#    ${catkin_LIBRARIES} )
 
 include_directories( include
 					 ${Boost_INCLUDE_DIRS}
 					 ${catkin_INCLUDE_DIRS}
 )
 
-install( TARGETS poli 
-	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-	RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
+# install( TARGETS poli 
+# 	ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+# 	LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+# 	RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+# )
 
 ## Mark executables and/or libraries for installation
 install(DIRECTORY include/${PROJECT_NAME}/

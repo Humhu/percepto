@@ -5,7 +5,7 @@
 #include <ros/ros.h>
 #include <yaml-cpp/yaml.h>
 
-namespace percepto
+namespace argus
 {
 
 class ConstraintTerminationChecker

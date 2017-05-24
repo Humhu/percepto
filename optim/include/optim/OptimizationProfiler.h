@@ -3,7 +3,7 @@
 #include <ctime>
 #include "optim/OptimInterfaces.h"
 
-namespace percepto
+namespace argus
 {
 
 struct ProfileResults

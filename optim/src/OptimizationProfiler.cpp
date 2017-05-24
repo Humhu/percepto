@@ -1,6 +1,6 @@
 #include "optim/OptimizationProfiler.h"
 
-namespace percepto
+namespace argus
 {
 
 OptimizationProfiler::OptimizationProfiler() {}

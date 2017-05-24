@@ -3,7 +3,7 @@
 #include <sstream>
 #include <iostream>
 
-namespace percepto
+namespace argus
 {
 
 ModularOptimizer::ModularOptimizer() {}
