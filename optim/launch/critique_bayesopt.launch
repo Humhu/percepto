@@ -40,6 +40,9 @@
         interface:
             n_retries: 10
 
+        exploration_init: 3.0
+        exploration_decay_rate: -0.05
+
         lower_bounds: -1
         upper_bounds: 1
         sequential_mode: false

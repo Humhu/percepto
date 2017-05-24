@@ -80,6 +80,8 @@ class BayesianOptimizer(object):
             self.acq_func = optim.UCBAcquisition(self.reward_model)
 
         self.beta_base = rospy.get_param('~exploration_rate', 1.0)
+        self.beta_init = rospy.get_param('~exploration_init')
+        self.beta_rate = rospy.get_param('~exploration_decay_rate')
 
         self.visualize = rospy.get_param('~visualize', False)
         if self.visualize:
@@ -115,6 +117,8 @@ class BayesianOptimizer(object):
             self.normalizer = None
 
         self.max_evals = rospy.get_param('~convergence/max_evaluations')
+        self.conv_check_iters = rospy.get_param('~convergence/eps_window', 5)
+        self.conv_action_eps = rospy.get_param('~convergence/x_tol', 1E-3)
 
         self.opt_server = rospy.Service('~run_optimization', RunOptimization,
                                         self.opt_callback)
@@ -174,8 +178,11 @@ class BayesianOptimizer(object):
         if self.context_mode == 'optimize':
             self.reward_model.base_input[self.input_dim:] = context
 
-        self.acq_func.exploration_rate = self.beta_base * \
-            math.log(len(self.rounds) + 1)
+        #self.acq_func.exploration_rate = self.beta_base * \
+        #    math.log(len(self.rounds) + 1)
+        # NOTE Experiment with beta -> negative over time
+        self.acq_func.exploration_rate = self.beta_init + len(self.rounds) * self.beta_rate
+
         x, acq = self.aux_optimizer.optimize(x_init=self.aux_x_init,
                                              func=self.acq_func)
         rospy.loginfo('Next sample %s with beta %f and acquisition value %f',
@@ -186,7 +193,17 @@ class BayesianOptimizer(object):
     def finished(self):
         """Returns whether the optimization is complete.
         """
-        return len(self.rounds) >= self.max_evals
+        hit_max_evals = len(self.rounds) >= self.max_evals
+
+        if len(self.rounds) < self.conv_check_iters:
+            hit_conv = False
+        else:
+            last_rounds = self.rounds[-self.conv_check_iters:]
+            rc, c, a, r, f = zip(*last_rounds)
+            a_sd = np.std(a, axis=0)
+            hit_conv = (a_sd < self.conv_action_eps).all()
+        
+        return hit_max_evals or hit_conv
 
     def visualize_rewards(self):
         plt.figure('Reward Visualization')

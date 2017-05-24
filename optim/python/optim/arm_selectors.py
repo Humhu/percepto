@@ -89,8 +89,8 @@ class UCBAcquisition(object):
 
     @exploration_rate.setter
     def exploration_rate(self, b):
-        if b < 0:
-            raise RuntimeWarning('Negative value %f for exploration_rate' % b)
+        # if b < 0:
+            # raise RuntimeWarning('Negative value %f for exploration_rate' % b)
         self._exploration_rate = b
 
     def predict(self, x):
