@@ -1,7 +1,7 @@
 cmake_minimum_required( VERSION 2.8.3 )
 project( optim )
 
-set(CMAKE_CXX_FLAGS "-g -Wall -std=c++11")
+set(CMAKE_CXX_FLAGS "-g -Wall -std=c++0x")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/cmake/Modules")
 
 if (NOT DEFINED CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "")
@@ -9,8 +9,6 @@ if (NOT DEFINED CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "")
   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 endif ()
 message(STATUS "Build configuration: ${CMAKE_BUILD_TYPE}")
-
-add_definitions( -Wall -std=c++0x )
 
 find_package(catkin REQUIRED 
     COMPONENTS      roscpp

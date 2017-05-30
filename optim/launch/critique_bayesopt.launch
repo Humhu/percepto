@@ -13,8 +13,10 @@
 
 <arg name="enable_context" default="false"/>
 <arg name="context_stream" default="void"/>
+
 <arg name="enable_refine" default="false"/>
 <arg name="context_mode" default="ignore"/>
+
 <arg name="run_on_start" default="true"/>
 
 <node pkg="optim" type="BayesianOptimizer.py" name="optimizer" output="screen" required="true">
@@ -40,8 +42,9 @@
         interface:
             n_retries: 10
 
-        exploration_init: 3.0
-        exploration_decay_rate: -0.05
+        init_beta: 1.0
+        desired_beta: 3.0
+        desired_beta_rounds: 100
 
         lower_bounds: -1
         upper_bounds: 1
@@ -50,11 +53,14 @@
         context_normalization:
             mode: minmax
 
+        convergence:
+            x_tol: 0
+
         reward_model:
             type: gaussian_process
             batch_retries: 9
             refine_ll_delta: 0.1
-            refine_retries: 1
+            refine_retries: 3
 
         auxiliary_optimizer:
             type: bfgs

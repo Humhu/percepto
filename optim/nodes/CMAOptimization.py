@@ -73,6 +73,7 @@ class CMAOptimizer:
         lower = float(rospy.get_param('~input_lower_bound', '-Inf'))
         upper = float(rospy.get_param('~input_upper_bound', 'Inf'))
         cma_options['bounds'] = [lower, upper]
+        cma_options['CMA_cmean'] = float(rospy.get_param('~learning_rate', 1.0))
 
         if rospy.has_param('~random_seed'):
             cma_options['seed'] = rospy.get_param('~random_seed')
@@ -160,8 +161,7 @@ class CMAOptimizer:
                         current_feedbacks[k] = []
                     current_feedbacks[k].append(v)
 
-            # cma performs minimization, so we have to report the negated
-            # rewards
+            # cma performs minimization, so we have to report the negated rewards
             self.cma_optimizer.tell(current_inputs, -np.array(current_outputs))
             self.cma_optimizer.logger.add()
             self.cma_optimizer.disp()

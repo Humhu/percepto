@@ -164,8 +164,8 @@ class BFGSOptimizer(Optimizer):
 
         self.num_restarts = num_restarts
         self.kwargs = kwargs
-        self.lower_bounds = float('-inf')
-        self.upper_bounds = float('inf')
+        self.lower_bounds = -1
+        self.upper_bounds = 1
 
     def step(self, x_init, func):
         raise RuntimeError('BFGS optimizer does not have step mode')

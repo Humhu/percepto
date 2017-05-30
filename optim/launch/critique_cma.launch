@@ -8,7 +8,13 @@
 <arg name="resume" default="true"/>
 <arg name="critic_service" default="evaluator/get_critique"/>
 <arg name="verbose" default="true"/>
+<arg name="learning_rate" default="1.0"/>
+
+<arg name="set_random_seed" default="false"/>
 <arg name="random_seed" default="1"/>
+
+<arg name="popsize" default="0"/>
+<arg name="override_popsize" default="false"/>
 
 <node pkg="optim" type="CMAOptimization.py" name="optimizer" output="screen" required="true">
     <param name="output_path" value="$(arg output_path)"/>
@@ -17,16 +23,13 @@
     <param name="interface/topic" value="$(arg critic_service)"/>
     <param name="interface/verbose" value="$(arg verbose)"/>
     <param name="verbose" value="$(arg verbose)"/>    
-    <param name="random_seed" value="$(arg random_seed)"/>
+    <param name="random_seed" value="$(arg random_seed)" if="$(arg set_random_seed)"/>
     <param name="input_dim" value="$(arg input_dim)"/>
     <param name="convergence/max_evaluations" value="$(arg max_evals)"/>
+    <param name="population_size" value="$(arg popsize)" if="$(arg override_popsize)"/>
+    <param name="learning_rate" value="$(arg learning_rate)"/>
     <rosparam>
         run_on_start: true
-        convergence:
-            output_tolerance: 0.001
-            output_history_tolerance: 0.001
-            input_tolerance: 0.05
-            max_evaluations: 1000
 
         initial_std_dev: 0.5
         input_lower_bound: -1

@@ -53,7 +53,7 @@ class CritiqueInterface(object):
 
         succ = False
         counter = 0
-        while True:
+        while not rospy.is_shutdown():
             try:
                 if self.n_retries > 0 and counter > self.n_retries:
                     break

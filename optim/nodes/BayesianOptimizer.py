@@ -79,15 +79,15 @@ class BayesianOptimizer(object):
         elif self.context_mode == 'ignore':
             self.acq_func = optim.UCBAcquisition(self.reward_model)
 
-        self.beta_base = rospy.get_param('~exploration_rate', 1.0)
-        self.beta_init = rospy.get_param('~exploration_init')
-        self.beta_rate = rospy.get_param('~exploration_decay_rate')
+        self.beta_init = rospy.get_param('~init_beta')
+        beta_f = rospy.get_param('~desired_beta')
+        beta_N = rospy.get_param('~desired_beta_rounds')
+        self.beta_rate = math.exp(beta_f / self.beta_init) / beta_N
 
         self.visualize = rospy.get_param('~visualize', False)
         if self.visualize:
             if self.input_dim != 1:
-                rospy.logwarn(
-                    'Visualization is only enabled for 1D reward model!')
+                rospy.logwarn('Visualization is only enabled for 1D!')
                 self.visualize = False
             else:
                 plt.ion()
@@ -178,10 +178,10 @@ class BayesianOptimizer(object):
         if self.context_mode == 'optimize':
             self.reward_model.base_input[self.input_dim:] = context
 
-        #self.acq_func.exploration_rate = self.beta_base * \
-        #    math.log(len(self.rounds) + 1)
-        # NOTE Experiment with beta -> negative over time
-        self.acq_func.exploration_rate = self.beta_init + len(self.rounds) * self.beta_rate
+        self.acq_func.exploration_rate = self.beta_init * \
+            math.log(self.beta_rate * len(self.rounds) + 1)
+        # NOTE Experiment with beta -> negative over time?
+        #self.acq_func.exploration_rate = self.beta_init + len(self.rounds) * self.beta_rate
 
         x, acq = self.aux_optimizer.optimize(x_init=self.aux_x_init,
                                              func=self.acq_func)
@@ -202,7 +202,7 @@ class BayesianOptimizer(object):
             rc, c, a, r, f = zip(*last_rounds)
             a_sd = np.std(a, axis=0)
             hit_conv = (a_sd < self.conv_action_eps).all()
-        
+
         return hit_max_evals or hit_conv
 
     def visualize_rewards(self):
@@ -273,9 +273,11 @@ class BayesianOptimizer(object):
         while not rospy.is_shutdown() and not self.finished():
 
             if self.is_initializing:
-                rospy.loginfo('Init %d/%d...', len(self.init_buffer), self.num_init)
+                rospy.loginfo('Init %d/%d...',
+                              len(self.init_buffer), self.num_init)
             else:
-                rospy.loginfo('Round %d/%d...', len(self.rounds), self.max_evals)
+                rospy.loginfo('Round %d/%d...',
+                              len(self.rounds), self.max_evals)
 
             context = self.get_context()
             if self.normalizer is not None:
