@@ -4,3 +4,4 @@ build
 *.*~
 *.pyc
 install
+CATKIN_IGNORE
