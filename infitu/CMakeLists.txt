@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8.3)
 project(infitu)
 
-set(CMAKE_CXX_FLAGS "-g -Wall -std=c++11")
+set(CMAKE_CXX_FLAGS "-g -Wall -std=c++0x")
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/cmake/")
 
 set(CMAKE_BUILD_TYPE Release)
@@ -78,6 +78,9 @@ target_link_libraries( reward_accumulator_node ${catkin_LIBRARIES} )
 
 add_executable( bag_replayer nodes/bag_replayer.cpp )
 target_link_libraries( bag_replayer ${catkin_LIBRARIES} )
+
+add_executable( multi_bag_replayer nodes/multi_bag_replayer.cpp )
+target_link_libraries( multi_bag_replayer ${catkin_LIBRARIES} )
 
 # install( TARGETS             infitu
 #          ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}

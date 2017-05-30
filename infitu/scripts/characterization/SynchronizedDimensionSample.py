@@ -10,6 +10,7 @@ import broadcast
 
 from argus_utils import wait_for_service
 
+
 class SynchronizedDimensionSample:
     """Sequentially uniformly randomly samples on individual dimensions and evaluates.
     """
@@ -29,19 +30,25 @@ class SynchronizedDimensionSample:
 
         self.num_samples = rospy.get_param('~num_samples_per_dim')
 
-        stream_name = rospy.get_param('~input_stream')
-        self.stream_rx = broadcast.Receiver(stream_name)
+        stream_name = rospy.get_param('~input_stream', None)
+        self.stream_rx = None
+        if stream_name is not None:
+            self.stream_rx = broadcast.Receiver(stream_name)
 
-        critique_topic = rospy.get_param('~critique_topic')
-        self.critic_interface = optim.CritiqueInterface(topic=critique_topic)
+        interface_info = rospy.get_param('~interface')
+        self.critic_interface = optim.CritiqueInterface(**interface_info)
 
     def sample_action(self, ind):
         """Picks a new action and sets it. Not synchronized, so lock externally.
         """
-        state = self.stream_rx.read_stream(rospy.Time.now(),
-                                           mode='closest_before')[0]
-        if state is None:
-            return None
+        if self.stream_rx is not None:
+            state = self.stream_rx.read_stream(rospy.Time.now(),
+                                               mode='closest_before')[0]
+            if state is None:
+                return None
+        else:
+            state = None
+
         action = np.zeros(self.action_dim)
         action[ind] = np.random.uniform(low=self.action_lower,
                                         high=self.action_upper,

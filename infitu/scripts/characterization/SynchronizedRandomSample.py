@@ -7,6 +7,7 @@ import numpy as np
 import rospy
 import optim
 import broadcast
+import time
 
 from argus_utils import wait_for_service
 
@@ -30,19 +31,25 @@ class SynchronizedRandomSample:
 
         self.num_samples = rospy.get_param('~num_samples')
 
-        stream_name = rospy.get_param('~input_stream')
-        self.stream_rx = broadcast.Receiver(stream_name)
+        stream_name = rospy.get_param('~input_stream', None)
+        self.stream_rx = None
+        if stream_name is not None:
+            self.stream_rx = broadcast.Receiver(stream_name)
 
-        critique_topic = rospy.get_param('~critique_topic')
-        self.critic_interface = optim.CritiqueInterface(topic=critique_topic)
+        interface_info = rospy.get_param('~interface')
+        self.critic_interface = optim.CritiqueInterface(**interface_info)
 
     def sample_action(self):
         """Picks a new action and sets it. Not synchronized, so lock externally.
         """
-        state = self.stream_rx.read_stream(rospy.Time.now(),
-                                           mode='closest_before')[0]
-        if state is None:
-            return None
+        if self.stream_rx is not None:
+            state = self.stream_rx.read_stream(rospy.Time.now(),
+                                               mode='closest_before')[0]
+            if state is None:
+                return None
+        else:
+            state = None
+
         action = np.random.uniform(low=self.action_lower,
                                    high=self.action_upper,
                                    size=self.action_dim)
@@ -62,7 +69,7 @@ class SynchronizedRandomSample:
                           self.num_samples)
             ret = self.sample_action()
             if ret is None:
-                rospy.sleep(1.0)
+                time.sleep(1.0)
                 continue
             s, a, r, f = ret
 

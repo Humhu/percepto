@@ -12,6 +12,8 @@ from argus_utils import wait_for_service
 class EmpiricalParameterEvaluator:
 
     def __init__(self):
+        self.mutex = Lock()
+
         self.index_mode = rospy.get_param('~indexing_mode', 'as_is')
         if self.index_mode == 'as_is':
             pass  # TODO
@@ -46,6 +48,8 @@ class EmpiricalParameterEvaluator:
                                                        True)
         elif self.mode == 'fixed_duration':
             self.evaluation_time = rospy.get_param('~evaluation_time')
+        elif self.mode == 'interactive':
+            pass
         else:
             raise ValueError('Unknown mode %s' % self.mode)
 
@@ -96,9 +100,6 @@ class EmpiricalParameterEvaluator:
 
     def start_recording(self):
         """Start evaluation recording. Returns success."""
-        if self.verbose:
-            rospy.loginfo('Starting recording...')
-
         try:
             for recorder in self.recorders.itervalues():
                 recorder.call(True)
@@ -109,17 +110,13 @@ class EmpiricalParameterEvaluator:
 
     def stop_recording(self):
         """Stop recording and return evaluation. Returns None if fails."""
-        if self.verbose:
-            rospy.loginfo('Stopping recording...')
-
         try:
             feedback = []
             for name, recorder in self.recorders.iteritems():
                 res = recorder.call(False).evaluation
+                feedback.append((name, res))
                 if name == self.critique_record:
                     critique = res
-                else:
-                    feedback.append((name, res))
         except rospy.ServiceException:
             rospy.logerr('Could not stop recording.')
             return None
@@ -128,15 +125,12 @@ class EmpiricalParameterEvaluator:
 
     def set_parameters(self, inval):
         """Set the parameters to be evaluated. Returns success."""
-        if self.verbose:
-            rospy.loginfo('Setting parameters...')
-
         preq = SetParametersRequest()
         preq.parameters = inval
         try:
             self.setter_proxy.call(preq)
         except rospy.ServiceException:
-            rospy.logerr('Could not set parameters to %s', (str(inval),))
+            rospy.logerr('Could not set parameters to %s', str(inval))
             return False
         return True
 
@@ -144,9 +138,6 @@ class EmpiricalParameterEvaluator:
         """Reset the state estimator. Returns success."""
         if self.reset_proxy is None:
             return True
-
-        if self.verbose:
-            rospy.loginfo('Resetting filter...')
 
         resreq = ResetFilterRequest()
         resreq.time_to_wait = 0
@@ -159,26 +150,29 @@ class EmpiricalParameterEvaluator:
         return True
 
     def run_evaluation(self):
-        if self.verbose:
-            rospy.loginfo('Starting evaluation...')
-
         if self.mode == 'service_call':
             try:
                 self.evaluation_proxy.call()
             except rospy.ServiceException:
                 rospy.logerr('Could not run evaluation.')
                 return False
-            return True
+
         elif self.mode == 'fixed_duration':
             rospy.sleep(self.evaluation_time)
-            return True
+
+        elif self.mode == 'interactive':
+            rospy.loginfo('Waiting on user input to end evaluation...')
+            raw_input('Press a key to end evaluation...')
+
+        return True
 
     def start_setup(self):
+        if self.mode == 'interactive':
+            rospy.loginfo('Waiting on user input to begin evaluation...')
+            raw_input('Press a key to begin evaluation...')
+
         if self.setup_proxy is None:
             return True
-
-        if self.verbose:
-            rospy.loginfo('Starting setup...')
 
         try:
             self.setup_proxy.call()
@@ -191,51 +185,58 @@ class EmpiricalParameterEvaluator:
         if self.teardown_proxy is None:
             return True
 
-        if self.verbose:
-            rospy.loginfo('Starting teardown...')
-
         try:
             self.teardown_proxy.call()
         except rospy.ServiceException:
-            rospy.logerr('Could not teardown.')
+            rospy.logerr('Could not teardown')
             return False
+
         return True
 
     def critique_callback(self, req):
+        with self.mutex:
+            if not self.start_setup():
+                return None
 
-        if not self.start_setup():
-            return None
+            # Call parameter setter
+            if not self.set_parameters(req.input):
+                self.start_teardown()
+                return None
 
-        # Call parameter setter
-        if not self.set_parameters(req.input):
-            return None
+            # Reset state estimator
+            if not self.reset_filter():
+                self.start_teardown()
+                return None
 
-        # Reset state estimator
-        if not self.reset_filter():
-            return None
+            # Wait before starting
+            # NOTE This catches instances when relying on sim tim
+            if self.evaluation_delay.to_sec() > 0:
+                rospy.sleep(self.evaluation_delay)
 
-        # Wait before starting
-        # NOTE This catches instances when relying on sim tim
-        if self.evaluation_delay.to_sec() > 0:
-            rospy.sleep(self.evaluation_delay)
+            if not self.start_recording():
+                self.start_teardown()
+                return None
 
-        if not self.start_recording():
-            return None
+            # Wait until evaluation is done
+            if not self.run_evaluation():
+                self.start_teardown()
+                return None
 
-        # Wait until evaluation is done
-        if not self.run_evaluation():
-            return None
+            # Get outcomes
+            res = GetCritiqueResponse()
+            records = self.stop_recording()
+            if records is None:
+                self.start_teardown()
+                return None
 
-        # Get outcomes
-        res = GetCritiqueResponse()
-        res.critique, feedback = self.stop_recording()
-        res.feedback_names = [f[0] for f in feedback]
-        res.feedback_values = [f[1] for f in feedback]
+            res.critique, feedback = records
+            res.feedback_names = [f[0] for f in feedback]
+            res.feedback_values = [f[1] for f in feedback]
 
-        if not self.start_teardown():
-            return None
+            if not self.start_teardown():
+                return None
 
-        return res
+            return res
 
 
 if __name__ == '__main__':

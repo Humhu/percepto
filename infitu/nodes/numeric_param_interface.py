@@ -2,6 +2,7 @@
 
 import rospy
 import infitu
+from threading import Lock
 
 from percepto_msgs.srv import SetParameters
 from percepto_msgs.srv import GetParameters, GetParametersResponse
@@ -9,6 +10,8 @@ from percepto_msgs.srv import GetParameters, GetParametersResponse
 
 class NumericParamInterface(object):
     def __init__(self):
+        self.mutex = Lock()
+
         interface_info = rospy.get_param('~')
         self.interface = infitu.parse_interface(interface_info)
 
@@ -28,25 +31,27 @@ class NumericParamInterface(object):
                                            lambda req: self.get_param_callback(req, False))
 
     def set_param_callback(self, req, normalized):
-        try:
-            if len(req.names) == 0:
-                names = None
-            else:
-                names = req.names
+        with self.mutex:
+            try:
+                if len(req.names) == 0:
+                    names = None
+                else:
+                    names = req.names
 
-            self.interface.set_values(v=req.parameters,
-                                      names=names,
-                                      normalized=normalized)
-            return []
-        except ValueError as e:
-            rospy.logerr('Could not set params: %s', str(e))
-            return None
+                self.interface.set_values(v=req.parameters,
+                                        names=names,
+                                        normalized=normalized)
+                return []
+            except ValueError as e:
+                rospy.logerr('Could not set params: %s', str(e))
+                return None
 
     def get_param_callback(self, req, normalized):
-        req = GetParametersResponse()
-        req.parameters = self.interface.get_values(normalized=normalized)
-        req.names = self.interface.parameter_names
-        return req
+        with self.mutex:
+            req = GetParametersResponse()
+            req.parameters = self.interface.get_values(normalized=normalized)
+            req.names = self.interface.parameter_names
+            return req
 
 
 if __name__ == '__main__':

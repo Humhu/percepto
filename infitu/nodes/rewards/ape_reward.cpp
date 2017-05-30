@@ -32,7 +32,7 @@ public:
 
 		double reward = _posCovWeights.dot( poseCov.diagonal() ) +
 		                _velCovWeights.dot( velCov.diagonal() );
-		reward = std::max( std::min( reward, _maxReward ), _minReward );
+		
 		if( _logRewards )
 		{
 			reward = std::log( reward );
@@ -40,8 +40,11 @@ public:
 		// Negate the predicted error to make it a reward
 		reward = -reward;
 
+		reward = std::max( std::min( reward, _maxReward ), _minReward );
+
 		percepto_msgs::RewardStamped out;
-		out.header = msg->header;
+		out.header.stamp = msg->header.stamp;
+		out.header.frame_id= "ape";
 		out.reward = reward;
 		_rewardPub.publish( out );
 	}

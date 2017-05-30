@@ -23,6 +23,7 @@ public:
 		GetParam( ph, "time_integrate", _useIntegration, false );
 		GetParam( ph, "normalize_by_time", _normalizeTime, false );
 		GetParam( ph, "normalize_by_count", _normalizeCount, false );
+		GetParam( ph, "max_dt", _maxDt, 1.0 );
 
 		unsigned int buffSize;
 		GetParam<unsigned int>( ph, "buffer_size", buffSize, 100 );
@@ -51,10 +52,24 @@ private:
 		{
 			_lastRewardTime = msg->header.stamp;
 			_lastRewardValue = msg->reward;
+			return;
+		}
+
+		double dt = (msg->header.stamp - _lastRewardTime).toSec();
+		if( dt > _maxDt )
+		{
+			ROS_WARN_STREAM( "Received dt of " << dt << " larger than max " << _maxDt );
+			Reset();
+			return;
 		}
 
 		double rewardInc = msg->reward;
-		double dt = (msg->header.stamp - _lastRewardTime).toSec();
+		if( std::isnan( rewardInc ) )
+		{
+			ROS_WARN_STREAM( "Received NaN reward!" );
+			return;
+		}
+
 		if( _useIntegration )
 		{
 			// Simple trapezoid rule
@@ -79,9 +94,11 @@ private:
 
 		// Else return recording
 		// Check for empty
-		if( _rewardCount == 0 && _defaultOnEmpty )
+		if( _rewardCount == 0 )
 		{
-			res.evaluation = _defaultValue;
+			ROS_WARN_STREAM( "Received no rewards!" );
+			res.evaluation =  _defaultOnEmpty ? _defaultValue :
+			                 std::numeric_limits<double>::quiet_NaN();
 			return true;
 		}
 
@@ -110,12 +127,13 @@ private:
 	bool _defaultOnEmpty;
 	double _defaultValue;
 
+	double _maxDt;
 	bool _useIntegration;
 	bool _normalizeTime;
 	bool _normalizeCount;
 };
 
-int main( int argc, char**argv )
+int main( int argc, char** argv )
 {
 	ros::init( argc, argv, "reward_accumulator" );
 	ros::NodeHandle nh, ph( "~" );
