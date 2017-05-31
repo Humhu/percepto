@@ -182,7 +182,7 @@ class GaussianProcessRewardModel(RewardModel):
         self.min_samples = min_samples
         self.hp_batch_retries = batch_retries
         self.enable_refine = enable_refine
-        self.hp_refine_ll_delta = refine_ll_delta
+        self.hp_refine_ll_delta = float(refine_ll_delta)
         self.hp_refine_retries = refine_retries
         self.hp_init = False
         self.last_ll = None
