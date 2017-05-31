@@ -241,8 +241,8 @@ class GaussianProcessRewardModel(RewardModel):
         if n_restarts is None:
             n_restarts = self.hp_batch_retries + 1
 
-        if self.gp is None: # NOTE Warm-restarting seems to get stuck in local optima
-            self._initialize()
+        # if self.gp is None: # NOTE Warm-restarting seems to get stuck in local optima
+        self._initialize()
 
         if self.verbose:
             rospy.loginfo('Batch optimizing with %d restarts...', n_restarts)
