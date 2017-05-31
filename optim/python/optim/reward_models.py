@@ -4,6 +4,7 @@ import abc
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 
+from GPy.kern import RBF
 from GPy.models import GPRegression
 #from sklearn.gaussian_process import GaussianProcessRegressor as GPRegressor
 #from sklearn.gaussian_process.kernels import ConstantKernel, WhiteKernel, Matern
@@ -189,6 +190,7 @@ class GaussianProcessRewardModel(RewardModel):
         self.kwargs = kwargs
         self.verbose = bool(verbose)
 
+        self.kernel = None
         self.gp = None  # Init later
         self.inputs = []
         self.outputs = []
@@ -196,7 +198,8 @@ class GaussianProcessRewardModel(RewardModel):
     def _initialize(self):
         x = np.asarray(self.inputs)
         y = np.asarray(self.outputs).reshape(-1, 1)
-        self.gp = GPRegression(x, y, **self.kwargs)
+        self.kernel = RBF(input_dim=x.shape[1], ARD=True)
+        self.gp = GPRegression(x, y, kernel=self.kernel, **self.kwargs)
 
     @property
     def num_samples(self):
@@ -226,10 +229,10 @@ class GaussianProcessRewardModel(RewardModel):
         if self.verbose:
             rospy.loginfo('Prev LL: %f Curr LL: %f', self.last_ll, current_ll)
 
-        if current_ll > self.last_ll:
-            self.last_ll = current_ll
-        elif current_ll < self.last_ll - self.hp_refine_ll_delta and self.enable_refine:
+        if current_ll < self.last_ll - self.hp_refine_ll_delta and self.enable_refine:
             self.batch_optimize(self.hp_refine_retries + 1)
+        elif current_ll > self.last_ll:
+            self.last_ll = current_ll
 
     def batch_optimize(self, n_restarts=None):
         if self.num_samples < self.min_samples:
@@ -238,8 +241,8 @@ class GaussianProcessRewardModel(RewardModel):
         if n_restarts is None:
             n_restarts = self.hp_batch_retries + 1
 
-        # if self.gp is None: # NOTE Warm-restarting seems to get stuck in local optima
-        self._initialize()
+        if self.gp is None: # NOTE Warm-restarting seems to get stuck in local optima
+            self._initialize()
 
         if self.verbose:
             rospy.loginfo('Batch optimizing with %d restarts...', n_restarts)
@@ -249,7 +252,7 @@ class GaussianProcessRewardModel(RewardModel):
                                   num_restarts=n_restarts)
 
         if self.verbose:
-            rospy.loginfo('Optimization complete. Model:\n%s', str(self.gp))
+            rospy.loginfo('Optimization complete. Model:\n%s\n Kernel:\n%s', str(self.gp), str(self.kernel.lengthscale))
 
         self.hp_init = True
         self.last_ll = self.average_log_likelihood()
@@ -271,6 +274,7 @@ class GaussianProcessRewardModel(RewardModel):
     def clear(self):
         self.inputs = []
         self.outputs = []
+        self.kernel = None
         self.gp = None
 
     def fit(self, X, y):
