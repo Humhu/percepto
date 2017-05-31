@@ -59,7 +59,7 @@
         reward_model:
             type: gaussian_process
             batch_retries: 9
-            refine_ll_delta: 0.1
+            refine_ll_delta: -0.1
             refine_retries: 3
 
         auxiliary_optimizer:

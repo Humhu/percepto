@@ -339,6 +339,7 @@ if __name__ == '__main__':
     optimizer.interface = optim.CritiqueInterface(**interface_info)
 
     run_on_start = rospy.get_param('~run_on_start', False)
+    res = 'incomplete'
     try:
         if run_on_start:
             res = optimizer.execute()
