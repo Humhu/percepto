@@ -12,7 +12,6 @@ from GPy.models import GPRegression
 
 import rospy
 
-
 def parse_reward_model(spec):
     """Takes a specification dictionary and returns an initialized reward model.
     """
@@ -259,13 +258,16 @@ class GaussianProcessRewardModel(RewardModel):
 
     def predict(self, x, return_std=False):
         if self.gp is None:
-            raise RuntimeError('Model is not fitted yet!')
+            #raise RuntimeError('Model is not fitted yet!')
+            pred_mean = 0
+            pred_std = float('inf')
+        else:
+            x = np.asarray(x)
+            if len(x.shape) == 1:
+                x = x.reshape(1, -1)
+            pred_mean, pred_var = self.gp.predict_noiseless(x)
+            pred_std = np.sqrt(pred_var)
 
-        x = np.asarray(x)
-        if len(x.shape) == 1:
-            x = x.reshape(1, -1)
-        pred_mean, pred_var = self.gp.predict_noiseless(x)
-        pred_std = np.sqrt(pred_var)
         if return_std:
             return np.squeeze(pred_mean), np.squeeze(pred_std)
         else:
@@ -301,6 +303,18 @@ class GaussianProcessRewardModel(RewardModel):
     def model(self):
         return self.gp
 
+class MultiFidelityGaussianProcessRewardModel(RewardModel):
+    def __init__(self):
+        pass
+
+    def report_sample(self, x, reward):
+        return
+
+    def predict(self, x, return_std=False):
+        return
+
+    def clear(self):
+        pass
 
 class RandomForestRewardModel(RewardModel):
     """Models rewards with a random forest.

@@ -1,13 +1,18 @@
 <launch>
 
-    <node pkg="optim" type="test_problem_node.py" name="test_problem" output="screen">
+    <node pkg="optim" type="test_mf_problem_node.py" name="test_problem" output="screen">
         <rosparam>
+            num_fidelities: 3
+            noise: 0.1
+            gamma: 0.25
             query_time: 1.0
         </rosparam>
     </node>
 
-    <node pkg="optim" type="BayesianOptimizer.py" name="test_optimizer" output="screen" required="true" launch-prefix="xterm -hold -e pdb">
+    <node pkg="optim" type="MultiFidelityBayesianOptimizer.py" name="test_optimizer" output="screen" required="true" launch-prefix="xterm -hold -e">
         <rosparam>
+            output_path: /tmp/mf_out.pkl
+            run_on_start: true
             interface:
                 topic: test_problem/get_critique
                 verbose: true
@@ -17,9 +22,12 @@
 
             reward_model:
                 type: gaussian_process
+                num_fidelities: 3
+                biases: [0.5, 0.25]
                 batch_retries: 9
                 refine_ll_delta: -inf
                 refine_retries: 3
+                verbose: true
 
             auxiliary_optimizer:
                 type: bfgs
@@ -36,9 +44,10 @@
             convergence:
                 max_evaluations: 500
 
-            dim: 6
-            lower_bounds: -1
-            upper_bounds: 1
+            dim: 2
+            lower_bounds: -5
+            upper_bounds: 5
+            fidelity_gammas: [0.1, 0.1]
         </rosparam>
     </node>
 

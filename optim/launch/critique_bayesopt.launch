@@ -42,9 +42,8 @@
         interface:
             n_retries: 10
 
-        init_beta: 1.0
-        desired_beta: 3.0
-        desired_beta_rounds: 100
+        exploration_rate_alpha: 0.2
+        exploration_rate_gamma: 2.0
 
         lower_bounds: -1
         upper_bounds: 1
