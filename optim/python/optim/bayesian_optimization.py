@@ -21,6 +21,9 @@ class UCBExplorationRate(object):
         self._gamma = gamma
 
     def __call__(self, t):
+        if t <= 0:
+            print 'Warning: Cannot calculate exploration rate for t <= 0. Rounding up to 1.0'
+            t = 1.0
         beta = self._alpha * self._dim * np.log(t * self._gamma)
         return np.sqrt(beta)
 

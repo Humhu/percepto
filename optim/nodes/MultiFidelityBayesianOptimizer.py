@@ -34,8 +34,11 @@ class MultiFidelityBayesianOptimizer(object):
         self.reward_model = optim.parse_mf_reward_model(model_info)
         self.gammas = farr(rospy.get_param('~fidelity_gammas'),
                            self.reward_model.num_fidelities)
-        self.gamma_power = float(rospy.get_param('~gamma_power', 2.0))
+        self.gamma_power = float(
+            rospy.get_param('~gamma_inflation_coeff', 2.0))
         self.fidelity_costs = rospy.get_param('~fidelity_costs')
+        self.cost_ratio_coeff = rospy.get_param(
+            '~fidelity_cost_ratio_coeff', 1.0)
 
         # Parse acquisition optimizer
         optimizer_info = rospy.get_param('~auxiliary_optimizer')
@@ -53,8 +56,11 @@ class MultiFidelityBayesianOptimizer(object):
 
         self.acq_func = optim.MultiFidelityUCBAcquisition(self.reward_model)
 
-        alpha = rospy.get_param('~exploration_rate_alpha', 0.2)
-        gamma = rospy.get_param('~exploration_rate_gamma', 2.0)
+        self.exploration_mode = rospy.get_param('~exploration_mode', 'samples')
+        if self.exploration_mode not in ['time', 'samples']:
+            raise ValueError('Exploration mode must be either time or samples')
+        alpha = float(rospy.get_param('~exploration_rate_alpha', 0.2))
+        gamma = float(rospy.get_param('~exploration_rate_gamma', 2.0))
         self.exploration_rate = optim.UCBExplorationRate(dim=self.input_dim,
                                                          alpha=alpha,
                                                          gamma=gamma)
@@ -64,7 +70,8 @@ class MultiFidelityBayesianOptimizer(object):
         self.rounds = []
         self.active_fidelities = []
         self.num_init = rospy.get_param('~initialization/num_samples', 0)
-        self.init_variation = rospy.get_param('~initialization/min_variation', 0)
+        self.init_variation = rospy.get_param(
+            '~initialization/min_variation', 0)
         init_method = rospy.get_param('~initialization/method', 'uniform')
 
         # TODO Support for latin hypercubes, other approaches?
@@ -72,9 +79,11 @@ class MultiFidelityBayesianOptimizer(object):
             self.init_sample_func = lambda: np.random.uniform(self.lower_bounds,
                                                               self.upper_bounds)
         else:
-            raise ValueError('Invalid initial distribution method ' + init_method)
+            raise ValueError(
+                'Invalid initial distribution method ' + init_method)
 
-        self.max_evals = rospy.get_param('~convergence/max_evaluations', float('inf'))
+        self.max_evals = rospy.get_param(
+            '~convergence/max_evaluations', float('inf'))
         self.max_time = rospy.get_param('~convergence/max_time', float('inf'))
         self.conv_check_iters = rospy.get_param('~convergence/eps_window', 5)
         self.conv_action_eps = rospy.get_param('~convergence/x_tol', 0)
@@ -123,8 +132,10 @@ class MultiFidelityBayesianOptimizer(object):
     def pick_action(self):
         """Selects the next sample to explore by optimizing the acquisition function.
         """
-        self.acq_func.exploration_rate = self.exploration_rate(
-            len(self.rounds) + 1)
+        if self.exploration_mode == 'time':
+            self.acq_func.exploration_rate = self.exploration_rate(self.duration + 1)
+        elif self.exploration_mode == 'samples':
+            self.acq_func.exploration_rate = self.exploration_rate(len(self.rounds) + 1)
 
         fid, x = optim.pick_acquisition_mf(acq_func=self.acq_func,
                                            optimizer=self.aux_optimizer,
@@ -147,7 +158,7 @@ class MultiFidelityBayesianOptimizer(object):
             hit_conv = False
         else:
             last_rounds = self.rounds[-self.conv_check_iters:]
-            i, a, r, f = zip(*last_rounds)
+            a = zip(*last_rounds)[1]
             a_sd = np.std(a, axis=0)
             hit_conv = (a_sd < self.conv_action_eps).all()
 
@@ -163,7 +174,7 @@ class MultiFidelityBayesianOptimizer(object):
             self.report_sample(fid=i, action=a, reward=r, feedback=f)
 
         self.model_initialized = True
-        self.active_fidelities = [] # HACK sort of
+        self.active_fidelities = []  # HACK sort of
 
     def report_initialization(self, fid, action, reward, feedback):
         self.init_buffer.append((fid, action, reward, feedback))
@@ -182,8 +193,8 @@ class MultiFidelityBayesianOptimizer(object):
         if fid >= self.reward_model.num_fidelities - 1:
             return
 
-        query_ratio = self.fidelity_costs[fid + 1] / self.fidelity_costs[fid]
-        query_ratio = int(math.ceil(query_ratio))
+        cost_ratio = self.fidelity_costs[fid + 1] / self.fidelity_costs[fid]
+        query_ratio = int(math.ceil(self.cost_ratio_coeff * cost_ratio))
         n_rounds = min((len(self.active_fidelities), query_ratio))
         prev_streak = np.sum(self.active_fidelities[-n_rounds:] == fid)
         if prev_streak >= query_ratio:
