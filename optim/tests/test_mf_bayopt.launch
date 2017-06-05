@@ -9,7 +9,7 @@
         </rosparam>
     </node>
 
-    <node pkg="optim" type="MultiFidelityBayesianOptimizer.py" name="test_optimizer" output="screen" required="true" launch-prefix="xterm -hold -e">
+    <node pkg="optim" type="MultiFidelityBayesianOptimizer.py" name="test_optimizer" output="screen" required="true" launch-prefix="xterm -hold -e pdb">
         <rosparam>
             output_path: /tmp/mf_out.pkl
             run_on_start: true
@@ -23,7 +23,7 @@
             reward_model:
                 type: gaussian_process
                 num_fidelities: 3
-                biases: [0.5, 0.25]
+                bias: 0.1
                 batch_retries: 9
                 refine_ll_delta: -inf
                 refine_retries: 3
@@ -32,22 +32,25 @@
             auxiliary_optimizer:
                 type: bfgs
                 mode: max
-                num_restarts: 10
+                num_restarts: 3
                 ftol: 1e-6
                 gtol: 1e-6
                 maxiter: 500
 
             initialization:
                 num_samples: 10
+                min_variation: 1.0
                 method: uniform
 
             convergence:
-                max_evaluations: 500
+                max_time: 360
+                x_tol: 0
 
             dim: 2
-            lower_bounds: -5
-            upper_bounds: 5
+            lower_bounds: -2
+            upper_bounds: 2
             fidelity_gammas: [0.1, 0.1]
+            fidelity_costs: [1, 2, 3]
         </rosparam>
     </node>
 

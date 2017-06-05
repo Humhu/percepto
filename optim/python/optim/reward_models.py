@@ -213,8 +213,9 @@ class GaussianProcessRewardModel(RewardModel):
     def report_sample(self, x, reward):
         self.inputs.append(x)
         self.outputs.append(reward)
+
         if self.gp is None:
-            self._initialize()
+            self.batch_optimize()
         else:
             x = np.asarray(self.inputs)
             y = np.asarray(self.outputs).reshape(-1, 1)
@@ -266,6 +267,10 @@ class GaussianProcessRewardModel(RewardModel):
             if len(x.shape) == 1:
                 x = x.reshape(1, -1)
             pred_mean, pred_var = self.gp.predict_noiseless(x)
+            # To catch negative variances
+            if pred_var < 0:
+                rospy.logwarn('Negative variance %f rounding to 0', pred_var)
+                pred_var = 0
             pred_std = np.sqrt(pred_var)
 
         if return_std:

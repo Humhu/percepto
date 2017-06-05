@@ -21,9 +21,9 @@ def parse_mf_reward_model(spec):
                          (model_type, str(lookup.keys())))
 
     num_fidelities = int(spec.pop('num_fidelities'))
-    biases = spec.pop('biases')
+    bias = spec.pop('bias')
     return MultiFidelityWrapperModel(num_fidelities=num_fidelities,
-                                     biases=biases,
+                                     bias=bias,
                                      base_model=lookup[model_type],
                                      **spec)
 
@@ -51,6 +51,18 @@ class MultiFidelityRewardModel(RewardModel):
     increasingly higher fidelity.
     """
     __metaclass__ = abc.ABCMeta
+
+    def __init__(self, num_fidelities, bias):
+
+        # if not np.iterable(biases):
+        #     fids = np.arange(1, num_fidelities)[::-1]
+        #     biases = fids * biases
+        # if len(biases) != num_fidelities - 1:
+        #     raise ValueError('Must define %d biases for %d fidelities' %
+        #                      (num_fidelities - 1, num_fidelities))
+        # Highest fidelity is always 0 bias
+        self._bias = float(bias)
+        self._bias_coeffs = np.arange(num_fidelities)[::-1]
 
     def report_sample(self, x, reward):
         """Updates the reward model assuming that the first
@@ -93,6 +105,46 @@ class MultiFidelityRewardModel(RewardModel):
         """
         pass
 
+    def check_biases(self, fid, x, reward):
+        """Checks to see if the bias for a specified fidelity and input
+        is valid.
+        """
+        # Can't check bias from lowest fidelity
+        if fid == 0:
+            return True
+        self.__check_fidelity(fid)
+
+        lower_pred = self.predict_mf(fid=fid - 1, x=x)
+
+        # Since each fidelity can be within +- bias[fid] of true value, the max
+        # difference should be bias[fid] + bias[fid-1]
+        bias_gap = self.biases[fid - 1] + self.biases[fid]
+        if abs(reward - lower_pred) > bias_gap:
+            print 'Expected max gap %f for fidelity (%d, %d) but received reward %f (%d) and predicted %f (%d)' % (bias_gap, fid, fid - 1, reward, fid, lower_pred, fid - 1)
+            return False
+        return True
+
+    def update_bias(self, x, fid_hi, reward_hi, fid_lo, reward_lo):
+        self.__check_fidelity(fid_hi)
+        self.__check_fidelity(fid_lo)
+        bias_gap = self.biases[fid_hi] + self.biases[fid_lo]
+        delta_r = abs(reward_hi - reward_lo)
+        if delta_r > bias_gap:
+
+            self._bias = delta_r / \
+                (self._bias_coeffs[fid_hi] + self._bias_coeffs[fid_lo])
+
+            print 'Updating biases to %f (%d) and %f (%d) from observed rewards %f (%d), %f (%d) and bias gap %f' % (self.biases[fid_lo], fid_lo, self.biases[fid_hi], fid_hi, reward_hi, fid_hi, reward_lo, fid_lo, bias_gap)
+
+    def __check_fidelity(self, fid):
+        if fid < 0 or fid >= self.num_fidelities:
+            raise ValueError('Fidelity must be between 1 and %d' %
+                             (self.num_fidelities - 1))
+
+    @property
+    def biases(self):
+        return self._bias * self._bias_coeffs
+
     @abc.abstractproperty
     def num_fidelities(self):
         pass
@@ -106,22 +158,17 @@ class MultiFidelityWrapperModel(MultiFidelityRewardModel):
     ----------
     num_fidelities : positive integer
         The number of fidelity levels
-    biases         : numeric or iterable of (num_fidelities -1) numerics
-        The biases for all lower fidelities (not highest fidelity)
+    bias         : numeric
+        The base bias value
     base_model     : RewardModel class
         The base class to use for each fidelity level
     """
 
-    def __init__(self, num_fidelities, biases, base_model, **kwargs):
-        self._models = [base_model(**kwargs) for _ in range(num_fidelities)]
+    def __init__(self, num_fidelities, bias, base_model, **kwargs):
+        super(MultiFidelityWrapperModel, self).__init__(num_fidelities,
+                                                        bias)
 
-        if not np.iterable(biases):
-            fids = np.arange(1, num_fidelities)[::-1]
-            biases = fids * biases
-        if len(biases) != num_fidelities - 1:
-            raise ValueError('Must define %d biases for %d fidelities' %
-                             (num_fidelities - 1, num_fidelities))
-        self._biases = np.array(biases)
+        self._models = [base_model(**kwargs) for _ in range(num_fidelities)]
 
     @property
     def num_fidelities(self):
@@ -179,4 +226,5 @@ class MultiFidelityUCBAcquisition(UCBAcquisition):
             x_aug = np.hstack((i, x))
             ucb = super(MultiFidelityUCBAcquisition, self).__call__(x_aug)
             ests.append(ucb)
+        ests += self.model.biases
         return np.min(ests)

@@ -20,6 +20,7 @@ class MultiFidelityFunctions(object):
     def __call__(self, fid, x):
         if round(fid) != fid:
             raise ValueError('Fidelity must be integer')
+        fid = int(round(fid))
         if fid >= len(self.gamma):
             raise ValueError('Cannot query fidelity %d out of %d' %
                              (fid, len(self.gamma)))
