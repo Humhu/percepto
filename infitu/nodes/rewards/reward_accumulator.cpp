@@ -56,20 +56,27 @@ private:
 		}
 
 		double dt = (msg->header.stamp - _lastRewardTime).toSec();
+		// Catch NaN/inf rewards and negative dts
 		if( dt > _maxDt )
 		{
 			ROS_WARN_STREAM( "Received dt of " << dt << " larger than max " << _maxDt );
 			Reset();
 			return;
 		}
+		if( dt < 0 )
+		{
+			ROS_WARN_STREAM( "Received negative dt! Resetting..." );
+			Reset();
+			return;
+		}
 
-		double rewardInc = msg->reward;
-		if( std::isnan( rewardInc ) )
+		if( std::isnan( msg->reward ) )
 		{
 			ROS_WARN_STREAM( "Received NaN reward!" );
 			return;
 		}
 
+		double rewardInc = msg->reward;
 		if( _useIntegration )
 		{
 			// Simple trapezoid rule
