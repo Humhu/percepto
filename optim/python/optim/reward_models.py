@@ -4,7 +4,7 @@ import abc
 import numpy as np
 from sklearn.ensemble import RandomForestRegressor
 
-from GPy.kern import RBF
+from GPy.kern import RBF, Matern32
 from GPy.models import GPRegression
 #from sklearn.gaussian_process import GaussianProcessRegressor as GPRegressor
 #from sklearn.gaussian_process.kernels import ConstantKernel, WhiteKernel, Matern
@@ -176,18 +176,30 @@ class GaussianProcessRewardModel(RewardModel):
     Refer to sklearn.gaussian_process.GaussianProcessRegressor's __init__
     """
 
-    def __init__(self, min_samples=10, batch_retries=19, refine_ll_delta=1.0,
-                 refine_retries=0, verbose=False, enable_refine=True, **kwargs):
+    def __init__(self, min_samples=10, batch_retries=19, enable_refine=True,
+                 refine_period=0, refine_ll_delta=1.0, refine_retries=0, 
+                 kernel_type='rbf', verbose=False, **kwargs):
 
         self.min_samples = min_samples
         self.hp_batch_retries = batch_retries
+        
         self.enable_refine = enable_refine
         self.hp_refine_ll_delta = float(refine_ll_delta)
         self.hp_refine_retries = refine_retries
+        self.hp_refine_period = refine_period
+        self.last_refine_iter = 0
+
         self.hp_init = False
         self.last_ll = None
         self.kwargs = kwargs
         self.verbose = bool(verbose)
+
+        if kernel_type.lower() == 'rbf':
+            self.kernel_class = RBF
+        elif kernel_type.lower() == 'matern':
+            self.kernel_class = Matern32
+        else:
+            raise ValueError('Unknown kernel_type: ' + kernel_type)
 
         self.kernel = None
         self.gp = None  # Init later
@@ -197,7 +209,7 @@ class GaussianProcessRewardModel(RewardModel):
     def _initialize(self):
         x = np.asarray(self.inputs)
         y = np.asarray(self.outputs).reshape(-1, 1)
-        self.kernel = RBF(input_dim=x.shape[1], ARD=True)
+        self.kernel = self.kernel_class(input_dim=x.shape[1], ARD=True)
         self.gp = GPRegression(x, y, kernel=self.kernel, **self.kwargs)
 
     @property
@@ -229,10 +241,23 @@ class GaussianProcessRewardModel(RewardModel):
         if self.verbose:
             rospy.loginfo('Prev LL: %f Curr LL: %f', self.last_ll, current_ll)
 
-        if current_ll < self.last_ll - self.hp_refine_ll_delta and self.enable_refine:
-            self.batch_optimize(self.hp_refine_retries + 1)
-        elif current_ll > self.last_ll:
+        self.check_refine(current_ll)
+
+    def check_refine(self, current_ll):
+        if not self.enable_refine:
+            return
+
+        if current_ll > self.last_ll:
             self.last_ll = current_ll
+
+        # If the LL has decreased by refine_ll_delta
+        delta_achieved = current_ll < self.last_ll - self.hp_refine_ll_delta
+
+        # If it has been refine_period samples since last refinement
+        period_achieved = self.num_samples > self.last_refine_iter + self.hp_refine_period
+        if delta_achieved or period_achieved:
+            self.batch_optimize(self.hp_refine_retries + 1)
+            self.last_refine_iter = self.num_samples
 
     def batch_optimize(self, n_restarts=None):
         if self.num_samples < self.min_samples:
@@ -241,7 +266,8 @@ class GaussianProcessRewardModel(RewardModel):
         if n_restarts is None:
             n_restarts = self.hp_batch_retries + 1
 
-        # if self.gp is None: # NOTE Warm-restarting seems to get stuck in local optima
+        # NOTE Warm-restarting seems to get stuck in local optima, possibly from mean?
+        # if self.gp is None: 
         self._initialize()
 
         if self.verbose:
