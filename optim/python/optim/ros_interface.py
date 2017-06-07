@@ -27,10 +27,11 @@ class CritiqueInterface(object):
         Whether to print each evaluation result
     """
 
-    def __init__(self, topic, verbose=False, n_retries=5):
-        rospy.loginfo('Waiting for critique service: %s', topic)
-        rospy.wait_for_service(topic)
-        rospy.loginfo('Connected to service: %s', topic)
+    def __init__(self, topic, verbose=False, n_retries=5, wait_for_topic=True):
+        if wait_for_topic:
+            rospy.loginfo('Waiting for critique service: %s', topic)
+            rospy.wait_for_service(topic)
+            rospy.loginfo('Connected to service: %s', topic)
         self.proxy = rospy.ServiceProxy(topic, GetCritique)
         self.topic = topic
 
