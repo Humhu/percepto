@@ -286,13 +286,13 @@ if __name__ == '__main__':
 
     run_on_start = rospy.get_param('~run_on_start', False)
     res = 'incomplete'
-    # try:
-    if run_on_start:
-        res = optimizer.execute()
-    else:
-        rospy.spin()
-    # except rospy.ROSInterruptException:
-    #    pass
+    try:
+        if run_on_start:
+            res = optimizer.execute()
+        else:
+            rospy.spin()
+    except rospy.ROSInterruptException:
+       pass
 
     # Save progress
     if prog_file is not None:
