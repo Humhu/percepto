@@ -209,7 +209,7 @@ class EmpiricalParameterEvaluator:
                 return None
 
             # Wait before starting
-            # NOTE This catches instances when relying on sim tim
+            # NOTE This catches instances when relying on sim time
             if self.evaluation_delay.to_sec() > 0:
                 rospy.sleep(self.evaluation_delay)
 
