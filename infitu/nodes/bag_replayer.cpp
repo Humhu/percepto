@@ -26,23 +26,29 @@ public:
 
 		rosbag::PlayerOptions opts;
 		GetParam<std::string>( ph, "prefix", opts.prefix, "" );
-		GetParam( ph, "quiet", opts.quiet );
-		GetParam( ph, "immediate", opts.at_once );
-		GetParam( ph, "pause", opts.start_paused );
+		GetParam( ph, "quiet", opts.quiet, false );
+		GetParam( ph, "immediate", opts.at_once, false );
+		GetParam( ph, "pause", opts.start_paused, false );
 		GetParam( ph, "queue", opts.queue_size, 100 );
 		GetParam( ph, "hz", opts.bag_time_frequency, 100.0 );
-		GetParam( ph, "clock", opts.bag_time );
+		GetParam( ph, "clock", opts.bag_time, false );
 		double dur;
 		GetParam( ph, "delay", dur, 0.2 );
 		opts.advertise_sleep = ros::WallDuration( dur );
 		GetParam( ph, "rate", opts.time_scale, 1.0 );
+
 		GetParam<float>( ph, "start", opts.time, 0.0 );
 		opts.has_time = HasParam( ph, "start" );
+		
 		opts.has_duration = GetParam( ph, "duration", opts.duration );
-		GetParam( ph, "skip_empty", dur );
-		opts.skip_empty = ros::Duration( dur );
-		GetParam( ph, "loop", opts.loop );
-		GetParam( ph, "keep_alive", opts.keep_alive );
+		
+		if( GetParam( ph, "skip_empty", dur ) )
+		{
+			opts.skip_empty = ros::Duration( dur );
+		}
+		GetParam( ph, "loop", opts.loop, false );
+		GetParam( ph, "keep_alive", opts.keep_alive, false );
+		
 		std::vector<std::string> topics;
 		if( GetParam( ph, "topics", topics ) )
 		{
