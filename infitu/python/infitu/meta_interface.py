@@ -33,6 +33,7 @@ def parse_meta_interface(info):
         ordered_items[ind] = (name, v)
 
     for name, v in ordered_items:
+        v['verbose'] = verbose
         interface_type = v.pop('type')
         if interface_type == 'paraset':
             rospy.loginfo('Parsing paraset subinterface %s', name)

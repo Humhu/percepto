@@ -52,6 +52,8 @@ class ParameterNormalizer(object):
     """
 
     def __init__(self, min_val, max_val, rounders):
+        min_val = float(min_val)
+        max_val = float(max_val)
         self.offset = 0.5 * (min_val + max_val)
         self.scale = 0.5 * (max_val - min_val)
         if self.scale < 0:
