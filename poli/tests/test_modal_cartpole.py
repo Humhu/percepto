@@ -11,7 +11,7 @@ from bayes_opt import BayesianOptimization
 import sklearn.cluster as skc
 
 import optim
-
+import matplotlib.pyplot as plt
 
 class Convergence(object):
     def __init__(self, min_n, tol, max_iter, use_delta=False):
@@ -79,7 +79,7 @@ def make_network(input, n_layers, n_units, n_outputs, scope,
             else:
                 x = tf.layers.dense(inputs=x,
                                     units=n_units,
-                                    activation=tf.nn.leaky_relu,
+                                    activation=tf.nn.relu,
                                     bias_initializer=b_init,
                                     name='layer_%d' % i,
                                     reuse=reuse)
@@ -239,7 +239,7 @@ if __name__ == '__main__':
     mean_expected_return = tf.reduce_mean(expected_return)
 
     # TD-Gradient error
-    gamma = tf.constant(0.95, dtype=tf.float32, name='gamma')
+    gamma = tf.constant(0.99, dtype=tf.float32, name='gamma')
     # td_err = reward_ph + gamma * next_value[-1] - value[-1]
     td_err = reward_ph + gamma * expected_return - value[-1]
     # td_err = reward_ph + gamma * next_value_opt - value[-1]
@@ -265,7 +265,7 @@ if __name__ == '__main__':
             adam_vars.extend(list(opt._get_beta_accumulators()))
         return tf.variables_initializer(adam_vars)
 
-    policy_optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
+    policy_optimizer = tf.train.AdamOptimizer(learning_rate=1e-2)
     with tf.control_dependencies(policy_updates):
         demo_train = policy_optimizer.minimize(demo_loss,
                                                var_list=policy_params)
@@ -275,7 +275,7 @@ if __name__ == '__main__':
     policy_reset_op = adam_variables_initializer(
         policy_optimizer, policy_params)
 
-    value_optimizer = tf.train.AdamOptimizer(learning_rate=1e-3, epsilon=0.1)
+    value_optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
     with tf.control_dependencies(value_updates):
         value_train = value_optimizer.minimize(td_loss + drift_weight * drift_loss,
                                                var_list=value_params)
@@ -294,27 +294,6 @@ if __name__ == '__main__':
     min_lib_batch_size = 1000
     max_buff_len = float('inf')
 
-    # def get_indices(s, lib):
-    #     N = len(s)
-
-    #     def get_value(a):
-    #         return sess.run(value[-1], feed_dict={state_ph: s,
-    #                                               action_ph: np.tile(a, (N, 1)),
-    #                                               value_training: False})
-    #     values = np.array([np.squeeze(get_value(ai)) for ai in lib])
-    #     # Indices of optimal policy
-    #     best_inds = np.argmax(values, axis=0)
-
-    #     # Indices of current policy
-    #     curr_logits = sess.run(policy[-1], feed_dict={state_ph: s,
-    #                                                   library_ph: lib})
-    #     curr_probs = np.exp(curr_logits)
-    #     curr_probs = (curr_probs.T / np.sum(curr_probs, axis=1))
-    #     curr_expected_value = np.sum(values * curr_probs, axis=0)
-    #     # values[curr_inds, range(N)]
-    #     advantage = values[best_inds, range(N)] - curr_expected_value
-    #     return best_inds, advantage
-
     def demo_policy(obs):
         K_demo = np.array([[-1, 0, 20, -2]])
         action = np.atleast_1d(np.dot(K_demo, obs.T))
@@ -325,7 +304,7 @@ if __name__ == '__main__':
     def sigmoid(x):
         return 1.0 / (1.0 + math.exp(-x))
 
-    def learned_policy(obs, lib, p_policy, er_k):
+    def learned_policy(obs, lib, p_policy):
         # er = sess.run(mean_expected_return, feed_dict={next_state_ph: obs,
                                                     #    dropout_rate: 0.0,
                                                     #    library_ph: lib,
@@ -390,8 +369,9 @@ if __name__ == '__main__':
         aux = optim.BFGSOptimizer(mode='max', num_restarts=5)
         aux.lower_bounds = env.action_space.low
         aux.upper_bounds = env.action_space.high
-        reward_model = optim.GaussianProcessRewardModel(enable_refine=True,
-                                                        refine_period=2)
+        reward_model = optim.GaussianProcessRewardModel(batch_retries=9,
+        enable_refine=True,
+                                                        refine_period=5)
         acq_func = optim.UCBAcquisition(reward_model)
 
         init_samples = np.random.uniform(low=aux.lower_bounds,
@@ -411,15 +391,20 @@ if __name__ == '__main__':
             y = f(x)
             reward_model.report_sample(x=x, reward=y)
             samples.append((x, y))
-        print 'BO:\n%s' % (samples)
-        return max(samples, key=lambda x: x[1])[0]
+        return max(samples, key=lambda x: x[1]) # Returns input, value
 
     def update_library(states, old_lib, k, mode='greedy'):
-        '''Updates the library by dropping k random elements and
-        running greedy set coverage. Maximizes the performance of an
-        optimal greedy policy.
+        '''Updates the library by dropping k random elements and running greedy set 
+        coverage. 
+
+        In greedy mode, maximizes the performance of an optimal greedy policy.
+
+        In current mode, maximizes the worst-case improvement over the current
+        policy using the modes induced by the current policy. If no improvement
+        can be achieved, keeps the current policy actions. If the action to be
+        replaced has no corresponding states, greedy mode will be used instead.
         '''
-        lib = old_lib
+        lib = np.array(old_lib)
 
         def raw_value(s, a):
             vals = sess.run(value[-1], feed_dict={state_ph: s,
@@ -439,10 +424,11 @@ if __name__ == '__main__':
             curr_values[i] = raw_value(states, a)
             return np.mean(np.max(curr_values, axis=0))
 
-        def mean_curr_value(s, a):
-            '''Performance according to current policy
+        def min_delta_value(s, a_new, v_old):
+            '''Smallest change in performance compared to current policy
             '''
-            return np.mean(raw_value(s, a))
+            delta = raw_value(s,a_new) - v_old
+            return np.min(delta)
 
         # Replace k elements of the library
         inds = random.sample(range(len(lib)), k)
@@ -452,17 +438,24 @@ if __name__ == '__main__':
             # NOTE We take the max over current tested action and library
             # members
             if mode == 'greedy':
-                a_fin = bo_opt(lambda x: mean_max_value(x, i))
+                a_fin = bo_opt(lambda x: mean_max_value(x, i))[0]
             elif mode == 'current':
-                active_states = [si for si, ii in izip(
-                    states, curr_inds) if ii == i]
+                active_states = [si for si, ii in izip(states, curr_inds) if ii == i]
+                a_old = old_lib[i]
                 # If action to be replaced has no corresponding states, default
                 # to greedy mode
                 if len(active_states) == 0:
                     print 'No active states for element %d! Defaulting to greedy behavior' % i
-                    a_fin = bo_opt(lambda x: mean_max_value(x, i))
+                    a_fin = bo_opt(lambda x: mean_max_value(x, i))[0]
                 else:
-                    a_fin = bo_opt(lambda x: mean_curr_value(active_states, x))
+                    v_active = raw_value(active_states, a_old)
+                    a_fin, v_fin = bo_opt(lambda x: min_delta_value(active_states, x, v_active))
+                    
+                    print 'New action %s has delta value %f compared to old action %s.' \
+                        % (str(a_fin), v_fin, str(a_old))
+                    if v_fin < 0:
+                        print 'Keeping old!'
+                        a_fin = a_old
 
             lib[i] = a_fin
             curr_values[inds] = raw_value(states, a_fin)
@@ -530,8 +523,8 @@ if __name__ == '__main__':
             if conv_v.iter % 1000 == 0:
                 print 'Value training iter: %d TD: %f Drift: %f' % (conv_v.iter, td, dl)
             value_converged = conv_v.check(td)
-            if td > conv_v.tol:
-                continue
+            # if td > conv_v.tol:
+            #     continue
 
             er = sess.run([mean_expected_return, expect_train],
                           feed_dict={state_ph: s,  # NOTE Not sure why we need this if using batch norm
@@ -582,9 +575,9 @@ if __name__ == '__main__':
     print 'Initialization done'
 
     trial_batch_size = 1
-    init_p = 0.2
-    final_p = 0.01
-    final_iters = 50
+    init_p = 0.25
+    final_p = 0.0
+    final_iters = 100
 
     def get_p(i):
         i = max(min(i, final_iters), 0)
@@ -600,8 +593,7 @@ if __name__ == '__main__':
         print 'Trial %d using exploration p %f' % (iter_i, p)
         for _ in range(trial_batch_size):
             l = len(buffer)
-            run_trial(learned_policy, buffer, final_buffer,
-                      lib=library, p_policy=0.9, er_k=0.2)  # Corresponds to 2% randomness for expected return 20
+            run_trial(learned_policy, buffer, final_buffer, lib=library, p_policy=1.0-p)
             trial_lens.append(len(buffer) - l)
             if len(buffer) > max_buff_len:
                 buffer = buffer[-max_buff_len:]
@@ -610,19 +602,21 @@ if __name__ == '__main__':
             continue
 
         # Now re-select library
-        if len(buffer) > min_lib_batch_size \
-                and value_conv.last_converged \
-                and policy_conv.last_converged:
+        if len(buffer) > min_lib_batch_size:# \
+                #and value_conv.last_converged \
+                #and policy_conv.last_converged:
             lib_replace_k = 1
             print 'Replacing %d elements of library...' % lib_replace_k
-            new_lib, new_inds = update_library(states=zip(*buffer)[-min_lib_batch_size:][0],
+            new_lib, new_inds = update_library(states=zip(*buffer)[0],
                                                old_lib=library,
                                                k=lib_replace_k,
                                                mode='current')  # NOTE or greedy?
+            print 'Old library:\n%s' % str(library)
             print 'New library:\n%s' % str(new_lib)
 
-            library = new_lib
+            library = np.array(new_lib)
             libraries.append(np.array(library))
+            print 'Libraries:\n%s' % str(libraries)
 
             print 'Resetting policy and value optimizers...'
             sess.run(policy_reset_op)
@@ -649,3 +643,16 @@ if __name__ == '__main__':
 
         print 'Buff size %d' % len(buffer)
     finish_time = time.time()
+
+    plt.ion()
+    plt.figure()
+    plt.plot(trial_lens)
+    plt.xlabel('Iteration')
+    plt.ylabel('Number of steps')
+    plt.title('Trial lengths over time')
+
+    plt.figure()
+    plt.plot(np.squeeze(libraries))
+    plt.xlabel('Iteration')
+    plt.ylabel('Force')
+    plt.title('Primitives over time')
