@@ -3,6 +3,7 @@
 
 import tensorflow as tf
 
+
 def value_combinations(states, actions, make_value):
     """Builds modules for computing values for state/action combinations.
 
@@ -22,7 +23,7 @@ def value_combinations(states, actions, make_value):
     B = tf.shape(input=actions)[0]
 
     # We will tile [state] and [actions]
-    # as [state1, state1, state2, state2, ...] and 
+    # as [state1, state1, state2, state2, ...] and
     # [action1, action2, action1, action2, ...]
     idx = tf.range(N)
     idx = tf.reshape(idx, [-1, 1])    # Convert to a len(yp) x 1 matrix.
@@ -41,7 +42,8 @@ def value_combinations(states, actions, make_value):
                                  shape=tiled_value_shape)
     return tiled_value_mat
 
-def td_error(reward, gamma, curr_value, next_value):
+def anchored_td_loss(rewards, values, next_values, terminal_values,
+                     gamma, dweight):
     """Builds modules for computing TD error
 
     Parameters
@@ -62,7 +64,11 @@ def td_error(reward, gamma, curr_value, next_value):
     """
     if not isinstance(gamma, tf.Tensor):
         gamma = tf.constant(gamma, dtype=tf.float32, name='gamma')
+    if not isinstance(dweight, tf.Tensor):
+        dweight = tf.constant(dweight, dtype=tf.float32, name='dweight')
 
-    td = reward + gamma * next_value - curr_value
-    loss = tf.reduce_mean(tf.nn.l2_loss(td))
-    return loss
+    td = rewards + gamma * next_values - values
+    td_loss = tf.reduce_mean(tf.nn.l2_loss(td))
+    drift_loss = tf.reduce_mean(tf.nn.l2_loss(terminal_values))
+    
+    return td_loss + dweight * drift_loss, td_loss, drift_loss

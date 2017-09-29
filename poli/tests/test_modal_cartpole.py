@@ -98,21 +98,16 @@ if __name__ == '__main__':
                                                       reuse=False,
                                                       **value_spec)
 
-    next_policy, _, next_policy_updates = make_network(input=next_state_ph,
-                                                       reuse=True,
-                                                       **policy_spec)
-    next_policy_ind = tf.argmax(next_policy[-1], axis=-1)
-    next_policy_out = tf.gather(params=library_ph, indices=next_policy_ind)
-    next_state_action = tf.concat([next_state_ph, next_policy_out],
-                                  axis=-1,
-                                  name='next_state_action')
+    next_policy, _, _ = make_network(input=next_state_ph,
+                                     reuse=True,
+                                     **policy_spec)
+    next_policy_probs = tf.nn.softmax(next_policy[-1])
 
     def make_value(input):
         return make_network(input=input,
                             reuse=True,
                             **value_spec)[0][-1]
 
-    next_policy_probs = tf.nn.softmax(next_policy[-1])
     value_combos = value_combinations(states=next_state_ph,
                                       make_value=make_value,
                                       actions=library_ph)
@@ -120,15 +115,15 @@ if __name__ == '__main__':
                                    axis=1, keep_dims=True)
     empirical_return = tf.reduce_mean(expected_value)
 
-    td_loss = td_error(reward=reward_ph, gamma=0.99,
-                       curr_value=value[-1], next_value=expected_value)
-
     # Loss to fix values for terminal states
-    final_value = make_network(input=final_state_action,
-                               reuse=True,
-                               **value_spec)[0]
-    drift_loss = tf.reduce_mean(tf.nn.l2_loss(final_value[-1]))
-    drift_weight = tf.constant(10.0, dtype=tf.float32)
+    final_value, _, _ = make_network(input=final_state_action,
+                                     reuse=True,
+                                     **value_spec)
+    value_obj, td_loss, drift_loss = anchored_td_loss(rewards=reward_ph,
+                                                      values=value[-1],
+                                                      next_values=expected_value,
+                                                      terminal_values=final_value[-1],
+                                                      gamma=0.99, dweight=10.0)
 
     demo_onehot = tf.one_hot(indices=targets_ph, depth=n_policy_modes)
     demo_advantages_ph = tf.placeholder(
@@ -136,30 +131,19 @@ if __name__ == '__main__':
     demo_loss = tf.losses.softmax_cross_entropy(onehot_labels=demo_onehot,
                                                 logits=policy[-1])
 
-    # NOTE Taken from StackOverflow
-    def adam_variables_initializer(opt, var_list):
-        adam_vars = [opt.get_slot(var, name)
-                     for name in opt.get_slot_names()
-                     for var in var_list]
-        if isinstance(opt, tf.train.AdamOptimizer):
-            adam_vars.extend(list(opt._get_beta_accumulators()))
-        return tf.variables_initializer(adam_vars)
-
     policy_optimizer = tf.train.AdamOptimizer(learning_rate=1e-2)
     with tf.control_dependencies(policy_updates):
-        demo_train = policy_optimizer.minimize(demo_loss,
-                                               var_list=policy_params)
-    with tf.control_dependencies(next_policy_updates):
-        expect_train = policy_optimizer.minimize(-empirical_return,
-                                                 var_list=policy_params)
-    policy_reset_op = adam_variables_initializer(
-        policy_optimizer, policy_params)
+        demo_train = policy_optimizer.minimize(
+            demo_loss, var_list=policy_params)
+        expect_train = policy_optimizer.minimize(
+            -empirical_return, var_list=policy_params)
+    policy_reset_op = optimizer_initializer(policy_optimizer, policy_params)
 
     value_optimizer = tf.train.AdamOptimizer(learning_rate=1e-3)
     with tf.control_dependencies(value_updates):
-        value_train = value_optimizer.minimize(td_loss + drift_weight * drift_loss,
-                                               var_list=value_params)
-    value_reset_op = adam_variables_initializer(value_optimizer, value_params)
+        value_train = value_optimizer.minimize(
+            value_obj, var_list=value_params)
+    value_reset_op = optimizer_initializer(value_optimizer, value_params)
 
     ##########################################################################
     # LEARNING TIME!!11one
@@ -360,7 +344,7 @@ if __name__ == '__main__':
         td = float('inf')
         while not conv.check(td):
             s, a, r, sn, fs, fa = sampler()
-            td, dl = sess.run([td_loss, drift_loss, value_train],
+            td, dl = sess.run([drift_loss, value_train],
                               feed_dict={library_ph: lib,
                                          state_ph: s,
                                          action_ph: a,

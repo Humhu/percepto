@@ -1,6 +1,7 @@
 """Utility classes and functions
 """
 
+import tensorflow as tf
 import numpy as np
 
 class Convergence(object):
@@ -37,3 +38,14 @@ class Convergence(object):
 
         self.last_converged = np.all(np.abs(hist) < self.tol)
         return self.last_converged
+
+def optimizer_initializer(opt, var_list):
+    """Creates a list of initializers for resetting a tensorflow
+    optimizer
+    """
+    opt_vars = [opt.get_slot(var, name)
+                    for name in opt.get_slot_names()
+                    for var in var_list]
+    if isinstance(opt, tf.train.AdamOptimizer):
+        opt_vars.extend(list(opt._get_beta_accumulators()))
+    return tf.variables_initializer(opt_vars)
