@@ -2,6 +2,7 @@
 """
 
 import random
+import cPickle as pickle
 
 # Operations we will want to support:
 # 1. Mixing states/actions to generate synthetic terminal SA tuples
@@ -9,9 +10,13 @@ import random
 
 class SARSDataset(object):
     """Stores episodic SARS data tuples.
+
+    Parameters
+    ==========
+    sampling_strategy : 'uniform'
+        TODO Implement more
     """
 
-    # TODO Different sampling strategies?
     def __init__(self, sampling_strategy='uniform'):
         self.episode_lens = []
         self._ep_counter = 0
@@ -25,6 +30,20 @@ class SARSDataset(object):
                    + 'Supported are %s') % (sampling_strategy, valid_ss)
             raise ValueError(err)
         self._sstrat = sampling_strategy
+
+    # NOTE Doesn't save other state
+    def save(self, path):
+        with open(path, 'w') as f:
+            pickle.dump((self.sars_data, self.terminals), f)
+
+    def load(self, path):
+        with open(path, 'r') as f:
+            self.sars_data, self.terminals = pickle.load(f)
+        self.reset()
+
+    def reset(self):
+        self.current_sar = None
+        self._ep_counter = 0
 
     @property
     def num_episodes(self):
@@ -68,11 +87,10 @@ class SARSDataset(object):
         """
         self.terminals.append(s)
         self.sars_data.append(self.current_sar + (s,))
-        self.current_sar = None
 
         # Length bookkeeping
         self.episode_lens.append(self._ep_counter)
-        self._ep_counter = 0
+        self.reset()
 
     def sample_sars(self, k):
         """Samples from non-terminal SARS tuples
