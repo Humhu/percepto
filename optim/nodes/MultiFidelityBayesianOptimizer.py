@@ -5,6 +5,7 @@ import dill
 import pickle
 import time
 import math
+import os
 
 import numpy as np
 import scipy as sp
@@ -33,7 +34,7 @@ class MultiFidelityBayesianOptimizer(object):
         model_info = rospy.get_param('~reward_model')
         self.reward_model = optim.parse_mf_reward_model(model_info)
         self.gammas = farr(rospy.get_param('~fidelity_gammas'),
-                           self.reward_model.num_fidelities)
+                           self.reward_model.num_fidelities - 1)
         self.gamma_power = float(
             rospy.get_param('~gamma_inflation_coeff', 2.0))
         self.fidelity_costs = rospy.get_param('~fidelity_costs')
@@ -265,6 +266,9 @@ class MultiFidelityBayesianOptimizer(object):
 if __name__ == '__main__':
     rospy.init_node('multi_fidelity_bayesian_optimizer')
     out_path = rospy.get_param('~output_path')
+    if os.path.isfile(out_path):
+        rospy.logerr('Output path %s already exists!', out_path)
+        sys.exit(-1)
     out_file = open(out_path, 'w')
 
     load_path = rospy.get_param('~load_path', None)
