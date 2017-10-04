@@ -6,20 +6,27 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/cmake/")
 
 set(CMAKE_BUILD_TYPE Release)
 
-set(catkin_required rospy)
-
 find_package(catkin REQUIRED 
-	COMPONENTS ${catkin_required}
+	COMPONENTS rospy 
+	           message_generation
+	           std_msgs
 )
 
-# Use Boost for most utilities, threading
-find_package(Boost REQUIRED COMPONENTS random)
-
-catkin_package(
-	CATKIN_DEPENDS 	${catkin_required}
-					
-	DEPENDS 		Boost 
-					system_lib
+add_message_files(FILES
+                  CheckpointNotification.msg
 )
 
 catkin_python_setup()
+
+generate_messages(DEPENDENCIES
+					std_msgs
+)
+
+catkin_package(
+	CATKIN_DEPENDS 	rospy
+	std_msgs
+	message_runtime
+	
+	DEPENDS         Boost 
+					system_lib
+)
