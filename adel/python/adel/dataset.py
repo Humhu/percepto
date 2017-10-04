@@ -82,6 +82,15 @@ class SARSDataset(object):
         # Length bookkeeping
         self._ep_counter += 1
 
+    def report_episode_end(self, s):
+        """Reports the end of an episode without a terminal state
+        """
+        self.sars_data.append(self.current_sar + (s,))
+
+        # Length bookkeeping
+        self.episode_lens.append(self._ep_counter)
+        self.reset()
+
     def report_terminal(self, s):
         """Reports a terminal state, ending the current episode.
         """

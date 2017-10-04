@@ -213,9 +213,13 @@ if __name__ == '__main__':
 
             # NOTE When the episode terminates due to achieving max steps,
             # the 'done' flag still gets set!
-            if done and t < (env.spec.max_episode_steps - 1):
-                print 'Episode terminating prematurely!'
-                buffer.report_terminal(s=next_obs[0])
+            if done:
+                if t < (env.spec.max_episode_steps - 1):
+                    print 'Episode terminating prematurely!'
+                    buffer.report_terminal(s=next_obs[0])
+                else:
+                    print 'Episode hit max length!'
+                    buffer.report_episode_end(s=next_obs[0])
                 break
 
             obs = next_obs
@@ -344,7 +348,7 @@ if __name__ == '__main__':
         td = float('inf')
         while not conv.check(td):
             s, a, r, sn, fs, fa = sampler()
-            td, dl = sess.run([drift_loss, value_train],
+            td, dl = sess.run([td_loss, drift_loss, value_train],
                               feed_dict={library_ph: lib,
                                          state_ph: s,
                                          action_ph: a,
@@ -486,7 +490,7 @@ if __name__ == '__main__':
 
     plt.ion()
     plt.figure()
-    plt.plot(trial_lens)
+    plt.plot(buffer.episode_lens)
     plt.xlabel('Iteration')
     plt.ylabel('Number of steps')
     plt.title('Trial lengths over time')
