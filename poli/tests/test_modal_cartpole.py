@@ -74,26 +74,25 @@ if __name__ == '__main__':
                    'n_units': 64,
                    'n_outputs': n_policy_modes,
                    'final_rect': None,
-                   'scope': 'policy',
-                   'use_batch_norm': True,
-                   'training': policy_training,
-                   'use_dropout': False,
-                   'dropout_rate': dropout_rate}
+                   'scope': 'policy'}#,
+                   #'batch_training': policy_training}#,
+                   #'dropout_rate': dropout_rate}
     policy, policy_params, policy_updates = make_network(input=state_ph,
                                                          **policy_spec)
     policy_ind = tf.argmax(policy[-1], axis=-1)
     policy_out = tf.gather(params=library_ph, indices=policy_ind)
     policy_probs = tf.nn.softmax(policy[-1])
 
+    # NOTE batch normalization breaks the residual gradient, probably because it
+    # rescales everything to garbage. Meanwhile it works well for the policy since
+    # that is simply a classification task?
     value_spec = {'n_layers': 3,
                   'n_units': 256,
                   'n_outputs': 1,
                   'scope': 'value',
-                  'final_rect': None,
-                  'use_batch_norm': False,
-                  'training': value_training,
-                  'use_dropout': False,
-                  'dropout_rate': dropout_rate}
+                  'final_rect': None}#,
+                  #'batch_training': value_training}#,
+                  #'dropout_rate': dropout_rate}
     value, value_params, value_updates = make_network(input=state_action,
                                                       reuse=False,
                                                       **value_spec)
@@ -155,7 +154,7 @@ if __name__ == '__main__':
 
     training_batch_size = 100
     final_batch_size = 10
-    min_lib_batch_size = 30
+    min_lib_batch_size = 15 # TODO For testing!
     max_buff_len = float('inf')
 
     def demo_policy(obs):
@@ -274,57 +273,60 @@ if __name__ == '__main__':
                                                   value_training: False})
             return np.squeeze(vals)
 
-        curr_values = np.vstack([raw_value(states, ai) for ai in old_lib])
         curr_inds = sess.run(policy_ind, feed_dict={state_ph: states,
                                                     dropout_rate: 0.0,
                                                     policy_training: False})
 
-        def mean_max_value(a, i):
-            '''Performance according to greedy optimal policy
+        def mean_max_value(s, a_new, curr):
+            '''Mean performance on active states assuming optimal policy after changing
+            active action
             '''
-            curr_values[i] = raw_value(states, a)
-            return np.mean(np.max(curr_values, axis=0))
+            r = np.reshape(raw_value(s, a_new), (1, -1))
+            all_vals = np.vstack((curr, r))
+            opt_vals = np.max(all_vals, axis=0)
+            return np.mean(opt_vals)
 
         def min_delta_value(s, a_new, v_old):
-            '''Smallest change in performance compared to current policy
+            '''Smallest change in performance on active states compared to current policy
+            assuming only changing active action
             '''
             delta = raw_value(s, a_new) - v_old
             return np.min(delta)
 
         # Replace k elements of the library
-        inds = random.sample(range(len(lib)), k)
-        curr_values[inds, :] = 0
+        M = len(lib)
+        inds = random.sample(range(M), k)
 
         for i in inds:
             # NOTE We take the max over current tested action and library
             # members
             if mode == 'greedy':
                 a_fin = bo_opt(lambda x: mean_max_value(x, i))[0]
-            elif mode == 'current':
-                active_states = [si for si, ii in zip(
-                    states, curr_inds) if ii == i]
-                a_old = old_lib[i]
-                # If action to be replaced has no corresponding states, default
-                # to greedy mode
-                if len(active_states) == 0:
-                    print 'No active states for element %d! Defaulting to greedy behavior' % i
-                    a_fin = bo_opt(lambda x: mean_max_value(x, i))[0]
-                else:
-                    v_active = raw_value(active_states, a_old)
-                    a_fin, v_fin = bo_opt(lambda x: min_delta_value(
-                        active_states, x, v_active))
 
-                    print 'New action %s has delta value %f compared to old action %s.' \
-                        % (str(a_fin), v_fin, str(a_old))
-                    if v_fin < 0:
+            elif mode == 'current':
+                active_states = [si for si, ii in zip(states, curr_inds) if ii == i]
+                a_old = old_lib[i]
+                # If action to be replaced has no corresponding states, bail
+                if len(active_states) == 0:
+                    print 'No active states for element %d!' % i
+                    a_fin = a_old
+                else:
+
+                    curr = [raw_value(active_states, lib[j]) for j in range(M) if j != i]
+                    v_old = mean_max_value(active_states, a_old, curr)
+                    a_fin, v_fin = bo_opt(lambda x: mean_max_value(active_states, x, curr))
+                    
+                    #v_active = raw_value(active_states, a_old)
+                    #a_fin, v_fin = bo_opt(lambda x: min_delta_value(active_states, x, v_active))
+
+                    print 'New action %s has value %f compared to old action %s with value %f.' \
+                        % (str(a_fin), v_fin, str(a_old), v_old)
+                    if v_fin < v_old:
                         print 'Keeping old!'
                         a_fin = a_old
 
             lib[i] = a_fin
-            curr_values[inds] = raw_value(states, a_fin)
-
-        inds = np.argmax(curr_values, axis=1)
-        return lib, inds
+        return lib
 
     def train_policy_demo(sampler, lib, conv):
         conv.clear()
@@ -389,7 +391,7 @@ if __name__ == '__main__':
                           feed_dict={state_ph: s,  # NOTE Not sure why we need this if using batch norm
                                      next_state_ph: s,
                                      library_ph: lib,
-                                     policy_training: False,
+                                     policy_training: True,
                                      value_training: False,
                                      dropout_rate: 0.1})[0]
             if conv_p.iter % 1000 == 0:
@@ -413,10 +415,9 @@ if __name__ == '__main__':
     print 'Initial library:\n%s' % str(library)
     demo_buffer = zip(buffer.all_states, a_inds)
 
-    demo_conv = Convergence(min_n=100, tol=0.1, max_iter=10000)
-    policy_conv = Convergence(
-        min_n=10, tol=0.5, max_iter=10000, use_delta=True)
-    value_conv = Convergence(min_n=100, tol=0.1, max_iter=10000)
+    demo_conv = Convergence(min_n=100, tol=0.1, max_iter=10000, min_iter=1000)
+    policy_conv = Convergence(min_n=100, tol=0.5, max_iter=10000, min_iter=1000, use_delta=True)
+    value_conv = Convergence(min_n=100, tol=0.1, max_iter=10000, min_iter=1000)
 
     def sample_policy_demo():
         return zip(*random.sample(demo_buffer, k=training_batch_size))
@@ -464,7 +465,7 @@ if __name__ == '__main__':
                 # and policy_conv.last_converged:
             lib_replace_k = 1
             print 'Replacing %d elements of library...' % lib_replace_k
-            new_lib, new_inds = update_library(states=buffer.all_states,
+            new_lib = update_library(states=buffer.all_states,
                                                old_lib=library,
                                                k=lib_replace_k,
                                                mode='current')  # NOTE or greedy?

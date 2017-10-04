@@ -74,13 +74,6 @@ def make_convnet(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1
 
     # TODO Variables for restoring batch norm state?
     """
-    # Check arguments
-    if use_batch_norm and training is None:
-        raise ValueError(
-            'Must specify training bool source if using batch norm')
-    if use_dropout and dropout_rate is None:
-        raise ValueError('Must specify dropout rate source if using dropout')
-
     layers = []
     variables = []
 
@@ -189,13 +182,6 @@ def make_network(input, n_layers, n_units, n_outputs, scope,
     # TODO Variables for restoring batch norm state?
     """
 
-    # Check arguments
-    if use_batch_norm and training is None:
-        raise ValueError(
-            'Must specify training bool source if using batch norm')
-    if use_dropout and dropout_rate is None:
-        raise ValueError('Must specify dropout rate source if using dropout')
-
     layers = []
     variables = []
 
@@ -241,7 +227,7 @@ def make_network(input, n_layers, n_units, n_outputs, scope,
                                            scope='%s/layer_%d' % (scope, i))
 
     # Collect all batch normalization update ops
-    if use_batch_norm:
+    if batch_training is not None:
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope)
     else:
         update_ops = []
