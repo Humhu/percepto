@@ -3,6 +3,7 @@
 
 import tensorflow as tf
 import numpy as np
+from itertools import izip
 
 
 def check_vector_arg(arg, n):
@@ -107,7 +108,8 @@ def make_convnet(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1
 
             x = tf.layers.conv2d(inputs=x,
                                  filters=n,
-                                 kernel_size=[filter_sizes[i], filter_sizes[i]],
+                                 kernel_size=[
+                                     filter_sizes[i], filter_sizes[i]],
                                  strides=(conv_strides[i], conv_strides[i]),
                                  activation=rect,
                                  name='conv_%d' % i,
@@ -183,7 +185,8 @@ def make_network(input, n_layers, n_units, n_outputs, scope,
     """
 
     layers = []
-    variables = []
+    train_variables = []
+    state_variables = []
 
     # TODO Have b_init be an argument as well?
     b_init = tf.constant_initializer(dtype=tf.float32, value=0.0)
@@ -199,6 +202,8 @@ def make_network(input, n_layers, n_units, n_outputs, scope,
                                                       training=batch_training,
                                                       name='batch_%d' % i,
                                                       reuse=reuse)
+                    state_variables += tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
+                                                         scope='%s/batch_%d' % (scope, i))
                     layers.append(x)
                 if dropout_rate is not None:
                     x = tf.layers.dropout(inputs=x,
@@ -223,12 +228,34 @@ def make_network(input, n_layers, n_units, n_outputs, scope,
             layers.append(x)
 
             # Collect all trainable variables corresponding to dense layer
-            variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
-                                           scope='%s/layer_%d' % (scope, i))
+            train_variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                 scope='%s/layer_%d' % (scope, i))
+            state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
+                                                 scope='%s/layer_%d' % (scope, i))
 
     # Collect all batch normalization update ops
     if batch_training is not None:
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope)
     else:
         update_ops = []
-    return layers, variables, update_ops
+
+    return layers, train_variables, state_variables, update_ops
+
+
+def copy_expanded_params(sess, old_param_vals, new_params):
+    """Copies parameters from an old network to an expanded version.
+    """
+    if len(old_param_vals) != len(new_params):
+        raise ValueError('Expected %d params but got %d' %
+                         (len(old_param_vals), len(new_params)))
+
+    for old_vals, new in izip(old_param_vals, new_params):
+        old_shape = old_vals.shape
+        new_vals = sess.run(new)
+        new_shape = new_vals.shape
+        if np.any(old_shape > new_shape):
+            raise ValueError('Old params have shape %s but new have smaller %s' %
+                             (str(old_shape), str(new_shape)))
+        ranges = [range(s) for s in old_shape]
+        new_vals[np.ix_(*ranges)] = old_vals
+        sess.run(tf.assign(new, new_vals))
