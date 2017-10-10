@@ -26,6 +26,7 @@ class Convergence(object):
         self.bound_deltas = bound_deltas
         self.test_stats = test_stats
         self.max_sd = max_sd
+        self.last_converged = False
 
     def _test_slope(self, hist):
         if not self.test_slope:

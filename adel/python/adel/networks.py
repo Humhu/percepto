@@ -18,11 +18,137 @@ def check_vector_arg(arg, n):
     return arg
 
 
-def make_convnet(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
-                 reuse=False, rect=tf.nn.relu,
-                 pooling=tf.layers.max_pooling2d, pool_sizes=None, pool_strides=None,
-                 batch_training=None, dropout_rate=None,
-                 **kwargs):
+def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
+                reuse=False, rect=tf.nn.relu,
+                pooling=tf.layers.max_pooling2d, pool_sizes=None, pool_strides=None,
+                batch_training=None, dropout_rate=None,
+                **kwargs):
+    """Helper to create a 1D convolutional network with batch normalization,
+    dropout, and proper scoping.
+
+    Parameters
+    ==========
+    input : tf.Tensor object
+        The input tensor to this network
+    n_layers : int > 0
+        The number of layers in this network
+    n_filters : float or iterable of floats
+        The number of filters in each layer. If float, replicated for each layer.
+    filter_sizes : int or iterable of int
+        The filter width and height. If int, replicated for each layer.
+    conv_strides : int or iterable of int (default 1)
+        The distance between filter applications. If int, replicated for each layer.
+    scope : string
+        The tf scope to put this layer in
+
+    Keyword Parameters
+    ==================
+    reuse : bool (default False)
+        Whether or not to reuse tf variables of the same name
+    rect : tf Rectification class (default tf.nn.relu)
+        The rectifier to use inbetween layers
+    pooling : tf Pooling class (default tf.max_pooling2d)
+        The pooling to use inbetween layers and on the output
+    pool_sizes : int or iterable of int
+        The block size over which to pool. If int, replicated for each layer. 
+        Required if pooling is not None
+    pool_strides : int or iterable of int
+        The distance between pooling applications. If int, replicated for each layer.
+        Required if pooling is not None
+    batch_training : tf.Tensor object (default None)
+        Boolean tensor for indicating training/inference mode to batch norm. If None,
+        disables batch normalization.
+    dropout_rate : bool (default None)
+        Float tensor for indicating dropout rate. If None, disables dropout.
+
+    NOTE: Any additional keyword parameters will be routed to the constructor
+    for tf.layers.conv1d
+
+    Returns
+    =======
+    layers : list of tf.Tensor objects
+        Outputs for each layer, ordered from input to output
+    train_variables : list of tf.Variable objects
+        Trainable variables in the network
+    state_variables: list of tf.Variable objects
+        Non-trainable state variables in the network
+    update_ops : list of tf operations
+        If use_batch_norm is True, update dependencies for batch norm updating
+
+    # TODO Variables for restoring batch norm state?
+    """
+    layers = []
+    train_variables = []
+    state_variables = []
+
+    n_filters = check_vector_arg(n_filters, n_layers)
+    filter_sizes = check_vector_arg(filter_sizes, n_layers)
+    conv_strides = check_vector_arg(conv_strides, n_layers)
+    if pooling is not None:
+        pool_sizes = check_vector_arg(pool_sizes)
+        pool_strides = check_vector_arg(pool_strides)
+
+    # TODO Have b_init be an argument as well?
+    b_init = tf.constant_initializer(dtype=tf.float32, value=0.0)
+
+    x = input
+    with tf.variable_scope(scope, reuse=reuse):
+        for i in range(n_layers):
+
+            # NOTE Only use dropout and batch norm in between layers
+            if i > 0:
+                if batch_training is not None:
+                    x = tf.layers.batch_normalization(inputs=x,
+                                                      training=batch_training,
+                                                      name='batch_%d' % i,
+                                                      reuse=reuse)
+                    state_variables += tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
+                                                         scope='%s/batch_%d' % (scope, i))
+                    layers.append(x)
+                if dropout_rate is not None:
+                    x = tf.layers.dropout(inputs=x,
+                                          rate=dropout_rate,
+                                          name='dropout_%d' % i)
+                    layers.append(x)
+
+            x = tf.layers.conv1d(inputs=x,
+                                 filters=n_filters[i],
+                                 kernel_size=filter_sizes[i],
+                                 strides=conv_strides[i],
+                                 activation=rect,
+                                 name='conv_%d' % i,
+                                 **kwargs)
+            layers.append(x)
+
+            # Collect all trainable variables corresponding to conv layer
+            train_variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                 scope='%s/conv_%d' % (scope, i))
+            state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
+                                                 scope='%s/conv_%d' % (scope, i))
+
+            if pooling is not None:
+                x = pooling(inputs=x,
+                            pool_size=pool_sizes[i],
+                            strides=pool_strides[i],
+                            name='pool_%d' % i)
+                train_variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                     scope='%s/pool_%d' % (scope, i))
+                state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
+                                                     scope='%s/pool_%d' % (scope, i))
+
+    # Collect all batch normalization update ops
+    if batch_training is not None:
+        update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope)
+    else:
+        update_ops = []
+    return layers, train_variables, state_variables, update_ops
+
+
+def make_conv2d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
+                reuse=False, rect=tf.nn.relu,
+                pooling=tf.layers.max_pooling2d, pool_sizes=None, pool_strides=None,
+                batch_training=None, dropout_rate=None,
+                **kwargs):
     """Helper to create a convolutional network with batch normalization,
     dropout, and proper scoping.
 
@@ -68,15 +194,18 @@ def make_convnet(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1
     =======
     layers : list of tf.Tensor objects
         Outputs for each layer, ordered from input to output
-    variables : list of tf.Variable objects
+    train_variables : list of tf.Variable objects
         Trainable variables in the network
-    update_ops : list of ??? 
+    state_variables: list of tf.Variable objects
+        Non-trainable state variables in the network
+    update_ops : list of tf operations
         If use_batch_norm is True, update dependencies for batch norm updating
 
     # TODO Variables for restoring batch norm state?
     """
     layers = []
-    variables = []
+    train_variables = []
+    state_variables = []
 
     n_filters = check_vector_arg(n_filters, n_layers)
     filter_sizes = check_vector_arg(filter_sizes, n_layers)
@@ -99,6 +228,8 @@ def make_convnet(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1
                                                       training=batch_training,
                                                       name='batch_%d' % i,
                                                       reuse=reuse)
+                    state_variables += tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES,
+                                                         scope='%s/batch_%d' % (scope, i))
                     layers.append(x)
                 if dropout_rate is not None:
                     x = tf.layers.dropout(inputs=x,
@@ -107,9 +238,9 @@ def make_convnet(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1
                     layers.append(x)
 
             x = tf.layers.conv2d(inputs=x,
-                                 filters=n,
-                                 kernel_size=[
-                                     filter_sizes[i], filter_sizes[i]],
+                                 filters=n_filters[i],
+                                 kernel_size=(
+                                     filter_sizes[i], filter_sizes[i]),
                                  strides=(conv_strides[i], conv_strides[i]),
                                  activation=rect,
                                  name='conv_%d' % i,
@@ -117,28 +248,34 @@ def make_convnet(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1
             layers.append(x)
 
             # Collect all trainable variables corresponding to conv layer
-            variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
-                                           scope='%s/conv_%d' % (scope, i))
+            train_variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                 scope='%s/conv_%d' % (scope, i))
+            state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
+                                                 scope='%s/conv_%d' % (scope, i))
 
             if pooling is not None:
                 x = pooling(inputs=x,
-                            pool_size=pool_sizes[i],
-                            strides=pool_strides[i],
+                            pool_size=(pool_sizes[i], pool_sizes[i]),
+                            strides=(pool_strides[i], pool_strides[i]),
                             name='pool_%d' % i)
+                train_variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                     scope='%s/pool_%d' % (scope, i))
+                state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
+                                                     scope='%s/pool_%d' % (scope, i))
 
     # Collect all batch normalization update ops
-    if use_batch_norm:
+    if batch_training is not None:
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS, scope=scope)
     else:
         update_ops = []
-    return layers, variables, update_ops
+    return layers, train_variables, state_variables, update_ops
 
 
-def make_network(input, n_layers, n_units, n_outputs, scope,
-                 reuse=False,
-                 rect=tf.nn.relu, final_rect=None,
-                 batch_training=None, dropout_rate=None,
-                 **kwargs):
+def make_fullycon(input, n_layers, n_units, n_outputs, scope,
+                  reuse=False,
+                  rect=tf.nn.relu, final_rect=None,
+                  batch_training=None, dropout_rate=None,
+                  **kwargs):
     """Helper to creates a fully connected network with batch normalization,
     dropout, proper scoping, and output rectification.
 

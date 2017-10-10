@@ -80,7 +80,7 @@ if __name__ == '__main__':
                            'scope': 'policy',
                            'batch_training': policy_training}  # ,
             #'dropout_rate': dropout_rate}
-            policy, policy_params, policy_state, policy_updates = make_network(input=state_ph,
+            policy, policy_params, policy_state, policy_updates = make_fullycon(input=state_ph,
                                                                                **policy_spec)
             policy_ind = tf.argmax(policy[-1], axis=-1)
             policy_out = tf.gather(params=library_ph, indices=policy_ind)
@@ -96,34 +96,39 @@ if __name__ == '__main__':
                           'final_rect': None}  # ,
             #'batch_training': value_training}#,
             #'dropout_rate': dropout_rate}
-            value, value_params, value_state, value_updates = make_network(input=state_action,
+            value, value_params, value_state, value_updates = make_fullycon(input=state_action,
                                                                            reuse=False,
                                                                            **value_spec)
 
-            next_policy, _, _, _ = make_network(input=next_state_ph,
+            next_policy, _, _, _ = make_fullycon(input=next_state_ph,
                                                 reuse=True,
                                                 **policy_spec)
             next_policy_probs = tf.nn.softmax(next_policy[-1])
 
             def make_value(input):
-                return make_network(input=input,
+                return make_fullycon(input=input,
                                     reuse=True,
                                     **value_spec)[0][-1]
 
             value_combos = value_combinations(states=next_state_ph,
                                               make_value=make_value,
                                               actions=library_ph)
-            expected_value = tf.reduce_sum(value_combos * next_policy_probs,
+
+            # optimal_policy_probs = tf.nn.softmax(value_combos)
+            # optimal_expected_value = tf.reduce_sum(value_combos * optimal_policy_probs,
+                                        #    axis=1, keep_dims=True)
+
+            policy_expected_value = tf.reduce_sum(value_combos * next_policy_probs,
                                            axis=1, keep_dims=True)
-            empirical_return = tf.reduce_mean(expected_value)
+            policy_empirical_return = tf.reduce_mean(policy_expected_value)
 
             # Loss to fix values for terminal states
-            final_value, _, _, _ = make_network(input=final_state_action,
+            final_value, _, _, _ = make_fullycon(input=final_state_action,
                                                 reuse=True,
                                                 **value_spec)
             value_obj, td_loss, drift_loss = anchored_td_loss(rewards=reward_ph,
                                                               values=value[-1],
-                                                              next_values=expected_value,
+                                                              next_values=policy_expected_value,
                                                               terminal_values=final_value[-1],
                                                               gamma=0.99, dweight=10.0)
 
@@ -136,7 +141,7 @@ if __name__ == '__main__':
             with tf.control_dependencies(policy_updates):
                 demo_train = policy_opt.minimize(
                     demo_loss, var_list=policy_params)
-                expect_train = policy_opt.minimize(-empirical_return,
+                expect_train = policy_opt.minimize(-policy_empirical_return,
                                                    var_list=policy_params)
             policy_reset_op = optimizer_initializer(policy_opt, policy_params)
 
@@ -161,7 +166,7 @@ if __name__ == '__main__':
                    'policy_opt_reset': policy_reset_op, 'value_opt_reset': value_reset_op,
                    'value': value, 'td_loss': td_loss, 'drift_loss': drift_loss, 'demo_loss': demo_loss,
                    'demo_train': demo_train, 'expect_train': expect_train, 'value_train': value_train,
-                   'policy_probs': policy_probs, 'policy_ind': policy_ind, 'empirical_return': empirical_return,
+                   'policy_probs': policy_probs, 'policy_ind': policy_ind, 'empirical_return': policy_empirical_return,
                    'policy_params': policy_params, 'value_params': value_params,
                    'policy_state': policy_state, 'value_state': value_state}
         return out
@@ -176,7 +181,7 @@ if __name__ == '__main__':
 
     training_batch_size = 100
     final_batch_size = 10
-    min_lib_batch_size = 15  # TODO For testing!
+    min_lib_batch_size = 1  # TODO For testing!
     max_num_modes = 4
     max_buff_len = float('inf')
 
@@ -276,7 +281,7 @@ if __name__ == '__main__':
             samples.append((x, y))
         return max(samples, key=lambda x: x[1])  # Returns input, value
 
-    def update_library(states, old_lib, k, mode='greedy'):
+    def update_library(states, old_lib, k, mode):
         '''Updates the library by dropping k random elements and running greedy set
         coverage.
 
@@ -295,72 +300,77 @@ if __name__ == '__main__':
                                                            graph['value_training']: False})
             return np.squeeze(vals)
 
-        curr_inds = sess.run(graph['policy_ind'], feed_dict={graph['state']: states,
-                                                             graph['dropout_rate']: 0.0,
-                                                             graph['policy_training']: False})
-
-        def mean_max_value(s, a_new, curr):
-            '''Mean performance on active states assuming optimal policy after changing
-            active action
+        def min_delta_value(s, a_new, curr_vals, old_best):
+            '''Smallest change in performance compared to previous
             '''
-            r = np.reshape(raw_value(s, a_new), (1, -1))
-            all_vals = np.vstack((curr, r))
-            opt_vals = np.max(all_vals, axis=0)
-            return np.mean(opt_vals)
+            best = np.max(curr_vals + [raw_value(s, a_new)], axis=0)
+            delta_value = best - old_best
+            return np.min(delta_value)
 
-        def min_delta_value(s, a_new, v_old):
-            '''Smallest change in performance on active states compared to current policy
-            assuming only changing active action
-            '''
-            delta = raw_value(s, a_new) - v_old
-            return np.min(delta)
+        def add_element(curr_values, old_best):
+            a_fin, delta = bo_opt(lambda x: min_delta_value(states, x, curr_values, old_best))
+            print 'New action %s improves worst case value by %f' % (str(a_fin), delta)
+            if delta <= 0:
+                print 'Not adding since improvement not positive!'
+                return None
+            else:
+                return a_fin
 
-        # Replace k elements of the library
+        # curr_inds = sess.run(graph['policy_ind'], feed_dict={graph['state']: states,
+        #                                                      graph['dropout_rate']: 0.0,
+        #                                                      graph['policy_training']: False})
+        curr_vals = [raw_value(states, ai) for ai in old_lib]
 
-        if mode == 'greedy':
-            curr = [raw_value(states, ai) for ai in old_lib]
-            curr_v = mean_max_value(states, old_lib[0], curr)
-            a_fin, v_fin = bo_opt(lambda x: mean_max_value(states, x, curr))
-            improvement = v_fin - curr_v
-            print 'New action %s improves value from %f to %f' % (str(a_fin), curr_v, v_fin)
-            lib = np.vstack([old_lib, np.reshape(a_fin, (1, -1))])
-
-        elif mode == 'current':
-            M = len(old_lib)
-            inds = random.sample(range(M), k)
-            for i in inds:
-                # NOTE We take the max over current tested action and library
-                # members
-                active_states = [si for si, ii in zip(
-                    states, curr_inds) if ii == i]
-                a_old = old_lib[i]
-                # If action to be replaced has no corresponding states, bail
-                if len(active_states) == 0:
-                    print 'No active states for element %d!' % i
-                    a_fin = a_old
+        # Add k elements, stopping when we can't improve the worst-case anymore
+        if mode == 'add':
+            lib = old_lib
+            for i in range(k):
+                old_best = np.max(curr_vals, axis=0)
+                a_next = add_element(curr_vals, old_best)
+                # If receive None, can't add any more
+                # NOTE This should never happen!
+                if a_next is None:
+                    print 'Warning! Adding new action failed to improve worst case performance!'
+                    break
                 else:
+                    lib.append(a_next)
+                    curr_vals.append(raw_value(states, a_next))
+            return lib
+        
+        elif mode == 'replace':
+            lib = old_lib
+            inds = random.sample(range(len(old_lib)), k)
+            for i in inds:
+                old_best = np.max(curr_vals, axis=0)
+                curr_vals[i].fill(float('-inf'))
+                a_next = add_element(curr_vals, old_best)
+                if a_next is None:
+                    print 'Could not improve worst case by replacing %s' % str(lib[i])
+                    continue
+                else:
+                    print 'Replacing %s with %s' % (str(lib[i]), str(a_next))
+                    lib[i] = a_next
+                    curr_vals[i] = raw_value(states, a_next)
+            return lib
 
-                    # curr = [raw_value(active_states, lib[j])
-                    #         for j in range(M) if j != i]
-                    # v_old = mean_max_value(active_states, a_old, curr)
-                    # a_fin, v_fin = bo_opt(
-                    #     lambda x: mean_max_value(active_states, x, curr))
-                    # print 'New action %s has value %f compared to old action %s with value %f.' \
-                    #     % (str(a_fin), v_fin, str(a_old), v_old)
-                    # if v_fin < v_old:
-                    #     print 'Keeping old!'
-                    #     a_fin = a_old
-
-                    v_active = raw_value(active_states, a_old)
-                    a_fin, v_fin = bo_opt(
-                        lambda x: min_delta_value(active_states, x, v_active))
-                    print 'New action %s has delta %f' % (str(a_fin), v_fin)
-                    if v_fin < 0:
-                        print 'Keeping old!'
-                        a_fin = a_old
-            lib = np.array(old_lib)
-            lib[i] = a_fin
-        return lib
+        # elif mode == 'current':
+        #     # NOTE We take the max over current tested action and library
+        #     # members
+        #     active_states = [si for si, ii in zip(states, curr_inds) if ii == i]
+        #     a_old = old_lib[i]
+        #     # If action to be replaced has no corresponding states, bail
+        #     if len(active_states) == 0:
+        #         print 'No active states for element %d!' % i
+        #         a_fin = a_old
+        #     else:
+        #         v_active = raw_value(active_states, a_old)
+        #         a_fin, v_fin = bo_opt(
+        #             lambda x: min_delta_value(active_states, x, v_active))
+        #         print 'New action %s has delta %f' % (str(a_fin), v_fin)
+        #         if v_fin < 0:
+        #             print 'Keeping old!'
+        #             a_fin = a_old
+        # return lib
 
     def train_policy_demo(sampler, lib, conv):
         conv.clear()
@@ -489,17 +499,17 @@ if __name__ == '__main__':
             continue
 
         # Now re-select library
-        if buffer.num_episodes > min_lib_batch_size \
-            and len(library) < max_num_modes \
-            and policy_conv.last_converged \
-            and value_conv.last_converged:
+        if buffer.num_episodes > min_lib_batch_size: # \
+            #and len(library) < max_num_modes \
+            # and policy_conv.last_converged \
+            # and value_conv.last_converged:
             
             lib_replace_k = 1
             print 'Replacing %d elements of library...' % lib_replace_k
             new_lib = update_library(states=buffer.all_states,
                                      old_lib=library,
                                      k=lib_replace_k,
-                                     mode='greedy')
+                                     mode='replace')
             print 'Old library:\n%s' % str(library)
             print 'New library:\n%s' % str(new_lib)
 
@@ -525,6 +535,7 @@ if __name__ == '__main__':
             % (policy_conv.last_converged, value_conv.last_converged)
 
         print 'Num tuples: %d' % buffer.num_tuples
+        print 'Library:\n%s' % str(library)
 
     finish_time = time.time()
 
