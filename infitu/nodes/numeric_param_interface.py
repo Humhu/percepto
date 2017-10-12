@@ -37,14 +37,16 @@ class NumericParamInterface(object):
                                   feature_size=self.interface.num_parameters,
                                   description='Raw parameter values: %s' % str(
                                       self.interface.parameter_names),
-                                  mode='push')
+                                  mode='push',
+                                  topic='raw_parameters')
         norm_stream_name = rospy.get_param('~normalized_stream_name',
                                            'parameter_configuration_normalized')
         self.norm_tx = Transmitter(stream_name=norm_stream_name,
                                    feature_size=self.interface.num_parameters,
                                    description='Normalized parameter values: %s' % str(
                                        self.interface.parameter_names),
-                                   mode='push')
+                                   mode='push',
+                                   topic='normalized_parameters')
 
     def set_param_callback(self, req, normalized):
         with self.mutex:
@@ -58,16 +60,15 @@ class NumericParamInterface(object):
                 self.interface.set_values(v=req.parameters,
                                           names=names,
                                           normalized=normalized)
+                raw_vals, norm_vals = self.interface.map_values(v=req.parameters,
+                                                                names=names,
+                                                                normalized=normalized)
+                self.raw_tx.publish(time=now, feats=raw_vals)
+                self.norm_tx.publish(time=now, feats=norm_vals)
                 return []
             except ValueError as e:
                 rospy.logerr('Could not set params: %s', str(e))
                 return None
-
-        raw_vals, norm_vals = self.interface.map_values(v=req.parameters,
-                                                        names=names,
-                                                        normalized=normalized)
-        self.raw_tx.publish(time=now, feats=raw_vals)
-        self.norm_tx.publish(time=now, feats=norm_vals)
 
     def get_param_callback(self, req, normalized):
         with self.mutex:

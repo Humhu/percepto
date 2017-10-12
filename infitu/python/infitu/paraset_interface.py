@@ -102,7 +102,7 @@ class NumericParameterInterface(object):
                              (len(names), len(v)))
 
         out = [self.process_element(vi, ni, normalized) for vi, ni in zip(v, names)]
-        return zip(*out)[1:3]
+        return zip(*out)[0:2]
 
     def process_element(self, v, name, normalized):
         try:
