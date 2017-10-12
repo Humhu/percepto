@@ -16,7 +16,6 @@ add_message_files( FILES
                    RewardStamped.msg
                    SARTuple.msg
                    SRSTuple.msg
-                   TensorflowParams.msg
 )
 
 add_service_files( FILES
