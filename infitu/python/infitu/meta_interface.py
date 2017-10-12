@@ -48,6 +48,8 @@ def parse_meta_interface(info):
     return interface
 
 # TODO Base interface interface class?
+
+
 class MetaInterface(object):
     def __init__(self, verbose=False):
         self.interfaces = []
@@ -55,6 +57,30 @@ class MetaInterface(object):
 
     def add_interface(self, inter):
         self.interfaces.append(inter)
+
+    def map_values(self, v, names=None, normalized=True):
+        if names is None:
+            names = self.parameter_names
+
+        if len(v) != len(names):
+            raise ValueError('Expected %d elements, got %d' %
+                             (len(names), len(v)))
+
+        raw_values = []
+        norm_values = []
+        ind = 0
+        for i in self.interfaces:
+            bdim = i.num_parameters
+            subnames = names[ind:ind + bdim]
+            subv = v[ind:ind + bdim]
+
+            proc = [i.process_element(vi, ni, normalized)
+                    for vi, ni in zip(subv, subnames)]
+            raws, norms = zip(*proc)[1:3]
+            raw_values += raws
+            norm_values += norms
+            ind += bdim
+        return raw_values, norm_values
 
     def set_values(self, v, names=None, normalized=True):
         if names is None:

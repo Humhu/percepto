@@ -93,6 +93,17 @@ class NumericParameterInterface(object):
         self.setters.append(setters)
         self.normalizers.append(normalizer)
 
+    def map_values(self, v, names=None, normalized=True):
+        if names is None:
+            names = self.parameter_names
+
+        if len(v) != len(names):
+            raise ValueError('Expected %d elements, got %d' %
+                             (len(names), len(v)))
+
+        out = [self.process_element(vi, ni, normalized) for vi, ni in zip(v, names)]
+        return zip(*out)[1:3]
+
     def process_element(self, v, name, normalized):
         try:
             ind = self.names.index(name)
@@ -139,6 +150,7 @@ class NumericParameterInterface(object):
         out = 'Setting values:'
         resout = 'Actual values:'
         warnouts = []
+        outvals = []
         for vi, v_name in zip(v, names):
 
             proc = self.process_element(v=vi,
@@ -152,7 +164,6 @@ class NumericParameterInterface(object):
                 actual = normalizer.normalize(actual_raw)
                 resout += '\n\t%s (%s): %f (%f)' % (v_name,
                                                     pname, actual_raw, actual)
-
                 if v_raw != actual_raw:
                     warnouts.append('Set param %s to %f but got actual %f' % (
                         pname, v_raw, actual_raw))

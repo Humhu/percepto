@@ -84,6 +84,17 @@ class NumericDynaReconfigInterface(object):
         self.param_names.append(param_names)
         self.normalizers.append(normalizer)
 
+    def map_values(self, v, names=None, normalized=True):
+        if names is None:
+            names = self.parameter_names
+
+        if len(v) != len(names):
+            raise ValueError('Expected %d elements, got %d' %
+                             (len(names), len(v)))
+
+        out = [self.process_element(vi, ni, normalized) for vi, ni in zip(v, names)]
+        return zip(*out)[1:3]
+
     def process_element(self, v, name, normalized):
         try:
             ind = self.names.index(name)
@@ -115,6 +126,8 @@ class NumericDynaReconfigInterface(object):
         """Sets all parameters according to vector input v.
 
         Optionally, assign the parameters with corresponding ordered names.
+
+        Returns the actual set values.
         """
         if names is None:
             names = self.names

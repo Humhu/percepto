@@ -82,6 +82,10 @@ target_link_libraries( bag_replayer ${catkin_LIBRARIES} )
 add_executable( multi_bag_replayer nodes/multi_bag_replayer.cpp )
 target_link_libraries( multi_bag_replayer ${catkin_LIBRARIES} )
 
+add_executable( belief_state_broadcaster nodes/belief_state_broadcaster.cpp )
+target_link_libraries( belief_state_broadcaster ${catkin_LIBRARIES} )
+
+
 # install( TARGETS             infitu
 #          ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 #          LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
