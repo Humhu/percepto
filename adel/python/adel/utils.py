@@ -3,7 +3,9 @@
 
 import tensorflow as tf
 import numpy as np
-
+import bisect
+import scipy.interpolate as spi
+import scipy.integrate as spt
 
 class Convergence(object):
     """Checks convergence over a moving window.
@@ -80,3 +82,167 @@ def optimizer_initializer(opt, var_list):
     if isinstance(opt, tf.train.AdamOptimizer):
         opt_vars.extend(list(opt._get_beta_accumulators()))
     return tf.variables_initializer(opt_vars)
+
+class Integrator(object):
+    """Interpolates and integrates an asynchronously-sampled 1D signal
+    """
+
+    def __init__(self):
+        self.times = []
+        self.vals = []
+
+    def __len__(self):
+        return len(self.times)
+
+    def buffer(self, t, v):
+        if len(self) > 0 and t < self.times[-1]:
+            raise ValueError('Received non-increasing time buffer!')
+        self.times.append(t)
+        self.vals.append(v)
+
+    def integrate(self, t0, tf):
+        if t0 < self.times[0] or tf > self.times[-1]:
+            return None
+
+        interp = spi.interp1d(x=self.times, y=self.vals)
+        # TODO Clean up using bisect
+        istart = next(i for i, x in enumerate(self.times) if x > t0)
+        ifinal = next((i for i, x in enumerate(self.times) if x > tf), -1)
+
+        times = [t0] + self.times[istart:ifinal] + [tf]
+        ref = [interp(t0)] + self.vals[istart:ifinal] + [interp(tf)]
+        return spt.trapz(y=ref, x=times)
+
+    def trim(self, t0):
+        """Remove all data before t0
+        """
+        if self.times[0] > t0:
+            return
+        if self.times[-1] <= t0:
+            self.times = self.times[-1:]
+            self.vals = self.vals[-1:]
+            return
+
+        i = bisect.bisect_left(self.times, t0)
+        self.times = self.times[i:]
+        self.vals = self.vals[i:]
+
+
+class ChangepointSeries(object):
+    """Maps discrete samples of a time series into regions of continuity
+    """
+    def __init__(self):
+        # breaks denote start/end borders between segments (N + 1)
+        self.segment_breaks = []
+        # values denote value throughout segment (N)
+        self.segment_values = []
+
+    def __len__(self):
+        return len(self.segment_values)
+
+    def earliest_time(self):
+        if len(self) == 0:
+            return None
+        return self.segment_breaks[0]
+
+    def buffer(self, t, v):
+
+        # First segment starts and ends at t
+        if len(self) == 0:
+            self.segment_breaks.append(t)
+            self.segment_breaks.append(t)
+            self.segment_values.append(v)
+            return
+
+        if t < self.segment_breaks[-1]:
+            raise ValueError('Received time %f less than latest time %f' %
+                             (t, self.segment_breaks[-1]))
+
+        self.segment_breaks[-1] = t
+        # If same as last value, keep going
+        if v == self.segment_values[-1]:
+            pass
+        # Else add new segment
+        else:
+            self.segment_breaks.append(t)
+            self.segment_values.append(v)
+
+    def in_range(self, t):
+        if len(self) == 0:
+            return False
+        return t >= self.segment_breaks[0] and t <= self.segment_breaks[-1]
+
+    def __segment_ind(self, t):
+        return bisect.bisect_right(self.segment_breaks, t) - 1
+
+    def get_value(self, t):
+        if not self.in_range(t):
+            return None
+        i = self.__segment_ind(t)
+        return self.segment_values[i]
+
+    def in_same_segment(self, ta, tb):
+        """Checks to see if ta and tb are in the same segment. Returns False if
+        ta or tb lay outside the current range.
+        """
+        if not self.in_range(ta) or not self.in_range(tb):
+            return False
+
+        ia = bisect.bisect(self.segment_breaks, ta)
+        ib = bisect.bisect(self.segment_breaks, tb)
+        return ia == ib
+
+    def trim(self, t0):
+        """Removes all segments fully before t0
+        """
+        if t0 < self.segment_breaks[0]:
+            return
+
+        if t0 >= self.segment_breaks[-1]:
+            x = self.segment_breaks[-1]
+            self.segment_breaks = [x, x]
+            self.segment_values = self.segment_values[-1:]
+            return
+
+        i = self.__segment_ind(t0)
+        self.segment_breaks = self.segment_breaks[i:]
+        self.segment_values = self.segment_values[i:]
+
+class EventSeries(object):
+    """Maps discrete timed events
+    """
+    def __init__(self):
+        # denotes event times
+        self.event_times = []
+
+    def __len__(self):
+        return len(self.event_times)
+
+    def earliest_time(self):
+        if len(self) == 0:
+            return None
+        return self.event_times[0]
+
+    def buffer(self, t):
+        # First segment starts and ends at t
+        self.event_times.append(t)
+
+    def in_range(self, t):
+        if len(self) == 0:
+            return False
+        return t >= self.event_times[0] and t <= self.event_times[-1]
+
+    def count_events(self, ta, tb):
+        """Counts the number of events between ta and tb, inclusive
+        """
+        ia = bisect.bisect_left(self.event_times, ta)
+        ib = bisect.bisect_right(self.event_times, tb)
+        return ib - ia
+
+    def trim(self, t0):
+        """Removes all segments fully before t0
+        """
+        if t0 < self.event_times[0]:
+            return
+        i = bisect.bisect_right(self.event_times, t0) - 1
+        self.event_times = self.event_times[i:]

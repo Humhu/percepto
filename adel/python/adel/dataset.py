@@ -8,8 +8,9 @@ import cPickle as pickle
 # 1. Mixing states/actions to generate synthetic terminal SA tuples
 # 2. Randomly selecting SARS for value training
 
-class SARSDataset(object):
-    """Stores episodic SARS data tuples.
+class EpisodicSARSDataset(object):
+    """Stores episodic SARS data tuples. Has interfaces for sequentially
+    reporting episodes as well as directly reporting SARS tuples.
 
     Parameters
     ==========
@@ -69,8 +70,19 @@ class SARSDataset(object):
     def all_next_states(self):
         return [sars[3] for sars in self.sars_data]
 
-    def report_step(self, s, a, r):
-        """Adds a SARS tuple to the current episode.
+    def report_sars(self, s, a, r, sn):
+        """Reports a SARS tuple. Used for batch adding data.
+        """
+        self.sars_data.append((s,a,r,s))
+
+    def report_terminal(self, s, a):
+        """Reports a terminal state-action. Used for batch adding data.
+        """
+        self.terminals.append((s,a))
+
+    def report_episode_step(self, s, a, r):
+        """Adds a SARS tuple to the current episode. Used for sequentially
+        constructing episodes.
         """
         if self.current_sar is None:
             #self.current_sar = (s,a,r)
@@ -83,7 +95,8 @@ class SARSDataset(object):
         self._ep_counter += 1
 
     def report_episode_end(self, s):
-        """Reports the end of an episode without a terminal state
+        """Reports the end of an episode without a terminal state. Used for
+        sequentially constructing episodes.
         """
         self.sars_data.append(self.current_sar + (s,))
 
@@ -91,11 +104,13 @@ class SARSDataset(object):
         self.episode_lens.append(self._ep_counter)
         self.reset()
 
-    def report_terminal(self, s):
-        """Reports a terminal state, ending the current episode.
+    def report_episode_terminal(self):
+        """Reports a terminal condition, ending the current episode. Used for
+        sequentially constructing episodes.
         """
-        self.terminals.append(s)
-        self.sars_data.append(self.current_sar + (s,))
+        # self.terminals.append(s)
+        # self.sars_data.append(self.current_sar + (s,))
+        self.terminals.append(self.current_sar[0:2])
 
         # Length bookkeeping
         self.episode_lens.append(self._ep_counter)
@@ -113,4 +128,4 @@ class SARSDataset(object):
         """Samples terminal states
         """
         if self._sstrat == 'uniform':
-            return random.sample(self.terminals, k)
+            return zip(*random.sample(self.terminals, k))
