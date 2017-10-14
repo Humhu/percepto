@@ -70,5 +70,28 @@ def anchored_td_loss(rewards, values, next_values, terminal_values,
     td = rewards + gamma * next_values - values
     td_loss = tf.reduce_mean(tf.nn.l2_loss(td))
     drift_loss = tf.reduce_mean(tf.nn.l2_loss(terminal_values))
-    
+
     return td_loss + dweight * drift_loss, td_loss, drift_loss
+
+def anchored_bandit_loss(rewards, values, terminal_values, dweight):
+    """Builds modules for training bandit value. This is equivalent to 
+    anchored TD loss with gamma = 0, but doesn't require the value ntework recursion
+
+    Parameters
+    ==========
+    rewards : tf.Tensor
+        Reward samples
+    values : tf.Tensor
+        Values for state/actions that generate rewards
+
+    Returns
+    =======
+    loss : tf.Tensor
+        Mean-squared value error
+    """
+    if not isinstance(dweight, tf.Tensor):
+        dweight = tf.constant(dweight, dtype=tf.float32, name='dweight')
+
+    err = tf.losses.mean_squared_error(labels=rewards, predictions=values)
+    drift_loss = tf.reduce_mean(tf.nn.l2_loss(terminal_values))
+    return err + dweight * drift_loss, err, drift_loss

@@ -32,6 +32,19 @@ class EpisodicSARSDataset(object):
             raise ValueError(err)
         self._sstrat = sampling_strategy
 
+    def partition_validation(self, k):
+        inds = random.sample(range(len(self.sars_data)), k)
+        cinds = [i for i in range(len(self.sars_data)) if i not in inds]
+        valid_sars = [self.sars_data[i] for i in inds]
+        self.sars_data = [self.sars_data[i] for i in cinds]
+
+        inds = random.sample(range(len(self.terminals)), k)
+        cinds = [i for i in range(len(self.terminals)) if i not in inds]
+        valid_terminals = [self.terminals[i] for i in inds]
+        self.terminals = [self.terminals[i] for i in cinds]
+
+        return valid_sars, valid_terminals
+
     # NOTE Doesn't save other state
     def save(self, path):
         with open(path, 'w') as f:
@@ -53,6 +66,10 @@ class EpisodicSARSDataset(object):
     @property
     def num_tuples(self):
         return len(self.sars_data)
+
+    @property
+    def num_terminals(self):
+        return len(self.terminals)
 
     @property
     def all_states(self):

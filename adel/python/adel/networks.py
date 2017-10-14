@@ -20,7 +20,7 @@ def check_vector_arg(arg, n):
 
 def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
                 reuse=False, rect=tf.nn.relu,
-                pooling=tf.layers.max_pooling2d, pool_sizes=None, pool_strides=None,
+                pooling=tf.layers.max_pooling1d, pool_sizes=1, pool_strides=1,
                 batch_training=None, dropout_rate=None,
                 **kwargs):
     """Helper to create a 1D convolutional network with batch normalization,
@@ -85,8 +85,8 @@ def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
     filter_sizes = check_vector_arg(filter_sizes, n_layers)
     conv_strides = check_vector_arg(conv_strides, n_layers)
     if pooling is not None:
-        pool_sizes = check_vector_arg(pool_sizes)
-        pool_strides = check_vector_arg(pool_strides)
+        pool_sizes = check_vector_arg(pool_sizes, n_layers)
+        pool_strides = check_vector_arg(pool_strides, n_layers)
 
     # TODO Have b_init be an argument as well?
     b_init = tf.constant_initializer(dtype=tf.float32, value=0.0)
@@ -131,6 +131,7 @@ def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
                             pool_size=pool_sizes[i],
                             strides=pool_strides[i],
                             name='pool_%d' % i)
+                layers.append(x)
                 train_variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
                                                      scope='%s/pool_%d' % (scope, i))
                 state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
@@ -211,8 +212,8 @@ def make_conv2d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
     filter_sizes = check_vector_arg(filter_sizes, n_layers)
     conv_strides = check_vector_arg(conv_strides, n_layers)
     if pooling is not None:
-        pool_sizes = check_vector_arg(pool_sizes)
-        pool_strides = check_vector_arg(pool_strides)
+        pool_sizes = check_vector_arg(pool_sizes, n_layers)
+        pool_strides = check_vector_arg(pool_strides, n_layers)
 
     # TODO Have b_init be an argument as well?
     b_init = tf.constant_initializer(dtype=tf.float32, value=0.0)
