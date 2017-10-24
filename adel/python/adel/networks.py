@@ -18,6 +18,53 @@ def check_vector_arg(arg, n):
     return arg
 
 
+def parse_rect(s):
+    """Converts from a string to a Tensorflow rectification class.
+
+    Valid are: relu, tanh, sigmoid
+    # NOTE leaky relu disappeared?
+    """
+    if not isinstance(s, str):
+        return s
+
+    lookup = {'relu': tf.nn.relu, #'leaky_relu': tf.nn.leaky_relu,
+              'tanh': tf.nn.tanh, 'sigmoid': tf.nn.sigmoid}
+    if s not in lookup:
+        raise ValueError('Rectification %s not one of valid: %s' %
+                         (s, lookup.keys()))
+    return lookup[s]
+
+def parse_pool1d(s):
+    """Converts from a string to a Tensorflow 1D pooling class.
+
+    Valid are: max, average
+    """
+    if not isinstance(s, str):
+        return s
+
+    lookup = {'max': tf.layers.max_pooling1d,
+              'average': tf.layers.average_pooling1d}
+    if s not in lookup:
+        raise ValueError('1D pool %s not one of valid: %s' %
+                         (s, lookup.keys()))
+    return lookup[s]
+
+def parse_pool2d(s):
+    """Converts from a string to a Tensorflow 2D pooling class.
+
+    Valid are: max, average
+    """
+    if not isinstance(s, str):
+        return s
+
+    lookup = {'max': tf.layers.max_pooling2d,
+              'average': tf.layers.average_pooling2d}
+    if s not in lookup:
+        raise ValueError('2D pool %s not one of valid: %s' %
+                         (s, lookup.keys()))
+    return lookup[s]
+
+
 def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
                 reuse=False, rect=tf.nn.relu,
                 pooling=tf.layers.max_pooling1d, pool_sizes=1, pool_strides=1,
@@ -84,7 +131,9 @@ def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
     n_filters = check_vector_arg(n_filters, n_layers)
     filter_sizes = check_vector_arg(filter_sizes, n_layers)
     conv_strides = check_vector_arg(conv_strides, n_layers)
+    rect = parse_rect(rect)
     if pooling is not None:
+        pooling = parse_pool1d(pooling)
         pool_sizes = check_vector_arg(pool_sizes, n_layers)
         pool_strides = check_vector_arg(pool_strides, n_layers)
 
@@ -177,7 +226,7 @@ def make_conv2d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
     pooling : tf Pooling class (default tf.max_pooling2d)
         The pooling to use inbetween layers and on the output
     pool_sizes : int or iterable of int
-        The block size over which to pool. If int, replicated for each layer. 
+        The block size over which to pool. If int, replicated for each layer.
         Required if pooling is not None
     pool_strides : int or iterable of int
         The distance between pooling applications. If int, replicated for each layer.
@@ -211,7 +260,9 @@ def make_conv2d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
     n_filters = check_vector_arg(n_filters, n_layers)
     filter_sizes = check_vector_arg(filter_sizes, n_layers)
     conv_strides = check_vector_arg(conv_strides, n_layers)
+    rect = parse_rect(rect)
     if pooling is not None:
+        pooling = parse_pool2d(pooling)
         pool_sizes = check_vector_arg(pool_sizes, n_layers)
         pool_strides = check_vector_arg(pool_strides, n_layers)
 
@@ -326,8 +377,9 @@ def make_fullycon(input, n_layers, n_units, n_outputs, scope,
     train_variables = []
     state_variables = []
 
-    # TODO Have b_init be an argument as well?
-    b_init = tf.constant_initializer(dtype=tf.float32, value=0.0)
+    n_units = check_vector_arg(n_units, n_layers - 1)
+    rect = parse_rect(rect)
+    final_rect = parse_rect(final_rect)
 
     x = input
     with tf.variable_scope(scope, reuse=reuse):
@@ -355,7 +407,7 @@ def make_fullycon(input, n_layers, n_units, n_outputs, scope,
                 width = n_outputs
             else:
                 layer_rect = rect
-                width = n_units
+                width = n_units[i]
 
             x = tf.layers.dense(inputs=x,
                                 units=width,

@@ -7,9 +7,8 @@ import scipy.integrate as spt
 from utils import Integrator, ChangepointSeries
 from argus_utils import TimeSeries
 
-
 class SARSSynchronizer(object):
-    """Synchronizes and duplicates data to form SAR tuples.
+    """Synchronizes and duplicates data to form SARS tuples.
 
     Forms tuples of temporal length dt. Relies on a processing lag to ensure that
     all messages are received. Specifically, assumes that no message will have
@@ -57,13 +56,13 @@ class SARSSynchronizer(object):
         sars = []
         terminals = []
 
-        print 'States: %d Actions: %d Breaks: %d Rewards: %s Now: %f' \
-            % (len(self.state_map), len(self.action_map), len(
-                self.break_map), len(self.reward_integrator), now)
-        print 'Segments: %s' % str(self.break_map)
-        print 'Actions: %s' % str(self.action_map)
-        print 'Reward range: [%f, %f]' % \
-            (self.reward_integrator.times[0], self.reward_integrator.times[-1])
+        # print 'States: %d Actions: %d Breaks: %d Rewards: %s Now: %f' \
+        #     % (len(self.state_map), len(self.action_map), len(
+        #         self.break_map), len(self.reward_integrator), now)
+        # print 'Segments: %s' % str(self.break_map)
+        # print 'Actions: %s' % str(self.action_map)
+        # print 'Reward range: [%f, %f]' % \
+        #     (self.reward_integrator.times[0], self.reward_integrator.times[-1])
 
         if len(self.state_map) == 0 or len(self.action_map) == 0 \
                 or len(self.reward_integrator) == 0:
@@ -77,19 +76,19 @@ class SARSSynchronizer(object):
             # 1. If tn passes lag threshold, come back later
             # NOTE Should actually be now - self.lag - self.tol
             if t + self.dt > now - self.lag:
-                print 'tn %f passes lagged now %f' % (t + self.dt, now - self.lag)
+                # print 'tn %f passes lagged now %f' % (t + self.dt, now - self.lag)
                 break
 
             item_n = self.state_map.get_closest_either(t + self.dt)
             if item_n is None:
                 self.state_map.remove_earliest()
-                print 'Could not retrieve s_tn for tn=%f' % (t + self.dt)
+                # print 'Could not retrieve s_tn for tn=%f' % (t + self.dt)
                 continue
 
             tn, s_tn = item_n
             if abs(tn - (t + self.dt)) > self.tol:
                 self.state_map.remove_earliest()
-                print 'Could not retrieve s_tn within tolerance tn_req=%f ret=%f' % (t + self.dt, tn)
+                # print 'Could not retrieve s_tn within tolerance tn_req=%f ret=%f' % (t + self.dt, tn)
                 continue
 
             # 2. Make sure t is in an active episode
@@ -97,7 +96,7 @@ class SARSSynchronizer(object):
             # NOTE tn cannot exceed break_map range if lag assumption is true
             if ep_t is None or ep_t is False:
                 self.state_map.remove_earliest()
-                print 't=%f not active episode' % t
+                # print 't=%f not active episode' % t
                 continue
 
             # 3. Make sure t has a valid action
@@ -105,7 +104,7 @@ class SARSSynchronizer(object):
             # NOTE tn cannot exceed action_map range if lag assumption is true
             if a_t is None:
                 self.state_map.remove_earliest()
-                print 't=%f does not have valid action' % t
+                # print 't=%f does not have valid action' % t
                 continue
 
             # 4. See if [t, tn] covers an episode termination
@@ -116,14 +115,14 @@ class SARSSynchronizer(object):
                 # 4.a If [t, tn] covers a termination, build termination tuple
                 terminals.append((s_t, a_t))
                 self.state_map.remove_earliest()
-                print 'Terminated state t=%f, tn=%f' % (t, tn)
+                # print 'Terminated state t=%f, tn=%f' % (t, tn)
                 continue
 
             # 5. Make sure has the same action as t
             # NOTE tn cannot exceed action_map range if lag assumption is true
             if not self.action_map.in_same_segment(t, tn):
                 self.state_map.remove_earliest()
-                print 't=%f and tn=%f have different actions' % (t, tn)
+                # print 't=%f and tn=%f have different actions' % (t, tn)
                 continue
 
             # 6. Integrate rewards
@@ -131,11 +130,11 @@ class SARSSynchronizer(object):
             r_t = self.reward_integrator.integrate(t, tn)
             if r_t is None:
                 self.state_map.remove_earliest()
-                print 'Integration failed for [%f,%f]' % (t, tn)
+                # print 'Integration failed for [%f,%f]' % (t, tn)
                 continue
 
             # 7. Cleared all checks, create SARS tuple
-            print 'Adding tuple from [%f, %f] with r: %f' % (t, tn, r_t)
+            # print 'Adding tuple from [%f, %f] with r: %f' % (t, tn, r_t)
             sars.append((s_t, a_t, r_t, s_tn))
             self.state_map.remove_earliest()
 

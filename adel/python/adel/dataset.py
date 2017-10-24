@@ -32,15 +32,25 @@ class EpisodicSARSDataset(object):
             raise ValueError(err)
         self._sstrat = sampling_strategy
 
-    def partition_validation(self, k):
-        inds = random.sample(range(len(self.sars_data)), k)
-        cinds = [i for i in range(len(self.sars_data)) if i not in inds]
-        valid_sars = [self.sars_data[i] for i in inds]
+    def partition_validation(self, r, method='uniform'):
+        k_sars = int(round(r * len(self.sars_data)))
+        k_term = int(round(r * len(self.terminals))) 
+        if method == 'uniform':
+            d_inds = random.sample(range(len(self.sars_data)), k_sars)
+            t_inds = random.sample(range(len(self.terminals)), k_term)
+        elif method == 'contiguous':
+            # For now, just use tail
+            n = len(self.sars_data)
+            d_inds = range(n-k_sars, n)
+            m = len(self.terminals)
+            t_inds = range(m-k_term, m)
+
+        cinds = [i for i in range(len(self.sars_data)) if i not in d_inds]
+        valid_sars = [self.sars_data[i] for i in d_inds]
         self.sars_data = [self.sars_data[i] for i in cinds]
 
-        inds = random.sample(range(len(self.terminals)), k)
-        cinds = [i for i in range(len(self.terminals)) if i not in inds]
-        valid_terminals = [self.terminals[i] for i in inds]
+        cinds = [i for i in range(len(self.terminals)) if i not in t_inds]
+        valid_terminals = [self.terminals[i] for i in t_inds]
         self.terminals = [self.terminals[i] for i in cinds]
 
         return valid_sars, valid_terminals
@@ -50,9 +60,16 @@ class EpisodicSARSDataset(object):
         with open(path, 'w') as f:
             pickle.dump((self.sars_data, self.terminals), f)
 
-    def load(self, path):
+    def load(self, path, append=True):
         with open(path, 'r') as f:
-            self.sars_data, self.terminals = pickle.load(f)
+            sars_data, terminals = pickle.load(f)
+        if append:
+            self.sars_data += sars_data
+            self.terminals += terminals
+        else:
+            self.sars_data = sars_data
+            self.terminals = terminals
+
         self.reset()
 
     def reset(self):
