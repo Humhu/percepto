@@ -10,14 +10,11 @@ from argus_utils import TimeSeries
 class SARSSynchronizer(object):
     """Synchronizes and duplicates data to form SARS tuples.
 
-    Forms tuples of temporal length dt. Relies on a processing lag to ensure that
-    all messages are received. Specifically, assumes that no message will have
-    delay greater than parameter lag seconds.
+    Forms tuples of temporal length dt.
     """
 
-    def __init__(self, dt, lag, tol):
+    def __init__(self, dt, tol):
         self.dt = dt
-        self.lag = lag
         self.tol = tol
 
         self.state_map = TimeSeries()
@@ -41,8 +38,9 @@ class SARSSynchronizer(object):
         self.break_map.buffer(t=t, v=False)
 
     def process(self, now):
-        """Process the internal buffers up to now - lag, grouping data
-        into SARS tuples and terminal SA tuples.
+        """Process the internal buffers up to now, grouping data
+        into SARS tuples and terminal SA tuples. Should be called with a
+        lag in now to ensure all messages are received.
 
         Parameters
         ==========
@@ -73,10 +71,10 @@ class SARSSynchronizer(object):
             # state at t + dt exists close enough
             t, s_t = self.state_map.earliest_item()
 
-            # 1. If tn passes lag threshold, come back later
-            # NOTE Should actually be now - self.lag - self.tol
-            if t + self.dt > now - self.lag:
-                # print 'tn %f passes lagged now %f' % (t + self.dt, now - self.lag)
+            # 1. If tn passes time threshold, come back later
+            # NOTE Should actually be now - self.tol
+            if t + self.dt > now:
+                # print 'tn %f passes now %f' % (t + self.dt, now)
                 break
 
             item_n = self.state_map.get_closest_either(t + self.dt)
@@ -101,7 +99,6 @@ class SARSSynchronizer(object):
 
             # 3. Make sure t has a valid action
             a_t = self.action_map.get_value(t=t)
-            # NOTE tn cannot exceed action_map range if lag assumption is true
             if a_t is None:
                 self.state_map.remove_earliest()
                 # print 't=%f does not have valid action' % t
@@ -110,7 +107,6 @@ class SARSSynchronizer(object):
             # 4. See if [t, tn] covers an episode termination
             # NOTE Since we know t is active, if t and tn are not in same
             # segment then tn must be inactive
-            # NOTE tn cannot exceed break_map range if lag assumption is true
             if not self.break_map.in_same_segment(t, tn):
                 # 4.a If [t, tn] covers a termination, build termination tuple
                 terminals.append((s_t, a_t))
@@ -119,14 +115,12 @@ class SARSSynchronizer(object):
                 continue
 
             # 5. Make sure has the same action as t
-            # NOTE tn cannot exceed action_map range if lag assumption is true
             if not self.action_map.in_same_segment(t, tn):
                 self.state_map.remove_earliest()
                 # print 't=%f and tn=%f have different actions' % (t, tn)
                 continue
 
             # 6. Integrate rewards
-            # NOTE tn cannot exceed integrator range if lag assumption is true
             r_t = self.reward_integrator.integrate(t, tn)
             if r_t is None:
                 self.state_map.remove_earliest()
