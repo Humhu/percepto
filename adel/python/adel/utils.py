@@ -7,6 +7,7 @@ import bisect
 import scipy.interpolate as spi
 import scipy.integrate as spt
 
+
 class Convergence(object):
     """Checks convergence over a moving window.
     """
@@ -72,6 +73,7 @@ class Convergence(object):
             and self._test_stats(hist)
         return self.last_converged
 
+
 def optimizer_initializer(opt, var_list):
     """Creates a list of initializers for resetting a tensorflow
     optimizer
@@ -82,6 +84,7 @@ def optimizer_initializer(opt, var_list):
     if isinstance(opt, tf.train.AdamOptimizer):
         opt_vars.extend(list(opt._get_beta_accumulators()))
     return tf.variables_initializer(opt_vars)
+
 
 class Integrator(object):
     """Interpolates and integrates an asynchronously-sampled 1D signal
@@ -104,7 +107,11 @@ class Integrator(object):
         if t0 < self.times[0] or tf > self.times[-1]:
             return None
 
-        interp = spi.interp1d(x=self.times, y=self.vals)
+        if len(self.times) != len(self.vals):
+            import pdb
+            pdb.set_trace()
+
+        interp = spi.interp1d(x=self.times, y=self.vals, axis=0)
         # TODO Clean up using bisect
         istart = next(i for i, x in enumerate(self.times) if x > t0)
         ifinal = next((i for i, x in enumerate(self.times) if x > tf), -1)
@@ -114,8 +121,11 @@ class Integrator(object):
         return spt.trapz(y=ref, x=times)
 
     def trim(self, t0):
-        """Remove all data before t0
+        """Remove all data covering times before t0
         """
+        if len(self) == 0:
+            return
+
         if self.times[0] > t0:
             return
         if self.times[-1] <= t0:
@@ -123,19 +133,33 @@ class Integrator(object):
             self.vals = self.vals[-1:]
             return
 
-        i = bisect.bisect_left(self.times, t0)
+        i = bisect.bisect_right(self.times, t0) - 1
         self.times = self.times[i:]
         self.vals = self.vals[i:]
 
 
 class ChangepointSeries(object):
     """Maps discrete samples of a time series into regions of continuity
+
+    Parameters
+    ==========
+    extend_end : Whether the last value should extend to +infinity
     """
-    def __init__(self):
+
+    def __init__(self, extend_start=False, extend_end=False):
         # breaks denote start/end borders between segments (N + 1)
         self.segment_breaks = []
         # values denote value throughout segment (N)
         self.segment_values = []
+        self.extend_start = extend_start
+        self.extend_end = extend_end
+
+    def __repr__(self):
+        s = ''
+        for i in range(len(self.segment_values)):
+            s += '(%s, [%f,%f])' % (str(self.segment_values[i]),
+                                    self.segment_breaks[i], self.segment_breaks[i + 1])
+        return s
 
     def __len__(self):
         return len(self.segment_values)
@@ -170,10 +194,17 @@ class ChangepointSeries(object):
     def in_range(self, t):
         if len(self) == 0:
             return False
-        return t >= self.segment_breaks[0] and t <= self.segment_breaks[-1]
+
+        return (t >= self.segment_breaks[0] or self.extend_start) and \
+            (t <= self.segment_breaks[-1] or self.extend_end)
 
     def __segment_ind(self, t):
-        return bisect.bisect_right(self.segment_breaks, t) - 1
+        i = bisect.bisect_right(self.segment_breaks, t) - 1
+        if self.extend_start:
+            i = max(0, i)
+        if self.extend_end:
+            i = min(len(self.segment_values) - 1, i)
+        return i
 
     def get_value(self, t):
         if not self.in_range(t):
@@ -195,6 +226,9 @@ class ChangepointSeries(object):
     def trim(self, t0):
         """Removes all segments fully before t0
         """
+        if len(self) == 0:
+            return
+
         if t0 < self.segment_breaks[0]:
             return
 
@@ -208,9 +242,11 @@ class ChangepointSeries(object):
         self.segment_breaks = self.segment_breaks[i:]
         self.segment_values = self.segment_values[i:]
 
+
 class EventSeries(object):
     """Maps discrete timed events
     """
+
     def __init__(self):
         # denotes event times
         self.event_times = []
@@ -242,6 +278,9 @@ class EventSeries(object):
     def trim(self, t0):
         """Removes all segments fully before t0
         """
+        if len(self) == 0:
+            return
+
         if t0 < self.event_times[0]:
             return
         i = bisect.bisect_right(self.event_times, t0) - 1
