@@ -55,8 +55,24 @@ public:
 		GetParam( ph, "min_reward", _minReward, -std::numeric_limits<double>::infinity() );
 		GetParam( ph, "max_reward", _maxReward, std::numeric_limits<double>::infinity() );
 
+		GetParam( ph, "use_pose", _usePose, false );
+		_posErrWeights.setZero();
+		if( _usePose )
+		  {
 		GetParam( ph, "pose_err_weights", _posErrWeights, FixedVectorType<6>::Zero() );
+		  }
+
+		GetParam( ph, "use_vel", _useVel, false );
+		_velErrWeights.setZero();
+		if( _useVel )
+		  {
 		GetParam( ph, "vel_err_weights", _velErrWeights, FixedVectorType<6>::Zero() );
+		  }
+
+		if( !_usePose && !_useVel )
+		  {
+		    throw std::runtime_error("Must use either pose or velocity");
+		  }
 
 		_lastInit = false;
 	}
@@ -101,9 +117,9 @@ public:
 	void OdomEstCallback( const nav_msgs::Odometry::ConstPtr& msg )
 	{
 		if( !_lastInit ) { return; }
-
-		PoseSE3 pose = MsgToPose( msg->pose.pose );
-		PoseSE3::TangentVector vel = MsgToTangent( msg->twist.twist );
+		
+		PoseSE3 pose = _usePose ? MsgToPose( msg->pose.pose ) : PoseSE3();
+		PoseSE3::TangentVector vel = _useVel ? MsgToTangent( msg->twist.twist ) : PoseSE3::TangentVector::Zero();
 		ProcessEstimate( pose, vel, msg->header.stamp );
 	}
 
@@ -149,6 +165,8 @@ private:
 	PoseSE3 _lastPose;
 	PoseSE3::TangentVector _lastVel;
 
+  bool _usePose;
+  bool _useVel;
 	FixedVectorType<6> _posErrWeights;
 	FixedVectorType<6> _velErrWeights;
 };
