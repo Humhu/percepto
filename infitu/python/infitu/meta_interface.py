@@ -113,7 +113,7 @@ class MetaInterface(object):
 
     @property
     def num_parameters(self):
-        return np.sum([i.num_parameters for i in self.interfaces])
+        return int(np.sum([i.num_parameters for i in self.interfaces]))
 
     @property
     def parameter_names(self):
