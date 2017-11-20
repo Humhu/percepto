@@ -1,9 +1,0 @@
-<launch>
-
-<node pkg="infitu" type="SynchronizedDimensionSample.py" name="sampler" output="screen" required="true">
-    <rosparam>
-        action_lower_bound: 
-    </rosparam>
-</node>
-
-</launch>
