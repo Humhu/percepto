@@ -48,8 +48,7 @@ project( optim )
 catkin_python_setup()
 
 catkin_package(
-    CATKIN_DEPENDS  roscpp 
-                    modprop
+    CATKIN_DEPENDS  rospy
                     argus_utils
                     
     DEPENDS         Boost 
