@@ -1,28 +1,27 @@
 cmake_minimum_required( VERSION 2.8.3 )
 project( optim )
 
-set(CMAKE_CXX_FLAGS "-g -Wall -std=c++0x")
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/cmake/Modules")
+# set(CMAKE_CXX_FLAGS "-g -Wall -std=c++0x")
+# set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_CURRENT_LIST_DIR}/cmake/Modules")
 
-if (NOT DEFINED CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "")
-  message(STATUS "No build type selected, default to Release")
-  set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
-endif ()
-message(STATUS "Build configuration: ${CMAKE_BUILD_TYPE}")
+# if (NOT DEFINED CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "")
+#   message(STATUS "No build type selected, default to Release")
+#   set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
+# endif ()
+# message(STATUS "Build configuration: ${CMAKE_BUILD_TYPE}")
 
-find_package(catkin REQUIRED 
-    COMPONENTS      roscpp
-                    modprop
-                    argus_utils
-)
+# find_package(catkin REQUIRED 
+#     COMPONENTS      roscpp
+#                     argus_utils
+# )
 
 ## Finding 3rd party packages
 # Find Boost C++ Utility libraries
-find_package( Boost REQUIRED COMPONENTS random )
-list( APPEND optim_LIBRARIES ${Boost_LIBRARIES} )
-list( APPEND optim_INCLUDES ${Boost_INCLUDE_DIRS} )
+# find_package( Boost REQUIRED COMPONENTS random )
+# list( APPEND optim_LIBRARIES ${Boost_LIBRARIES} )
+# list( APPEND optim_INCLUDES ${Boost_INCLUDE_DIRS} )
 
-set( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/" )
+# set( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/" )
 
 # Find GNU Scientific Library
 #find_package( GSL REQUIRED )
@@ -49,10 +48,6 @@ set( CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/"
 catkin_python_setup()
 
 catkin_package(
-    # INCLUDE_DIRS    include
-
-    # LIBRARIES       optim
-                    
     CATKIN_DEPENDS  roscpp 
                     modprop
                     argus_utils
@@ -61,7 +56,7 @@ catkin_package(
                     system_lib
 )
 
-include_directories( ${optim_INCLUDES} ${catkin_INCLUDE_DIRS} include )
+# include_directories( ${optim_INCLUDES} ${catkin_INCLUDE_DIRS} include )
 
 # add_library( optim 
 #              src/AdamSearchDirector.cpp

@@ -12,8 +12,6 @@ find_package(catkin REQUIRED COMPONENTS
 add_message_files( FILES
                    ContinuousAction.msg
                    DiscreteAction.msg
-                   EpisodeBreak.msg
-                   RewardStamped.msg
                    SARTuple.msg
                    SRSTuple.msg
 )
@@ -26,10 +24,8 @@ add_service_files( FILES
 
 generate_messages( DEPENDENCIES 
                    std_msgs
-                   sensor_msgs
 )
 
 catkin_package( CATKIN_DEPENDS message_runtime 
                                std_msgs 
-                               sensor_msgs
 )
