@@ -310,6 +310,7 @@ def make_conv2d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
                             pool_size=(pool_sizes[i], pool_sizes[i]),
                             strides=(pool_strides[i], pool_strides[i]),
                             name='pool_%d' % i)
+                layers.append(x)
                 train_variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
                                                      scope='%s/pool_%d' % (scope, i))
                 state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,

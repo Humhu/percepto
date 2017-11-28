@@ -6,6 +6,45 @@ import tensorflow as tf
 import numpy as np
 
 
+def make_conv2d_fc_net(img_in, image_subnet, final_subnet, scope='',
+                       dropout_rate=None, batch_training=None, reuse=False):
+    """Creates an network that stacks a 2D convolution with a fully connected net.
+
+    Parameters
+    ----------
+    img_in         : tensorflow 4D Tensor
+    image_subnet   : dict
+        Arguments to pass to image subnet constructor
+    final_subnet   : dict
+        Arguments to pass to fully connected subnet constructor
+    scope          : string (default '')
+        Scope prefix prepended to subnet scopes
+    dropout_rate   : tensorflow bool Tensor (default None)
+    batch_training : tensorflow bool Tensor (default None)
+    reuse          : bool (default False)
+        Whether or not to reuse existing variables
+    """
+    img_net, img_train, img_state, img_ups = make_conv2d(input=img_in,
+                                                         scope='%sjoint_image' % scope,
+                                                         dropout_rate=dropout_rate,
+                                                         batch_training=batch_training,
+                                                         reuse=reuse,
+                                                         **image_subnet)
+    flat_dim = int(np.prod(img_net[-1].shape[1:]))
+    img_flat = tf.reshape(img_net[-1], (-1, flat_dim))
+    fin_net, fin_train, fin_state, fin_ups = make_fullycon(input=img_flat,
+                                                           scope='%sjoint_fc' % scope,
+                                                           dropout_rate=dropout_rate,
+                                                           batch_training=batch_training,
+                                                           reuse=reuse,
+                                                           **final_subnet)
+    all_layers = img_net  + fin_net
+    all_train = img_train + fin_train
+    all_state = img_state + fin_state
+    all_ups = img_ups + fin_ups
+    return all_layers, all_train, all_state, all_ups
+
+
 def make_conv2d_joint_net(img_in, vector_in, image_subnet, vector_subnet,
                           final_subnet, scope='', dropout_rate=None,
                           batch_training=None, reuse=False):

@@ -7,6 +7,7 @@ import scipy.integrate as spt
 from utils import Integrator, ChangepointSeries
 from argus_utils import TimeSeries
 
+
 class SARSSynchronizer(object):
     """Synchronizes and duplicates data to form SARS tuples.
 
@@ -64,6 +65,9 @@ class SARSSynchronizer(object):
 
         if len(self.state_map) == 0 or len(self.action_map) == 0 \
                 or len(self.reward_integrator) == 0:
+            print 'States: %d actions: %d rewards: %d' % (len(self.state_map),
+                                                          len(self.action_map), 
+                                                          len(self.reward_integrator))
             return sars, terminals
 
         while len(self.state_map) > 0:
