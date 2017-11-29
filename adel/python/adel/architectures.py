@@ -38,7 +38,7 @@ def make_conv2d_fc_net(img_in, image_subnet, final_subnet, scope='',
                                                            batch_training=batch_training,
                                                            reuse=reuse,
                                                            **final_subnet)
-    all_layers = img_net  + fin_net
+    all_layers = img_net  + [img_flat] + fin_net
     all_train = img_train + fin_train
     all_state = img_state + fin_state
     all_ups = img_ups + fin_ups
@@ -89,7 +89,7 @@ def make_conv2d_joint_net(img_in, vector_in, image_subnet, vector_subnet,
                                                            batch_training=batch_training,
                                                            reuse=reuse,
                                                            **final_subnet)
-    all_layers = img_net + vec_net + fin_net
+    all_layers = img_net + vec_net + [img_flat, joined] + fin_net
     all_train = img_train + vec_train + fin_train
     all_state = img_state + vec_state + fin_state
     all_ups = img_ups + vec_ups + fin_ups
