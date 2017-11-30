@@ -1,97 +1,121 @@
-"""Classes for aggregating and sampling data
+"""Classes for aggregating, sampling, and accessing data
 """
 
 import random
 import cPickle as pickle
 
-# Operations we will want to support:
-# 1. Mixing states/actions to generate synthetic terminal SA tuples
-# 2. Randomly selecting SARS for value training
-
-
-class EpisodicSARSDataset(object):
-    """Stores episodic SARS data tuples. Has interfaces for sequentially
-    reporting episodes as well as directly reporting SARS tuples.
+class EpisodeAggregator(object):
+    """Wraps a dataset to form a stream of tuples into coherent tuples
 
     Parameters
-    ==========
-    sampling_strategy : 'uniform'
-        TODO Implement more
+    ----------
+    base : SARSDataset
+        The dataset to wrap and feed tuples into
     """
+    def __init__(self, base):
+        self.current_sar = None
+        self.base = base
 
-    def __init__(self, sampling_strategy='uniform'):
-        self.episode_lens = []
-        self._ep_counter = 0
-
-        self.sars_data = []
-        self.terminals = []
-
+    def reset(self):
+        """Resets the streaming state
+        """
         self.current_sar = None
 
-        self.validation = None
-        self.online_val = 0.0
-
-        valid_ss = ['uniform']
-        if sampling_strategy not in valid_ss:
-            err = ('Unsupported sampling strategy %s. '
-                   + 'Supported are %s') % (sampling_strategy, valid_ss)
-            raise ValueError(err)
-        self._sstrat = sampling_strategy
-
-    def link_validation(self, val):
-        """Links another EpisodicSARSDataset to this one for validation.
+    def report_episode_step(self, s, a, r):
+        """Adds a SARS tuple to the current episode
         """
-        if not isinstance(val, EpisodicSARSDataset):
-            raise ValueError('Must give an EpisodicSARSDataset')
-        self.validation = val
+        if self.current_sar is None:
+            pass
+        else:
+            self.base.report_sars(self.current_sar[0],
+                                  self.current_sar[1],
+                                  self.current_sar[2],
+                                  s)
+        self.current_sar = (s, a, r)
 
-    def set_online_validation(self, rate):
-        """Enables online uniform validation sampling rate.
-
-        Parameters
-        ----------
-        rate : float [0.0, 1.0]
-            Proportion of samples to set aside for validation
+    def report_episode_end(self, s):
+        """Reports the end of an episode without a terminal state
         """
-        self.online_val = rate
+        self.base.report_sars(self.current_sar[0],
+                              self.current_sar[1],
+                              self.current_sar[2],
+                              s)
+        self.reset()
 
-    def partition_validation(self, r, method='uniform'):
-        """Batch operation that removes a portion of the current data
-        to be used as validation.
-
-        Parameters
-        ----------
-        r      : float
-            Ratio of data to partition out, between 0.0 and 1.0
-        method : string ['uniform' or 'contiguous']
-            Sampling method
+    def report_episode_terminal(self):
+        """Reports a terminal condition, ending the current episode
         """
-        if self.validation is None:
-            raise ValueError('No linked validation dataset!')
+        self.base.report_terminal(self.current_sar[0],
+                                  self.current_sar[1])
 
-        k_sars = int(round(r * len(self.sars_data)))
-        k_term = int(round(r * len(self.terminals)))
-        if method == 'uniform':
-            d_inds = random.sample(range(len(self.sars_data)), k_sars)
-            t_inds = random.sample(range(len(self.terminals)), k_term)
-        elif method == 'contiguous':
-            # For now, just use tail
-            n = len(self.sars_data)
-            d_inds = range(n - k_sars, n)
-            m = len(self.terminals)
-            t_inds = range(m - k_term, m)
+        self.reset()
 
-        for i in d_inds:
-            self.validation.report_sars(*self.sars_data[i])
-        self.sars_data = [d for i, d in enumerate(self.sars_data)
-                          if i not in d_inds]
 
-        for i in t_inds:
-            self.validation.report_terminal(*self.terminals[i])
-        self.terminals = [d for i, d in enumerate(self.terminals)
-                          if i not in t_inds]
+class ValidationHoldout(object):
+    """Maintains a training and validation holdout dataset in parallel. Provides
+    methods for splitting and accessing data.
 
-    # NOTE Doesn't save other state
+    Parameters
+    ----------
+    training : SARSDataset
+        The training dataset
+    holdout : SARSDataset
+        The holdout dataset
+    sampler : Sampler object
+        The sampler to use for online/offline splitting
+    """
+    def __init__(self, training, holdout, sampler):
+        self.training = training
+        self.holdout = holdout
+        self.sampler = sampler
+
+    def report_sars(self, s, a, r, sn):
+        """Reports a SARS tuple
+        """
+        if self.sampler.sample():
+            self.holdout.report_sars( s, a, r, sn )
+        else:
+            self.training.report_sars( s, a, r, sn )
+
+    def report_terminal(self, s, a):
+        """Reports a terminal state-action
+        """
+        if self.sampler.sample():
+            self.holdout.report_terminal( s, a )
+        else:
+            self.training.report_terminal( s, a )
+
+class SamplingInterface(object):
+    """Wraps a dataset to provide methods for sampling tuples
+    # TODO More sampling methods
+    """
+    def __init__(self, base, method='uniform'):
+        self.base = base
+        self.method = method
+
+    def sample_sars(self, k):
+        """Samples from non-terminal SARS tuples
+        """
+        if self.method == 'uniform':
+            return zip(*random.sample(self.base.sars, k))
+        else:
+            raise ValueError('Invalid sampling strategy')
+
+    def sample_terminals(self, k):
+        """Samples terminal states
+        """
+        if self.method == 'uniform':
+            return zip(*random.sample(self.base.terminals, k))
+
+
+class SARSDataset(object):
+    """Stores and loads SARS data tuples.
+    """
+
+    def __init__(self):
+        self.sars = []
+        self.terminals = []
+
     def save(self, path):
         """Saves the dataset to a pickle.
 
@@ -101,7 +125,7 @@ class EpisodicSARSDataset(object):
             File path to save to
         """
         with open(path, 'w') as f:
-            pickle.dump((self.sars_data, self.terminals), f)
+            pickle.dump((self.sars, self.terminals), f)
 
     def load(self, path, append=True):
         """Loads and/or appends data from a pickle.
@@ -114,27 +138,17 @@ class EpisodicSARSDataset(object):
             Whether to append or overwrite data
         """
         with open(path, 'r') as f:
-            sars_data, terminals = pickle.load(f)
+            sars, terminals = pickle.load(f)
         if append:
-            self.sars_data += sars_data
+            self.sars += sars
             self.terminals += terminals
         else:
-            self.sars_data = sars_data
+            self.sars = sars
             self.terminals = terminals
-
-        self.reset()
-
-    def reset(self):
-        self.current_sar = None
-        self._ep_counter = 0
-
-    @property
-    def num_episodes(self):
-        return len(self.episode_lens)
 
     @property
     def num_tuples(self):
-        return len(self.sars_data)
+        return len(self.sars)
 
     @property
     def num_terminals(self):
@@ -142,19 +156,19 @@ class EpisodicSARSDataset(object):
 
     @property
     def all_states(self):
-        return [sars[0] for sars in self.sars_data]
+        return [sars[0] for sars in self.sars]
 
     @property
     def all_actions(self):
-        return [sars[1] for sars in self.sars_data]
+        return [sars[1] for sars in self.sars]
 
     @property
     def all_rewards(self):
-        return [sars[2] for sars in self.sars_data]
+        return [sars[2] for sars in self.sars]
 
     @property
     def all_next_states(self):
-        return [sars[3] for sars in self.sars_data]
+        return [sars[3] for sars in self.sars]
 
     @property
     def all_terminal_states(self):
@@ -167,67 +181,9 @@ class EpisodicSARSDataset(object):
     def report_sars(self, s, a, r, sn):
         """Reports a SARS tuple. Used for batch adding data.
         """
-        if self.validation is not None \
-            and self.validation.num_tuples <= self.num_tuples * self.online_val:
-            self.validation.report_sars(s, a, r, sn)
-        else:
-            self.sars_data.append((s, a, r, sn))
+        self.sars.append((s, a, r, sn))
 
     def report_terminal(self, s, a):
         """Reports a terminal state-action. Used for batch adding data.
         """
-        if self.validation is not None \
-            and self.validation.num_terminals <= self.num_terminals * self.online_val:
-            self.validation.report_terminal(s, a)
-        else:
-            self.terminals.append((s, a))
-
-    def report_episode_step(self, s, a, r):
-        """Adds a SARS tuple to the current episode. Used for sequentially
-        constructing episodes.
-        """
-        if self.current_sar is None:
-            #self.current_sar = (s,a,r)
-            pass
-        else:
-            self.report_sars(self.current_sar[0], self.current_sar[1],
-                             self.current_sar[2], s)
-        self.current_sar = (s, a, r)
-
-        # Length bookkeeping
-        self._ep_counter += 1
-
-    def report_episode_end(self, s):
-        """Reports the end of an episode without a terminal state. Used for
-        sequentially constructing episodes.
-        """
-        self.report_sars(self.current_sar[0], self.current_sar[1],
-                             self.current_sar[2], s)
-
-        # Length bookkeeping
-        self.episode_lens.append(self._ep_counter)
-        self.reset()
-
-    def report_episode_terminal(self):
-        """Reports a terminal condition, ending the current episode. Used for
-        sequentially constructing episodes.
-        """
-        self.report_terminal(self.current_sar[0], self.current_sar[1])
-
-        # Length bookkeeping
-        self.episode_lens.append(self._ep_counter)
-        self.reset()
-
-    def sample_sars(self, k):
-        """Samples from non-terminal SARS tuples
-        """
-        if self._sstrat == 'uniform':
-            return zip(*random.sample(self.sars_data, k))
-        else:
-            raise ValueError('Invalid sampling strategy')
-
-    def sample_terminals(self, k):
-        """Samples terminal states
-        """
-        if self._sstrat == 'uniform':
-            return zip(*random.sample(self.terminals, k))
+        self.terminals.append((s, a))
