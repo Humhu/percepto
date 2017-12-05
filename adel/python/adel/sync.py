@@ -38,6 +38,18 @@ class SARSSynchronizer(object):
     def buffer_episode_terminate(self, t):
         self.break_map.buffer(t=t, v=False)
 
+    @property
+    def num_states_buffered(self):
+        return len(self.state_map)
+
+    @property
+    def num_actions_buffered(self):
+        return len(self.action_map)
+
+    @property
+    def num_rewards_buffered(self):
+        return len(self.reward_integrator)
+
     def process(self, now):
         """Process the internal buffers up to now, grouping data
         into SARS tuples and terminal SA tuples. Should be called with a
@@ -65,9 +77,9 @@ class SARSSynchronizer(object):
 
         if len(self.state_map) == 0 or len(self.action_map) == 0 \
                 or len(self.reward_integrator) == 0:
-            print 'States: %d actions: %d rewards: %d' % (len(self.state_map),
-                                                          len(self.action_map), 
-                                                          len(self.reward_integrator))
+            # print 'States: %d actions: %d rewards: %d' % (len(self.state_map),
+            #                                               len(self.action_map), 
+            #                                               len(self.reward_integrator))
             return sars, terminals
 
         while len(self.state_map) > 0:
