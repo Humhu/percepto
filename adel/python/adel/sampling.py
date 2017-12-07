@@ -1,6 +1,18 @@
 """Classes for stateful data stream sampling
 """
 
+
+def create_sampler(mode, **kwargs):
+    """Creates a specified sampler instance
+    """
+    if mode == 'uniform':
+        return UniformSampler(**kwargs)
+    elif mode == 'contiguous':
+        return ContiguousSampler(**kwargs)
+    else:
+        raise ValueError('Unknown sampling mode: %s' % mode)
+
+
 class UniformSampler(object):
     """Uniform samples from a stream to maintain a certain
     ratio of validation data
@@ -23,9 +35,11 @@ class UniformSampler(object):
         if pull_val:
             self.num_val += 1
 
-class ContiguousSampler(object) :
+
+class ContiguousSampler(object):
     """Samples fixed-lengths of data to maintain a ratio of validation data
     """
+
     def __init__(self, rate, segment_len):
         self.rate = rate
         self.seg_len = segment_len
