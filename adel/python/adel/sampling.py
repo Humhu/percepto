@@ -40,9 +40,9 @@ class ContiguousSampler(object):
     """Samples fixed-lengths of data to maintain a ratio of validation data
     """
 
-    def __init__(self, rate, segment_len):
+    def __init__(self, rate, segment_length):
         self.rate = rate
-        self.seg_len = segment_len
+        self.seg_len = segment_length
         self.num_all = 0
         self.num_val = 0
         self.is_pulling = False

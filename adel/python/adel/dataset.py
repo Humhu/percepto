@@ -88,7 +88,7 @@ class ValidationHoldout(object):
         else:
             self.training.report_terminal( s, a )
 
-class SamplingInterface(object):
+class DatasetSampler(object):
     """Wraps a dataset to provide methods for sampling tuples
     # TODO More sampling methods
     """
