@@ -27,7 +27,7 @@ class UniformSampler(object):
         self.num_all = 0
         self.num_val = 0
 
-    def sample(self):
+    def sample(self, key):
         """Returns whether to pull the sample for validation
         """
         pull_val = self.num_val <= self.num_all * self.rate

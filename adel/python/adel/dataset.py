@@ -1,192 +1,197 @@
-"""Classes for aggregating, sampling, and accessing data
+"""Classes for sampling and accessing data
 """
 
+import abc
 import random
 import copy
-import cPickle as pickle
+from sampling import create_sampler
+from collections import deque
 
-class EpisodeAggregator(object):
-    """Wraps a dataset to form a stream of tuples into coherent tuples
 
-    Parameters
-    ----------
-    base : SARSDataset
-        The dataset to wrap and feed tuples into
+class DatasetInterface(object):
+    """Base interface for generic multi-volume dataset objects. Keys sort
+    data into different volumes and can be used for multiple classes, etc.
     """
-    def __init__(self, base):
-        self.current_sar = None
-        self.base = base
+    __metaclass__ = abc.ABCMeta
 
-    def reset(self):
-        """Resets the streaming state
-        """
-        self.current_sar = None
+    def __init__(self):
+        pass
 
-    def report_episode_step(self, s, a, r):
-        """Adds a SARS tuple to the current episode
+    @abc.abstractmethod
+    def report_data(self, key, data):
+        """Reports a piece of data with a corresponding key
         """
-        if self.current_sar is None:
-            pass
+        pass
+
+    @abc.abstractmethod
+    def get_volume(self, key):
+        """Retrieves all data with a corresponding key
+        """
+        pass
+
+    @property
+    def get_volume_size(self, key):
+        return len(self.get_volume(key))
+
+
+class BasicDataset(DatasetInterface):
+    """Basic deque-based implementation of database. 
+    TODO Storage/retrieval
+    """
+
+    def __init__(self):
+        DatasetInterface.__init__(self)
+        self.volumes = {}
+
+    def report_data(self, key, data):
+        if key not in self.volumes:
+            self.volumes[key] = deque()
+        self.volumes[key].append(data)
+
+    def get_volume(self, key):
+        return self.volumes[key]
+
+    def clear(self, key=None):
+        if key is None:
+            self.volumes = {}
         else:
-            self.base.report_sars(self.current_sar[0],
-                                  self.current_sar[1],
-                                  self.current_sar[2],
-                                  s)
-        self.current_sar = (s, a, r)
+            self.volumes.pop(key)
 
-    def report_episode_end(self, s):
-        """Reports the end of an episode without a terminal state
-        """
-        self.base.report_sars(self.current_sar[0],
-                              self.current_sar[1],
-                              self.current_sar[2],
-                              s)
-        self.reset()
+    # def to_saveable(self):
+    #     """Converts the dataset to a pickleable object
+    #     """
+    #     return (self.sars, self.terminals)
 
-    def report_episode_terminal(self):
-        """Reports a terminal condition, ending the current episode
-        """
-        self.base.report_terminal(self.current_sar[0],
-                                  self.current_sar[1])
+    # def from_saveable(self, obj, append=True):
+    #     """Loads the dataset from a pickled object
+    #     """
+    #     sars, terminals = obj
+    #     if append:
+    #         self.sars += sars
+    #         self.terminals += terminals
+    #     else:
+    #         self.sars = sars
+    #         self.terminals = terminals
 
-        self.reset()
+    # def save(self, path):
+    #     """Saves the dataset to a pickle.
+
+    #     Parameters
+    #     ----------
+    #     path : string
+    #         File path to save to
+    #     """
+    #     with open(path, 'w') as f:
+    #         pickle.dump(self.to_saveable(), f)
+
+    # def load(self, path, append=True):
+    #     """Loads and/or appends data from a pickle.
+
+    #     Parameters
+    #     ----------
+    #     path   : string
+    #         File path to load from
+    #     append : bool (default True)
+    #         Whether to append or overwrite data
+    #     """
+    #     with open(path, 'r') as f:
+    #         obj = pickle.load(f)
+    #     self.from_saveable(obj)
 
 
-class ValidationHoldout(object):
+class SubindexedDataset(DatasetInterface):
+    """Wrapper around a dataset that refers to a subset of that dataset
+    using indices
+    """
+
+    def __init__(self, base):
+        DatasetInterface.__init__(self)
+        self.base = base
+        self.sub_inds = {}
+        self.terminal_inds = []
+
+    def report_data(self, key, data):
+        if key not in self.sub_inds:
+            self.sub_inds[key] = deque()
+        self.sub_inds[key].append(self.base.num_data)
+        self.base.report_data(key, data)
+
+    def get_volume(self, key):
+        vol = self.base.get_volume(key)
+        return [vol[i] for i in self.sub_inds[key]]
+
+
+class HoldoutWrapper(DatasetInterface):
     """Maintains a training and validation holdout dataset in parallel. Provides
     methods for splitting and accessing data.
 
     Parameters
     ----------
-    training : SARSDataset
-        The training dataset
-    holdout : SARSDataset
-        The holdout dataset
+    training : DatasetInterface
+        The training dataset object
+    holdout : DatasetInterface
+        The holdout dataset object
     sampler : Sampler object
         The sampler to use for online/offline splitting
     """
-    def __init__(self, training, holdout, sampler):
+
+    def __init__(self, training, holdout, sampler_args):
+        DatasetInterface.__init__(self)
         self.training = training
         self.holdout = holdout
-        self.sars_sampler = sampler
-        # TODO Hack?
-        self.term_sampler = copy.copy(sampler)
+        self.samplers = {}
+        self.sampler_args = sampler_args
 
-    def report_sars(self, s, a, r, sn):
-        """Reports a SARS tuple
-        """
-        if self.sars_sampler.sample():
-            self.holdout.report_sars( s, a, r, sn )
+    def report_data(self, key, data):
+        if key not in self.samplers:
+            self.samplers[key] = create_sampler(**self.sampler_args)
+
+        if self.samplers[key].sample():
+            self.holdout.report_data(key, data)
         else:
-            self.training.report_sars( s, a, r, sn )
+            self.training.report_data(key, data)
 
-    def report_terminal(self, s, a):
-        """Reports a terminal state-action
-        """
-        if self.term_sampler.sample():
-            self.holdout.report_terminal( s, a )
-        else:
-            self.training.report_terminal( s, a )
+    @property
+    def get_volume(self, key):
+        return self.training.get_volume(key) + self.holdout.get_volume(key)
 
-class DatasetSampler(object):
+
+class DatasetSampler(DatasetInterface):
     """Wraps a dataset to provide methods for sampling tuples
+
+    # NOTE Resamples on each call to get_volume
     # TODO More sampling methods
     """
-    def __init__(self, base, method='uniform'):
+
+    def __init__(self, base, k, method='uniform'):
+        DatasetInterface.__init__(self)
         self.base = base
         self.method = method
+        self.k = k
+        self.cache = {}
 
-    def sample_sars(self, k):
-        """Samples from non-terminal SARS tuples
+    def sample_data(self, key, k=None):
+        """Samples k data
         """
+        if k is None:
+            k = self.k
+
+        vsize = self.base.get_volume_size(key)
+        if k > vsize:
+            raise ValueError('Volume %s has %d but requested %d'
+                             % (str(key), vsize, k))
+
+        N = self.base.get_volume_size(key)
         if self.method == 'uniform':
-            return zip(*random.sample(self.base.sars, k))
+            self.cache[key] = random.sample(range(N), k)
         else:
             raise ValueError('Invalid sampling strategy')
 
-    def sample_terminals(self, k):
-        """Samples terminal states
-        """
-        if self.method == 'uniform':
-            return zip(*random.sample(self.base.terminals, k))
+    def report_data(self, key, data):
+        self.base.report_data(key, data)
 
-
-class SARSDataset(object):
-    """Stores and loads SARS data tuples.
-    """
-
-    def __init__(self):
-        self.sars = []
-        self.terminals = []
-
-    def save(self, path):
-        """Saves the dataset to a pickle.
-
-        Parameters
-        ----------
-        path : string
-            File path to save to
-        """
-        with open(path, 'w') as f:
-            pickle.dump((self.sars, self.terminals), f)
-
-    def load(self, path, append=True):
-        """Loads and/or appends data from a pickle.
-
-        Parameters
-        ----------
-        path   : string
-            File path to load from
-        append : bool (default True)
-            Whether to append or overwrite data
-        """
-        with open(path, 'r') as f:
-            sars, terminals = pickle.load(f)
-        if append:
-            self.sars += sars
-            self.terminals += terminals
-        else:
-            self.sars = sars
-            self.terminals = terminals
-
-    @property
-    def num_tuples(self):
-        return len(self.sars)
-
-    @property
-    def num_terminals(self):
-        return len(self.terminals)
-
-    @property
-    def all_states(self):
-        return [sars[0] for sars in self.sars]
-
-    @property
-    def all_actions(self):
-        return [sars[1] for sars in self.sars]
-
-    @property
-    def all_rewards(self):
-        return [sars[2] for sars in self.sars]
-
-    @property
-    def all_next_states(self):
-        return [sars[3] for sars in self.sars]
-
-    @property
-    def all_terminal_states(self):
-        return [sa[0] for sa in self.terminals]
-
-    @property
-    def all_terminal_actions(self):
-        return [sa[1] for sa in self.terminals]
-
-    def report_sars(self, s, a, r, sn):
-        """Reports a SARS tuple. Used for batch adding data.
-        """
-        self.sars.append((s, a, r, sn))
-
-    def report_terminal(self, s, a):
-        """Reports a terminal state-action. Used for batch adding data.
-        """
-        self.terminals.append((s, a))
+    def get_volume(self, key):
+        if key not in self.cache:
+            self.sample_data(key=key)
+        vol = self.base.get_volume(key)
+        return [vol[i] for i in self.cache[key]]
