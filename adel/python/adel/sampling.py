@@ -27,14 +27,14 @@ class UniformSampler(object):
         self.num_all = 0
         self.num_val = 0
 
-    def sample(self, key):
+    def sample(self):
         """Returns whether to pull the sample for validation
         """
         pull_val = self.num_val <= self.num_all * self.rate
         self.num_all += 1
         if pull_val:
             self.num_val += 1
-
+        return pull_val
 
 class ContiguousSampler(object):
     """Samples fixed-lengths of data to maintain a ratio of validation data

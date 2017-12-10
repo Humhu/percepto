@@ -6,6 +6,7 @@ import numpy as np
 import cma
 import scipy.optimize as spo
 
+
 def floatify(spec):
     """Takes a dictionary and tries to convert strings to
     a float
@@ -19,7 +20,8 @@ def floatify(spec):
         except ValueError:
             pass
 
-def parse_optimizers(spec):
+
+def parse_optimizers(**kwargs):
     """Takes a specification dictionary and returns an optimizer.
 
     The spec should specify the optimizer type and any other constructor
@@ -33,11 +35,11 @@ def parse_optimizers(spec):
     gradient_descent :
         Vanilla gradient descent algorithm
     """
-    if 'type' not in spec:
+    if 'type' not in kwargs:
         raise ValueError('Specification must include type!')
 
-    optimizer_type = spec.pop('type')
-    floatify(spec)
+    optimizer_type = kwargs.pop('type')
+    floatify(kwargs)
 
     lookup = {'cma_es': CMAOptimizer,
               'gradient_descent': GradientDescent,
@@ -45,7 +47,7 @@ def parse_optimizers(spec):
     if optimizer_type not in lookup:
         raise ValueError('Optimizer type %s not valid type: %s' %
                          (optimizer_type, str(lookup.keys())))
-    return lookup[optimizer_type](**spec)
+    return lookup[optimizer_type](**kwargs)
 
 
 class Optimizer(object):
@@ -111,7 +113,8 @@ class CMAOptimizer(Optimizer):
 
         self.num_restarts = num_restarts
         self.opts = cma.CMAOptions()
-        self.opts['bounds'] = [None, None] # For some reason the default is a string!
+        # For some reason the default is a string!
+        self.opts['bounds'] = [None, None]
         for key, value in kwargs.iteritems():
             if key not in self.opts:
                 raise ValueError('No option %s for CMA' % key)
@@ -142,7 +145,8 @@ class CMAOptimizer(Optimizer):
         def obj(x):
             return self.k * func(x)
 
-        best = cma.BestSolution()
+        # TODO Check cma version
+        best = cma.optimization_tools.BestSolution()
         for i in range(self.num_restarts + 1):
             # TODO Set the initial standard deviations
             es = cma.CMAEvolutionStrategy(x_init, 0.5, self.opts)
@@ -153,8 +157,10 @@ class CMAOptimizer(Optimizer):
             best.update(es.best)
         return best.x, self.k * best.f
 
+
 class BFGSOptimizer(Optimizer):
-    def __init__(self, mode, num_restarts=0, **kwargs):
+    def __init__(self, mode, num_restarts=0, lower_bounds=-1,
+                 upper_bounds=1, **kwargs):
         if mode == 'min':
             self.k = 1
         elif mode == 'max':
@@ -194,8 +200,10 @@ class BFGSOptimizer(Optimizer):
                 best_y = res.fun
                 best_x = res.x
             # TODO How to sample x0 for non-finite bounds?
-            x0 = np.random.uniform(self.lower_bounds, self.upper_bounds, size=len(x0))
+            x0 = np.random.uniform(
+                self.lower_bounds, self.upper_bounds, size=len(x0))
         return best_x, self.k * best_y
+
 
 class GradientDescent(Optimizer):
     # TODO Add bounds

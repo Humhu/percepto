@@ -13,11 +13,15 @@ class BinaryDatasetTranslator(object):
         self.base.report_data(key=True, data=s)
 
     def report_negative(self, s):
-        self.base.report_data(key=True, data=s)
+        self.base.report_data(key=False, data=s)
 
     @property
     def all_data(self):
         return self.all_positives, self.all_negatives
+
+    @property
+    def num_data(self):
+        return self.num_positives + self.num_negatives
 
     @property
     def all_positives(self):

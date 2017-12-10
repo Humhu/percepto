@@ -29,7 +29,6 @@ class DatasetInterface(object):
         """
         pass
 
-    @property
     def get_volume_size(self, key):
         return len(self.get_volume(key))
 
@@ -45,11 +44,15 @@ class BasicDataset(DatasetInterface):
 
     def report_data(self, key, data):
         if key not in self.volumes:
-            self.volumes[key] = deque()
+            self.volumes[key] = []#deque()
         self.volumes[key].append(data)
 
     def get_volume(self, key):
-        return self.volumes[key]
+        if key not in self.volumes:
+            #return deque()
+            return []
+        else:
+            return self.volumes[key]
 
     def clear(self, key=None):
         if key is None:
@@ -110,6 +113,9 @@ class SubindexedDataset(DatasetInterface):
         self.sub_inds = {}
         self.terminal_inds = []
 
+    def clear(self):
+        self.base.clear()
+
     def report_data(self, key, data):
         if key not in self.sub_inds:
             self.sub_inds[key] = deque()
@@ -135,12 +141,18 @@ class HoldoutWrapper(DatasetInterface):
         The sampler to use for online/offline splitting
     """
 
-    def __init__(self, training, holdout, sampler_args):
+    def __init__(self, training, holdout, **kwargs):
         DatasetInterface.__init__(self)
         self.training = training
         self.holdout = holdout
         self.samplers = {}
-        self.sampler_args = sampler_args
+        self.sampler_args = kwargs
+
+    def clear(self):
+        self.training.clear()
+        self.holdout.clear()
+        for s in self.samplers.itervalues():
+            s.reset()
 
     def report_data(self, key, data):
         if key not in self.samplers:
@@ -153,6 +165,9 @@ class HoldoutWrapper(DatasetInterface):
 
     @property
     def get_volume(self, key):
+        #out = deque(self.training.get_volume(key))
+        #out.extend(self.holdout.get_volume(key))
+        #return out
         return self.training.get_volume(key) + self.holdout.get_volume(key)
 
 
@@ -163,12 +178,15 @@ class DatasetSampler(DatasetInterface):
     # TODO More sampling methods
     """
 
-    def __init__(self, base, k, method='uniform'):
+    def __init__(self, base, k=1, method='uniform'):
         DatasetInterface.__init__(self)
         self.base = base
         self.method = method
         self.k = k
         self.cache = {}
+
+    def clear(self):
+        self.base.clear()
 
     def sample_data(self, key, k=None):
         """Samples k data
