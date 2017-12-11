@@ -11,10 +11,13 @@ from argus_utils import TimeSeries
 class SARSSynchronizer(object):
     """Synchronizes and duplicates data to form SARS tuples.
 
-    Forms tuples of temporal length dt.
+    Forms tuples of temporal length dt. Note that these tuples may overlap.
+
+    Optionally can apply decaying weights when integrating rewards, useful for 
+    using this class for state-action-value integration.
     """
 
-    def __init__(self, dt, tol):
+    def __init__(self, dt, tol, gamma=0):
         self.dt = dt
         self.tol = tol
 
@@ -22,6 +25,8 @@ class SARSSynchronizer(object):
         self.action_map = ChangepointSeries(extend_end=True)
         self.break_map = ChangepointSeries(extend_end=True)
         self.reward_integrator = Integrator()
+
+        self.gamma = gamma
 
     def buffer_state(self, s, t):
         self.state_map.insert(time=t, val=s)
@@ -50,6 +55,11 @@ class SARSSynchronizer(object):
     def num_rewards_buffered(self):
         return len(self.reward_integrator)
 
+    def _decay_weights(self, t):
+        w = np.exp(-self.gamma * t)
+        w[w > self.dt] = 0
+        return w
+
     def process(self, now):
         """Process the internal buffers up to now, grouping data
         into SARS tuples and terminal SA tuples. Should be called with a
@@ -67,19 +77,8 @@ class SARSSynchronizer(object):
         sars = []
         terminals = []
 
-        # print 'States: %d Actions: %d Breaks: %d Rewards: %s Now: %f' \
-        #     % (len(self.state_map), len(self.action_map), len(
-        #         self.break_map), len(self.reward_integrator), now)
-        # print 'Segments: %s' % str(self.break_map)
-        # print 'Actions: %s' % str(self.action_map)
-        # print 'Reward range: [%f, %f]' % \
-        #     (self.reward_integrator.times[0], self.reward_integrator.times[-1])
-
         if len(self.state_map) == 0 or len(self.action_map) == 0 \
                 or len(self.reward_integrator) == 0:
-            # print 'States: %d actions: %d rewards: %d' % (len(self.state_map),
-            #                                               len(self.action_map), 
-            #                                               len(self.reward_integrator))
             return sars, terminals
 
         while len(self.state_map) > 0:
@@ -88,8 +87,7 @@ class SARSSynchronizer(object):
             t, s_t = self.state_map.earliest_item()
 
             # 1. If tn passes time threshold, come back later
-            # NOTE Should actually be now - self.tol
-            if t + self.dt > now:
+            if t + self.dt + self.tol > now:
                 # print 'tn %f passes now %f' % (t + self.dt, now)
                 break
 
@@ -137,7 +135,7 @@ class SARSSynchronizer(object):
                 continue
 
             # 6. Integrate rewards
-            r_t = self.reward_integrator.integrate(t, tn)
+            r_t = self.reward_integrator.integrate(t, tn, self._decay_weights)
             if r_t is None:
                 self.state_map.remove_earliest()
                 # print 'Integration failed for [%f,%f]' % (t, tn)

@@ -103,7 +103,11 @@ class Integrator(object):
         self.times.append(t)
         self.vals.append(v)
 
-    def integrate(self, t0, tf):
+    def integrate(self, t0, tf, weights=None):
+        """Integrates the data contained in the integrator from t0 to
+        tf, inclusive. Applies weights to the data according to function
+        weights(times - t0)
+        """
         if t0 < self.times[0] or tf > self.times[-1]:
             return None
 
@@ -112,12 +116,19 @@ class Integrator(object):
             pdb.set_trace()
 
         interp = spi.interp1d(x=self.times, y=self.vals, axis=0)
+
         # TODO Clean up using bisect
         istart = next(i for i, x in enumerate(self.times) if x > t0)
         ifinal = next((i for i, x in enumerate(self.times) if x > tf), -1)
 
         times = [t0] + self.times[istart:ifinal] + [tf]
         ref = [interp(t0)] + self.vals[istart:ifinal] + [interp(tf)]
+        times = np.array(times)
+        ref = np.asarray(ref)
+
+        if weights is not None:
+            ref = ref * weights(times - t0)
+
         return spt.trapz(y=ref, x=times)
 
     def trim(self, t0):
