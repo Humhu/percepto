@@ -1,6 +1,7 @@
 """Classes for synchronizing data into SAR tuples
 """
 
+import numpy as np
 from collections import deque
 import scipy.interpolate as spi
 import scipy.integrate as spt

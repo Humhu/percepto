@@ -9,3 +9,4 @@ from sync import *
 
 from sars import *
 from binary_class import *
+from labeled import *

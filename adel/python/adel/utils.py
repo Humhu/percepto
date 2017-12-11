@@ -111,11 +111,8 @@ class Integrator(object):
         if t0 < self.times[0] or tf > self.times[-1]:
             return None
 
-        if len(self.times) != len(self.vals):
-            import pdb
-            pdb.set_trace()
-
-        interp = spi.interp1d(x=self.times, y=self.vals, axis=0)
+        interp = spi.interp1d(x=np.squeeze(self.times),
+                              y=np.squeeze(self.vals), axis=0)
 
         # TODO Clean up using bisect
         istart = next(i for i, x in enumerate(self.times) if x > t0)

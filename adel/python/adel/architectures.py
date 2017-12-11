@@ -38,14 +38,14 @@ def make_conv2d_fc_net(img_in, image_subnet, final_subnet, scope='',
                                                            batch_training=batch_training,
                                                            reuse=reuse,
                                                            **final_subnet)
-    all_layers = img_net  + [img_flat] + fin_net
+    all_layers = img_net + [img_flat] + fin_net
     all_train = img_train + fin_train
     all_state = img_state + fin_state
     all_ups = img_ups + fin_ups
     return all_layers, all_train, all_state, all_ups
 
 
-def make_conv2d_joint_net(img_in, vector_in, image_subnet, vector_subnet,
+def make_conv2d_joint_net(img_in, vector_in, image_subnet, squeeze_subnet, vector_subnet,
                           final_subnet, scope='', dropout_rate=None,
                           batch_training=None, reuse=False):
     """Creates an network that combines a 2D convolution with a fully connected net and
@@ -82,15 +82,21 @@ def make_conv2d_joint_net(img_in, vector_in, image_subnet, vector_subnet,
                                                            **vector_subnet)
     flat_dim = int(np.prod(img_net[-1].shape[1:]))
     img_flat = tf.reshape(img_net[-1], (-1, flat_dim))
-    joined = tf.concat([img_flat, vec_net[-1]], axis=-1)
+    sq_net, sq_train, sq_state, sq_ups = make_fullycon(inpu=img_flat,
+                                                       scope='%sjoint_squeeze' % scope,
+                                                       dropout_rate=dropout_rate,
+                                                       batch_training=batch_training,
+                                                       reuse=reuse,
+                                                       **squeeze_subnet)
+    joined = tf.concat([sq_net[-1], vec_net[-1]], axis=-1)
     fin_net, fin_train, fin_state, fin_ups = make_fullycon(input=joined,
                                                            scope='%sjoint_final' % scope,
                                                            dropout_rate=dropout_rate,
                                                            batch_training=batch_training,
                                                            reuse=reuse,
                                                            **final_subnet)
-    all_layers = img_net + vec_net + [img_flat, joined] + fin_net
-    all_train = img_train + vec_train + fin_train
-    all_state = img_state + vec_state + fin_state
-    all_ups = img_ups + vec_ups + fin_ups
+    all_layers = img_net + sq_net + vec_net + [img_flat, joined] + fin_net
+    all_train = img_train + sq_train + vec_train + fin_train
+    all_state = img_state + sq_state + vec_state + fin_state
+    all_ups = img_ups + sq_ups + vec_ups + fin_ups
     return all_layers, all_train, all_state, all_ups
