@@ -82,7 +82,7 @@ def make_conv2d_joint_net(img_in, vector_in, image_subnet, squeeze_subnet, vecto
                                                            **vector_subnet)
     flat_dim = int(np.prod(img_net[-1].shape[1:]))
     img_flat = tf.reshape(img_net[-1], (-1, flat_dim))
-    sq_net, sq_train, sq_state, sq_ups = make_fullycon(inpu=img_flat,
+    sq_net, sq_train, sq_state, sq_ups = make_fullycon(input=img_flat,
                                                        scope='%sjoint_squeeze' % scope,
                                                        dropout_rate=dropout_rate,
                                                        batch_training=batch_training,
