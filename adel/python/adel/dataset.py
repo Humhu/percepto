@@ -116,6 +116,9 @@ class SubindexedDataset(DatasetInterface):
     def clear(self):
         self.base.clear()
 
+    def set_inds(self, key, inds):
+        self.sub_inds[key] = inds
+
     def report_data(self, key, data):
         if key not in self.sub_inds:
             self.sub_inds[key] = deque()
@@ -213,3 +216,64 @@ class DatasetSampler(DatasetInterface):
             self.sample_data(key=key)
         vol = self.base.get_volume(key)
         return [vol[i] for i in self.cache[key]]
+
+class DatasetChunker(DatasetInterface):
+    """Wraps a dataset to allow iterating through fixed-size blocks
+    """
+    def __init__(self, base, block_size):
+        DatasetInterface.__init__(self)
+        self.base = base
+        self.block_size = block_size
+        self.block_index = {}
+
+    def reset(self, key):
+        # TODO case where key=None?
+        self.block_index[key] = 0
+
+    def is_done(self, key):
+        vsize = self.base.get_volume_size(key)
+        return vsize < self.block_index[key] * self.block_size
+
+    def report_data(self, key, data):
+        self.base.report_data(key, data)
+
+    def iter_volume(self, key):
+        self.reset(key)
+        while not self.is_done(key):
+            yield self.get_volume(key)
+        self.reset(key)
+
+    def iter_subdata(self, key):
+        self.reset(key)
+        while not self.is_done(key):
+            yield self.get_subdata(key)
+        self.reset(key)
+
+    def iter_chunk_sizes(self, key):
+        self.reset(key)
+        while not self.is_done(key):
+            yield self.get_volume_size(key)
+        self.reset(key)
+
+    def get_subdata(self, key):
+        if key not in self.block_index:
+            self.block_index[key] = 0
+
+        sub = SubindexedDataset(base=self.base)
+        i = self.block_index[key] * self.block_size
+        fin = min(i + self.block_size, self.base.get_volume_size(key))
+        sub.set_inds(key, range(i, fin))
+        self.block_index[key] += 1        
+        return sub
+
+    def get_volume(self, key):
+        if key not in self.block_index:
+            self.block_index[key] = 0
+        
+        i = self.block_index[key] * self.block_size
+        vol = self.base.get_volume(key)[i:i+self.block_size]
+        self.block_index[key] += 1
+        return vol
+
+    def get_volume_size(self, key):
+        return len(self.get_volume(key))

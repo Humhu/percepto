@@ -23,8 +23,12 @@ class LabeledDatasetTranslator(object):
 
     @property
     def all_inputs(self):
+        if self.num_data == 0:
+            return []
         return zip(*self.all_data)[0]
 
     @property
     def all_labels(self):
+        if self.num_data == 0:
+            return []
         return zip(*self.all_data)[1]
