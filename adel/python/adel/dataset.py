@@ -232,7 +232,7 @@ class DatasetChunker(DatasetInterface):
 
     def is_done(self, key):
         vsize = self.base.get_volume_size(key)
-        return vsize < self.block_index[key] * self.block_size
+        return vsize <= self.block_index[key] * self.block_size
 
     def report_data(self, key, data):
         self.base.report_data(key, data)
