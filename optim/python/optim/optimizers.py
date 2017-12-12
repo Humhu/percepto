@@ -103,7 +103,8 @@ class CMAOptimizer(Optimizer):
     num_restarts
     """
 
-    def __init__(self, mode, num_restarts=0, **kwargs):
+    def __init__(self, mode, num_restarts=0, lower_bounds=None, upper_bounds=None,
+                 **kwargs):
         if mode == 'min':
             self.k = 1
         elif mode == 'max':
@@ -119,6 +120,11 @@ class CMAOptimizer(Optimizer):
             if key not in self.opts:
                 raise ValueError('No option %s for CMA' % key)
             self.opts[key] = value
+
+        if lower_bounds is not None:
+            self.lower_bounds = lower_bounds
+        if upper_bounds is not None:
+            self.upper_bounds = upper_bounds
 
     @property
     def lower_bounds(self):
