@@ -1,10 +1,9 @@
-# percepto
-Percepto is a lightweight C++ header-only library for regression tasks in integrated applications.
+# Overview
+Percepto contains a variety of machine learning, reinforcement learning, and optimization packages targeted at state estimation tasks. It is intended to be used with the argus package.
 
-##Features
-* Positive-definite matrix regression
-* Artificial neural networks
-** Compile-time specification of network architectures
-* Variety of optimization approaches
-
-Currently only linear units with a few activation functions are supported. Refer to [this file](https://github.com/Humhu/percepto/blob/master/examples/TestNet.cpp) for a classic perceptron example.
+# Packages
+* adel: Utilities for using TensorFlow in robotics applications
+* covreg: Deprecated package for learning predictive covariance models
+* optim: C++ and Python optimization implementations and wrappers
+* percepto_msgs: Messages and services for optimization, reinforcement learning
+* poli: Deprecated C++ and Python reinforcement learning library
