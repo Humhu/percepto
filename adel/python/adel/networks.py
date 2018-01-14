@@ -28,7 +28,8 @@ def parse_rect(s):
         return s
 
     lookup = {'relu': tf.nn.relu, #'leaky_relu': tf.nn.leaky_relu,
-              'tanh': tf.nn.tanh, 'sigmoid': tf.nn.sigmoid}
+              'tanh': tf.nn.tanh, 'sigmoid': tf.nn.sigmoid,
+              'none': None}
     if s not in lookup:
         raise ValueError('Rectification %s not one of valid: %s' %
                          (s, lookup.keys()))

@@ -3,7 +3,7 @@
 
 import abc
 import random
-import copy
+import cPickle as pickle
 from sampling import create_sampler
 from collections import deque
 
@@ -60,46 +60,36 @@ class BasicDataset(DatasetInterface):
         else:
             self.volumes.pop(key)
 
-    # def to_saveable(self):
-    #     """Converts the dataset to a pickleable object
-    #     """
-    #     return (self.sars, self.terminals)
+    def save(self, path):
+        """Saves the dataset to a pickle.
 
-    # def from_saveable(self, obj, append=True):
-    #     """Loads the dataset from a pickled object
-    #     """
-    #     sars, terminals = obj
-    #     if append:
-    #         self.sars += sars
-    #         self.terminals += terminals
-    #     else:
-    #         self.sars = sars
-    #         self.terminals = terminals
+        Parameters
+        ----------
+        path : string
+            File path to save to
+        """
+        with open(path, 'w') as f:
+            pickle.dump(self.volumes, f)
 
-    # def save(self, path):
-    #     """Saves the dataset to a pickle.
+    def load(self, path, append=True):
+        """Loads and/or appends data from a pickle.
 
-    #     Parameters
-    #     ----------
-    #     path : string
-    #         File path to save to
-    #     """
-    #     with open(path, 'w') as f:
-    #         pickle.dump(self.to_saveable(), f)
-
-    # def load(self, path, append=True):
-    #     """Loads and/or appends data from a pickle.
-
-    #     Parameters
-    #     ----------
-    #     path   : string
-    #         File path to load from
-    #     append : bool (default True)
-    #         Whether to append or overwrite data
-    #     """
-    #     with open(path, 'r') as f:
-    #         obj = pickle.load(f)
-    #     self.from_saveable(obj)
+        Parameters
+        ----------
+        path   : string
+            File path to load from
+        append : bool (default True)
+            Whether to append or overwrite data
+        """
+        with open(path, 'r') as f:
+            loaded = pickle.load(f)
+        if append:
+            for k, v in loaded.iteritems():
+                if k not in self.volumes:
+                    self.volumes[k] = []
+                self.volumes[k] += v
+        else:
+            self.volumes = loaded
 
 
 class SubindexedDataset(DatasetInterface):
@@ -140,14 +130,17 @@ class HoldoutWrapper(DatasetInterface):
         The training dataset object
     holdout : DatasetInterface
         The holdout dataset object
-    sampler : Sampler object
-        The sampler to use for online/offline splitting
+    duplicate : bool (default False)
+        If True, adds validation data to both datasets, else only to validation
+
+    Remaining kwargs are forwarded to create_sampler
     """
 
-    def __init__(self, training, holdout, **kwargs):
+    def __init__(self, training, holdout, duplicate=False, **kwargs):
         DatasetInterface.__init__(self)
         self.training = training
         self.holdout = holdout
+        self.duplicate = duplicate
         self.samplers = {}
         self.sampler_args = kwargs
 
@@ -163,6 +156,8 @@ class HoldoutWrapper(DatasetInterface):
 
         if self.samplers[key].sample():
             self.holdout.report_data(key, data)
+            if self.duplicate:
+                self.training.report_data(key, data)
         else:
             self.training.report_data(key, data)
 
