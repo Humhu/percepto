@@ -26,7 +26,7 @@ class BinaryDatasetTranslator(object):
 
     @property
     def all_inputs(self):
-        return self.all_positives, self.all_negatives
+        return self.all_positives + self.all_negatives
 
     @property
     def num_data(self):

@@ -18,14 +18,20 @@ class SARSSynchronizer(object):
     using this class for state-action-value integration.
     """
 
-    def __init__(self, dt, tol, gamma=0):
+    def __init__(self, dt, tol, reward_mode='integrate', reward_steps=3, gamma=0):
         self.dt = dt
         self.tol = tol
 
         self.state_map = TimeSeries()
         self.action_map = ChangepointSeries(extend_end=True)
         self.break_map = ChangepointSeries(extend_end=True)
-        self.reward_integrator = Integrator()
+
+        if reward_mode == 'point' or reward_mode == 'sequence':
+            self.rewards = TimeSeries()
+        elif reward_mode == 'integrate':
+            self.rewards = Integrator()
+        self.reward_mode = reward_mode
+        self.reward_steps = reward_steps
 
         self.gamma = gamma
 
@@ -36,7 +42,10 @@ class SARSSynchronizer(object):
         self.action_map.buffer(t=t, v=a)
 
     def buffer_reward(self, r, t):
-        self.reward_integrator.buffer(t=t, v=r)
+        if self.reward_mode == 'integrate':
+            self.rewards.buffer(t=t, v=r)
+        else:
+            self.rewards.insert(time=t, val=r)
 
     def buffer_episode_active(self, t):
         self.break_map.buffer(t=t, v=True)
@@ -54,7 +63,7 @@ class SARSSynchronizer(object):
 
     @property
     def num_rewards_buffered(self):
-        return len(self.reward_integrator)
+        return len(self.rewards)
 
     def _decay_weights(self, t):
         w = np.exp(-self.gamma * t)
@@ -79,7 +88,7 @@ class SARSSynchronizer(object):
         terminals = []
 
         if len(self.state_map) == 0 or len(self.action_map) == 0 \
-                or len(self.reward_integrator) == 0:
+                or len(self.rewards) == 0:
             return sars, terminals
 
         while len(self.state_map) > 0:
@@ -136,7 +145,13 @@ class SARSSynchronizer(object):
                 continue
 
             # 6. Integrate rewards
-            r_t = self.reward_integrator.integrate(t, tn, self._decay_weights)
+            if self.reward_mode == 'point':
+                r_t = self.rewards.get_closest_either(tn).data
+            elif self.reward_mode == 'sequence':
+                r_t = [self.rewards.get_closest_either(tau).data
+                       for tau in np.linspace(t, tn, self.reward_steps)]
+            else:
+                r_t = self.rewards.integrate(t, tn, self._decay_weights)
             if r_t is None:
                 self.state_map.remove_earliest()
                 # print 'Integration failed for [%f,%f]' % (t, tn)
@@ -151,6 +166,9 @@ class SARSSynchronizer(object):
         # point
         self.action_map.trim(t)
         self.break_map.trim(t)
-        self.reward_integrator.trim(t)
+        if self.reward_mode == 'integrate':
+            self.rewards.trim(t)
+        else:
+            self.rewards.trim_earliest_to(t)
 
         return sars, terminals

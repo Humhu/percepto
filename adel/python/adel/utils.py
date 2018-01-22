@@ -124,9 +124,13 @@ class Integrator(object):
         ref = np.asarray(ref)
 
         if weights is not None:
-            ref = ref * weights(times - t0)
+            w = weights(times - t0)
+            ref = ref * w
+            z = spt.trapz(y=w, x=times)
+        else:
+            z = 1.0
 
-        return spt.trapz(y=ref, x=times)
+        return spt.trapz(y=ref, x=times) / z
 
     def trim(self, t0):
         """Remove all data covering times before t0

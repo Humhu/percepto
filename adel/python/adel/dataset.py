@@ -233,12 +233,16 @@ class DatasetChunker(DatasetInterface):
         self.base.report_data(key, data)
 
     def iter_volume(self, key):
+        """Iterate through a volume returning the chunks of data
+        """
         self.reset(key)
         while not self.is_done(key):
             yield self.get_volume(key)
         self.reset(key)
 
     def iter_subdata(self, key):
+        """Iterate through a volume returning SubindexedDataset views
+        """
         self.reset(key)
         while not self.is_done(key):
             yield self.get_subdata(key)
@@ -251,6 +255,9 @@ class DatasetChunker(DatasetInterface):
         self.reset(key)
 
     def get_subdata(self, key):
+        """Returns a SubindexedDataset object corresponding to the current
+        subset of data in volume key. Increments the volume index.
+        """
         if key not in self.block_index:
             self.block_index[key] = 0
 
@@ -258,10 +265,13 @@ class DatasetChunker(DatasetInterface):
         i = self.block_index[key] * self.block_size
         fin = min(i + self.block_size, self.base.get_volume_size(key))
         sub.set_inds(key, range(i, fin))
-        self.block_index[key] += 1        
+        self.block_index[key] += 1
         return sub
 
     def get_volume(self, key):
+        """Returns the subvolume of data corresponding to the current
+        index in volume key. Increments the volume index.
+        """
         if key not in self.block_index:
             self.block_index[key] = 0
         

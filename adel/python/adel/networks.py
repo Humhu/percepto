@@ -17,6 +17,13 @@ def check_vector_arg(arg, n):
         raise ValueError('Received %d args but need %d' % (len(arg), n))
     return arg
 
+def parse_rect_array(s, n):
+    if isinstance(s, list) or isinstance(s, tuple):
+        if n != len(s):
+            raise ValueError('Require %d rects but got %d' % (n, len(s)))
+        return [parse_rect(si) for si in s]
+    else:
+        return [parse_rect(s)] * n
 
 def parse_rect(s):
     """Converts from a string to a Tensorflow rectification class.
@@ -67,7 +74,7 @@ def parse_pool2d(s):
 
 
 def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
-                reuse=False, rect=tf.nn.relu,
+                reuse=False, rect=tf.nn.relu, padding='same',
                 pooling=tf.layers.max_pooling1d, pool_sizes=1, pool_strides=1,
                 batch_training=None, dropout_rate=None,
                 **kwargs):
@@ -165,6 +172,7 @@ def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
                                  filters=n_filters[i],
                                  kernel_size=filter_sizes[i],
                                  strides=conv_strides[i],
+                                 padding=padding,
                                  activation=rect,
                                  name='conv_%d' % i,
                                  **kwargs)
@@ -176,7 +184,7 @@ def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
             state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
                                                  scope='%s/conv_%d' % (scope, i))
 
-            if pooling is not None:
+            if pooling is not None and pool_sizes[i] > 0:
                 x = pooling(inputs=x,
                             pool_size=pool_sizes[i],
                             strides=pool_strides[i],
@@ -196,7 +204,7 @@ def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
 
 
 def make_conv2d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
-                reuse=False, rect=tf.nn.relu,
+                reuse=False, rect=tf.nn.relu, padding='same',
                 pooling=tf.layers.max_pooling2d, pool_sizes=None, pool_strides=None,
                 batch_training=None, dropout_rate=None,
                 **kwargs):
@@ -294,6 +302,7 @@ def make_conv2d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
                                  filters=n_filters[i],
                                  kernel_size=(
                                      filter_sizes[i], filter_sizes[i]),
+                                 padding=padding,
                                  strides=(conv_strides[i], conv_strides[i]),
                                  activation=rect,
                                  name='conv_%d' % i,
@@ -306,7 +315,7 @@ def make_conv2d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
             state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
                                                  scope='%s/conv_%d' % (scope, i))
 
-            if pooling is not None:
+            if pooling is not None and pool_sizes[i] > 0:
                 x = pooling(inputs=x,
                             pool_size=(pool_sizes[i], pool_sizes[i]),
                             strides=(pool_strides[i], pool_strides[i]),
@@ -380,7 +389,7 @@ def make_fullycon(input, n_layers, n_units, n_outputs, scope,
     state_variables = []
 
     n_units = check_vector_arg(n_units, n_layers - 1)
-    rect = parse_rect(rect)
+    rect = parse_rect_array(rect, n_layers - 1)
     final_rect = parse_rect(final_rect)
 
     x = input
@@ -408,7 +417,7 @@ def make_fullycon(input, n_layers, n_units, n_outputs, scope,
                 layer_rect = final_rect
                 width = n_outputs
             else:
-                layer_rect = rect
+                layer_rect = rect[i]
                 width = n_units[i]
 
             x = tf.layers.dense(inputs=x,
