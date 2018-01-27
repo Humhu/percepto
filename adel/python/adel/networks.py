@@ -17,6 +17,20 @@ def check_vector_arg(arg, n):
         raise ValueError('Received %d args but need %d' % (len(arg), n))
     return arg
 
+def check_vector2_arg(arg, n):
+    if not np.iterable(arg):
+        return [(arg, arg)] * n
+    if arg is None:
+        raise ValueError('Received none but need 1 or 2 or %d scalars' % n)
+    if len(arg) == n:
+        if np.iterable(arg[0]):
+            return arg
+        else:
+            return [(ai,ai) for ai in arg]
+    if len(arg) == 2:
+        return [arg] * n
+    return arg
+
 def parse_rect_array(s, n):
     if isinstance(s, list) or isinstance(s, tuple):
         if n != len(s):
@@ -24,6 +38,7 @@ def parse_rect_array(s, n):
         return [parse_rect(si) for si in s]
     else:
         return [parse_rect(s)] * n
+
 
 def parse_rect(s):
     """Converts from a string to a Tensorflow rectification class.
@@ -34,13 +49,23 @@ def parse_rect(s):
     if not isinstance(s, str):
         return s
 
-    lookup = {'relu': tf.nn.relu, #'leaky_relu': tf.nn.leaky_relu,
+    lookup = {'relu': tf.nn.relu,  # 'leaky_relu': tf.nn.leaky_relu,
               'tanh': tf.nn.tanh, 'sigmoid': tf.nn.sigmoid,
               'none': None}
     if s not in lookup:
         raise ValueError('Rectification %s not one of valid: %s' %
                          (s, lookup.keys()))
     return lookup[s]
+
+
+def parse_pool1d_array(s, n):
+    if isinstance(s, list) or isinstance(s, tuple):
+        if n != len(s):
+            raise ValueError('Require %d pool1ds but got %d' % (n, len(s)))
+        return [parse_pool1d(si) for si in s]
+    else:
+        return [parse_pool1d(s)] * n
+
 
 def parse_pool1d(s):
     """Converts from a string to a Tensorflow 1D pooling class.
@@ -51,11 +76,22 @@ def parse_pool1d(s):
         return s
 
     lookup = {'max': tf.layers.max_pooling1d,
-              'average': tf.layers.average_pooling1d}
+              'average': tf.layers.average_pooling1d,
+              'none': None}
     if s not in lookup:
         raise ValueError('1D pool %s not one of valid: %s' %
                          (s, lookup.keys()))
     return lookup[s]
+
+
+def parse_pool2d_array(s, n):
+    if isinstance(s, list) or isinstance(s, tuple):
+        if n != len(s):
+            raise ValueError('Require %d pool2ds but got %d' % (n, len(s)))
+        return [parse_pool2d(si) for si in s]
+    else:
+        return [parse_pool2d(s)] * n
+
 
 def parse_pool2d(s):
     """Converts from a string to a Tensorflow 2D pooling class.
@@ -66,12 +102,12 @@ def parse_pool2d(s):
         return s
 
     lookup = {'max': tf.layers.max_pooling2d,
-              'average': tf.layers.average_pooling2d}
+              'average': tf.layers.average_pooling2d,
+              'none': None}
     if s not in lookup:
         raise ValueError('2D pool %s not one of valid: %s' %
                          (s, lookup.keys()))
     return lookup[s]
-
 
 def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
                 reuse=False, rect=tf.nn.relu, padding='same',
@@ -140,10 +176,9 @@ def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
     filter_sizes = check_vector_arg(filter_sizes, n_layers)
     conv_strides = check_vector_arg(conv_strides, n_layers)
     rect = parse_rect(rect)
-    if pooling is not None:
-        pooling = parse_pool1d(pooling)
-        pool_sizes = check_vector_arg(pool_sizes, n_layers)
-        pool_strides = check_vector_arg(pool_strides, n_layers)
+    pooling = parse_pool1d_array(pooling, n_layers)
+    pool_sizes = check_vector_arg(pool_sizes, n_layers)
+    pool_strides = check_vector_arg(pool_strides, n_layers)
 
     # TODO Have b_init be an argument as well?
     b_init = tf.constant_initializer(dtype=tf.float32, value=0.0)
@@ -184,11 +219,15 @@ def make_conv1d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
             state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
                                                  scope='%s/conv_%d' % (scope, i))
 
-            if pooling is not None and pool_sizes[i] > 0:
-                x = pooling(inputs=x,
-                            pool_size=pool_sizes[i],
-                            strides=pool_strides[i],
-                            name='pool_%d' % i)
+            if pooling[i] is not None:
+                if pool_sizes[i] > 0:
+                    ps = pool_sizes[i]
+                else:
+                    ps = x.shape[1]
+                x = pooling[i](inputs=x,
+                               pool_size=ps,
+                               strides=pool_strides[i],
+                               name='pool_%d' % i)
                 layers.append(x)
                 train_variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
                                                      scope='%s/pool_%d' % (scope, i))
@@ -267,13 +306,12 @@ def make_conv2d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
     state_variables = []
 
     n_filters = check_vector_arg(n_filters, n_layers)
-    filter_sizes = check_vector_arg(filter_sizes, n_layers)
-    conv_strides = check_vector_arg(conv_strides, n_layers)
+    filter_sizes = check_vector2_arg(filter_sizes, n_layers)
+    conv_strides = check_vector2_arg(conv_strides, n_layers)
     rect = parse_rect(rect)
-    if pooling is not None:
-        pooling = parse_pool2d(pooling)
-        pool_sizes = check_vector_arg(pool_sizes, n_layers)
-        pool_strides = check_vector_arg(pool_strides, n_layers)
+    pooling = parse_pool2d_array(pooling, n_layers)
+    pool_sizes = check_vector2_arg(pool_sizes, n_layers)
+    pool_strides = check_vector2_arg(pool_strides, n_layers)
 
     # TODO Have b_init be an argument as well?
     b_init = tf.constant_initializer(dtype=tf.float32, value=0.0)
@@ -298,28 +336,32 @@ def make_conv2d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
                                           name='dropout_%d' % i)
                     layers.append(x)
 
-            x = tf.layers.conv2d(inputs=x,
-                                 filters=n_filters[i],
-                                 kernel_size=(
-                                     filter_sizes[i], filter_sizes[i]),
-                                 padding=padding,
-                                 strides=(conv_strides[i], conv_strides[i]),
-                                 activation=rect,
-                                 name='conv_%d' % i,
-                                 **kwargs)
-            layers.append(x)
+            if filter_sizes > 0:
+                x = tf.layers.conv2d(inputs=x,
+                                    filters=n_filters[i],
+                                    kernel_size=filter_sizes[i],
+                                    padding=padding,
+                                    strides=conv_strides[i],
+                                    activation=rect,
+                                    name='conv_%d' % i,
+                                    **kwargs)
+                layers.append(x)
 
-            # Collect all trainable variables corresponding to conv layer
-            train_variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
-                                                 scope='%s/conv_%d' % (scope, i))
-            state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
-                                                 scope='%s/conv_%d' % (scope, i))
+                # Collect all trainable variables corresponding to conv layer
+                train_variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
+                                                    scope='%s/conv_%d' % (scope, i))
+                state_variables += tf.get_collection(key=tf.GraphKeys.GLOBAL_VARIABLES,
+                                                    scope='%s/conv_%d' % (scope, i))
 
-            if pooling is not None and pool_sizes[i] > 0:
-                x = pooling(inputs=x,
-                            pool_size=(pool_sizes[i], pool_sizes[i]),
-                            strides=(pool_strides[i], pool_strides[i]),
-                            name='pool_%d' % i)
+            if pooling[i] is not None:
+                if pool_sizes[i] > 0:
+                    ps = pool_sizes[i]
+                else:
+                    ps = x.shape[1:3]
+                x = pooling[i](inputs=x,
+                               pool_size=ps,
+                               strides=pool_strides[i],
+                               name='pool_%d' % i)
                 layers.append(x)
                 train_variables += tf.get_collection(key=tf.GraphKeys.TRAINABLE_VARIABLES,
                                                      scope='%s/pool_%d' % (scope, i))

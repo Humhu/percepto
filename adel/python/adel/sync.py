@@ -148,8 +148,11 @@ class SARSSynchronizer(object):
             if self.reward_mode == 'point':
                 r_t = self.rewards.get_closest_either(tn).data
             elif self.reward_mode == 'sequence':
+                # NOTE Changed logic here subtely
                 r_t = [self.rewards.get_closest_either(tau).data
-                       for tau in np.linspace(t, tn, self.reward_steps)]
+                       for tau in np.linspace(t,
+                                              t + self.dt * self.reward_steps,
+                                              self.reward_steps)]
             else:
                 r_t = self.rewards.integrate(t, tn, self._decay_weights)
             if r_t is None:
