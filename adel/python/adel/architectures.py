@@ -34,11 +34,15 @@ def make_vgg_net(img_in, output_layer, post_pool=None, post_pool_size=-1, post_p
         pool_type = adel.parse_pool2d(post_pool)
         if post_pool_size < 0:
             post_pool_size = output.shape[1:3]
-        else:
+        elif not np.iterable(post_pool_size):
             post_pool_size = [post_pool_size, post_pool_size]
+        if not np.iterable(post_pool_stride):
+            post_pool_stride = [post_pool_stride, post_pool_stride]
+
         pool = pool_type(inputs=output,
                          pool_size=post_pool_size,
-                         strides=[post_pool_stride, post_pool_stride])
+                         strides=post_pool_stride,
+                         padding='valid')
         layers.append(pool)
     return layers
 
