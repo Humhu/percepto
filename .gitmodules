@@ -1,0 +1,3 @@
+[submodule "adel/python/tensorflow_vgg"]
+	path = adel/python/tensorflow_vgg
+	url = https://github.com/Humhu/tensorflow-vgg
