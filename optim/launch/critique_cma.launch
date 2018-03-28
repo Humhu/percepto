@@ -2,6 +2,7 @@
 
 <arg name="input_dim"/>
 <arg name="max_evals"/>
+<arg name="mode" default="minimize"/>
 
 <arg name="output_path" default="out.pkl"/>
 <arg name="prog_path" default="prog.pkl"/>
@@ -17,6 +18,7 @@
 <arg name="override_popsize" default="false"/>
 
 <node pkg="optim" type="CMAOptimization.py" name="optimizer" output="screen" required="true">
+    <param name="mode" value="$(arg mode)"/>
     <param name="output_path" value="$(arg output_path)"/>
     <param name="load_path" value="$(arg load_path)" if="$(arg resume)"/>
     <param name="progress_path" value="$(arg prog_path)"/>

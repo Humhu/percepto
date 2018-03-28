@@ -3,6 +3,7 @@
 import dill
 import pickle
 #import cPickle as pickle
+import time
 import rospy
 import sys
 import cma
@@ -61,6 +62,10 @@ class CMAOptimizer:
     def __init__(self):
 
         # Specify either input dimension and assume zero mean, or full mean
+        self.mode = rospy.get_param('~mode')
+        if self.mode not in ['minimize', 'maximize']:
+            raise ValueError('Unknown mode: %s' % self.mode)
+
         init_mean = rospy.get_param('~initial_mean', 0.0)
         if rospy.has_param('~input_dim'):
             in_dim = rospy.get_param('~input_dim')
@@ -77,6 +82,7 @@ class CMAOptimizer:
 
         if rospy.has_param('~random_seed'):
             cma_options['seed'] = rospy.get_param('~random_seed')
+            rospy.loginfo('Setting seed to %d', cma_options['seed'])
         if rospy.has_param('~population_size'):
             cma_options['popsize'] = rospy.get_param('~population_size')
 
@@ -161,8 +167,13 @@ class CMAOptimizer:
                         current_feedbacks[k] = []
                     current_feedbacks[k].append(v)
 
-            # cma performs minimization, so we have to report the negated rewards
-            self.cma_optimizer.tell(current_inputs, -np.array(current_outputs))
+            # cma performs minimization
+            if self.mode == 'minimize':
+                report = np.array(current_outputs)
+            elif self.mode == 'maximize':
+                report = -np.array(current_outputs)
+            
+            self.cma_optimizer.tell(current_inputs, report)
             self.cma_optimizer.logger.add()
             self.cma_optimizer.disp()
 
@@ -172,7 +183,10 @@ class CMAOptimizer:
                                 current_feedbacks])
             self.round_index += 1
 
-        return self.cma_optimizer.result()[0], self.cma_optimizer.result()[1]
+        xfinal, yfinal = self.cma_optimizer.result[0:2]
+        if self.mode == 'maximize':
+            yfinal = -yfinal
+        return xfinal, yfinal
 
 
 if __name__ == '__main__':

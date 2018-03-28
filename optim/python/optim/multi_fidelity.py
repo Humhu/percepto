@@ -4,6 +4,8 @@ Kandasamy et al.
 
 import abc
 import numpy as np
+from itertools import izip
+
 from optim.reward_models import *
 from optim.bayesian_optimization import UCBAcquisition
 
@@ -35,8 +37,10 @@ def pick_acquisition_mf(acq_func, optimizer, gammas, x_init):
     # 2. Determine what fidelity to operate at
     bounds = acq_func.get_bounds(x)
     gamma_aug = np.hstack((gammas, float('-inf')))
-    print bounds
-    print bounds > gamma_aug
+    s = '(Bounds, Gamma):'
+    for b, g in izip(bounds, gamma_aug):
+        s += ' (%f, %f)' % (b, g)
+    print s
     # NOTE This will always have at least one element since the last gamma
     # is -inf
     fid = np.where(bounds > gamma_aug)[0][0]

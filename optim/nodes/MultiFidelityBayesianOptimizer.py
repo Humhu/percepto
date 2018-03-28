@@ -6,6 +6,7 @@ import pickle
 import time
 import math
 import os
+import sys
 
 import numpy as np
 import scipy as sp
@@ -40,10 +41,14 @@ class MultiFidelityBayesianOptimizer(object):
         self.fidelity_costs = rospy.get_param('~fidelity_costs')
         self.cost_ratio_coeff = rospy.get_param(
             '~fidelity_cost_ratio_coeff', 1.0)
+        self.fidelity_offset = rospy.get_param('~fidelity_offset', 0)
+
+        self.mode = rospy.get_param('~mode')
 
         # Parse acquisition optimizer
         optimizer_info = rospy.get_param('~auxiliary_optimizer')
-        self.aux_optimizer = optim.parse_optimizers(optimizer_info)
+        optimizer_info['mode'] = 'max'
+        self.aux_optimizer = optim.parse_optimizers(**optimizer_info)
 
         self.input_dim = rospy.get_param('~dim')
         self.lower_bounds = farr(rospy.get_param(
@@ -74,6 +79,14 @@ class MultiFidelityBayesianOptimizer(object):
         self.init_variation = rospy.get_param(
             '~initialization/min_variation', 0)
         init_method = rospy.get_param('~initialization/method', 'uniform')
+
+        seed = rospy.get_param('~random_seed', None)
+        if seed is None:
+            rospy.loginfo('No random seed specified. Using default behavior.')
+        else:
+            seed = int(seed)
+            rospy.loginfo('Initializing with random seed: ' + str(seed))
+            np.random.seed(seed)
 
         # TODO Support for latin hypercubes, other approaches?
         if init_method == 'uniform':
@@ -143,6 +156,11 @@ class MultiFidelityBayesianOptimizer(object):
                                            gammas=self.gammas,
                                            x_init=self.aux_x_init)
         rmean, rsd = self.acq_func.predict_mf(fid=fid, x=x)
+
+        # Undo negation of objective function so as to not confuse user
+        if self.mode == 'min':
+            rmean = -rmean
+
         rospy.loginfo('Next sample (%d, %s) with beta %f and predicted reward %f +- %f',
                       fid,
                       str(x), self.acq_func.exploration_rate,
@@ -184,11 +202,16 @@ class MultiFidelityBayesianOptimizer(object):
             self.initialize_reward_model()
 
     def report_sample(self, fid, action, reward, feedback):
+        self.rounds.append((fid, action, reward, feedback))
+        self.active_fidelities.append(fid)
+
+        # By default everything is set up for maximization, so we can convert
+        # to a minimization by reporting the negative rewards to the model
+        if self.mode == 'min':
+            reward = -reward
         self.reward_model.report_mf_sample(fid=fid,
                                            x=action,
                                            reward=reward)
-        self.rounds.append((fid, action, reward, feedback))
-        self.active_fidelities.append(fid)
 
         # Check fidelity gamma for all sub-fidelities
         if fid >= self.reward_model.num_fidelities - 1:
@@ -204,6 +227,7 @@ class MultiFidelityBayesianOptimizer(object):
                           fid, prev_streak, self.gammas[fid])
 
     def execute_action(self, fid, action):
+        fid += self.fidelity_offset
         full_action = np.hstack((fid, action))
 
         start_t = time.time()
@@ -304,4 +328,11 @@ if __name__ == '__main__':
         pickle.dump(optimizer, prog_file)
 
     # Save output
+    def paramz_to_dict(p):
+        """Converts a list of paramz to a dict for pickling
+        """
+        return dict([(k.name, np.array(k)) for k in p])
+
+    params = optimizer.reward_model._models[0].kernel.parameters
+    res = {'kernel_parameters': paramz_to_dict(params)}
     pickle.dump((res, optimizer.rounds), out_file)
