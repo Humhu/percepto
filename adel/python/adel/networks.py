@@ -305,6 +305,11 @@ def make_conv2d(input, n_layers, n_filters, filter_sizes, scope, conv_strides=1,
     train_variables = []
     state_variables = []
 
+    if n_layers == 0:
+        layers.append(input)
+        update_ops = []
+        return layers, train_variables, state_variables, update_ops
+
     n_filters = check_vector_arg(n_filters, n_layers)
     filter_sizes = check_vector2_arg(filter_sizes, n_layers)
     conv_strides = check_vector2_arg(conv_strides, n_layers)

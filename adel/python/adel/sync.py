@@ -18,7 +18,8 @@ class SARSSynchronizer(object):
     using this class for state-action-value integration.
     """
 
-    def __init__(self, dt, tol, reward_mode='integrate', reward_steps=3, gamma=0):
+    def __init__(self, dt, tol, reward_mode='integrate', reward_steps=3,
+                 gamma=0, reward_start_offset=0):
         self.dt = dt
         self.tol = tol
 
@@ -30,6 +31,8 @@ class SARSSynchronizer(object):
             self.rewards = TimeSeries()
         elif reward_mode == 'integrate':
             self.rewards = Integrator()
+
+        self.reward_start_offset = reward_start_offset
         self.reward_mode = reward_mode
         self.reward_steps = reward_steps
 
@@ -150,11 +153,13 @@ class SARSSynchronizer(object):
             elif self.reward_mode == 'sequence':
                 # NOTE Changed logic here subtely
                 r_t = [self.rewards.get_closest_either(tau).data
-                       for tau in np.linspace(t,
+                       for tau in np.linspace(t + self.reward_start_offset,
                                               t + self.dt * self.reward_steps,
                                               self.reward_steps)]
             else:
-                r_t = self.rewards.integrate(t, tn, self._decay_weights)
+                r_t = self.rewards.integrate(t + self.reward_start_offset,
+                                             tn, self._decay_weights)
+                r_t = [r_t] # NOTE To make it at least 1D
             if r_t is None:
                 self.state_map.remove_earliest()
                 # print 'Integration failed for [%f,%f]' % (t, tn)
